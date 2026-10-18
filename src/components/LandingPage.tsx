@@ -1,346 +1,291 @@
-import Image from "next/image";
 import Link from "next/link";
-import { SiteNav } from "@/components/SiteNav";
-import { SiteFooter } from "@/components/SiteFooter";
-import { SocialLinks } from "@/components/SocialLinks";
 import { CAFE } from "@/lib/cafe";
-import { DEFAULT_MENU, formatMoney } from "@/lib/menu";
-import type { MenuItem } from "@/lib/types";
 
-function Eyebrow({ children }: { children: string }) {
-  return (
-    <p className="px-2 text-[10px] tracking-[0.22em] text-neutral-500 uppercase sm:text-[11px] sm:tracking-[0.42em]">
-      {children}
-    </p>
-  );
-}
+const features = [
+  {
+    number: "01",
+    title: "Take orders with ease",
+    description:
+      "Keep checkout moving with a clear point of sale built for everyday service.",
+    icon: "◫",
+  },
+  {
+    number: "02",
+    title: "Know your numbers",
+    description:
+      "Review sales, transactions, and performance from one straightforward dashboard.",
+    icon: "↗",
+  },
+  {
+    number: "03",
+    title: "Stay on top of stock",
+    description:
+      "Track inventory, record restocks, and connect ingredients to your recipes.",
+    icon: "▤",
+  },
+  {
+    number: "04",
+    title: "Give your team the right access",
+    description:
+      "Manage staff accounts and choose which POS features each person can use.",
+    icon: "◎",
+  },
+];
 
-function Photo({
-  src,
+const stories = [
+  {
+    image:
+      "https://images.unsplash.com/photo-1586864030223-a918b07d357d?auto=format&fit=crop&w=1400&q=85",
+    alt: "Tablet point-of-sale terminal on a bakery counter",
+    title: "Checkout that keeps the line moving",
+  },
+  {
+    image:
+      "https://images.unsplash.com/photo-1607539068168-21a93fbedad8?auto=format&fit=crop&w=1200&q=85",
+    alt: "Barista preparing coffee at an espresso machine",
+    title: "More time for the work you love",
+  },
+  {
+    image:
+      "https://images.unsplash.com/photo-1723214488726-7f59d85082ab?auto=format&fit=crop&w=1200&q=85",
+    alt: "Coffee beans organized in labeled jars on café shelves",
+    title: "Keep ingredients and stock in view",
+  },
+];
+
+function PhotoCard({
+  image,
   alt,
-  className,
-  sizes,
-  loading,
-}: {
-  src: string;
-  alt: string;
-  className?: string;
-  sizes: string;
-  loading?: "eager" | "lazy";
-}) {
+  title,
+}: (typeof stories)[number]) {
   return (
-    <article className={`group relative overflow-hidden bg-neutral-900 ${className ?? ""}`}>
-      <Image
-        src={src}
-        alt={alt}
-        fill
-        loading={loading}
-        sizes={sizes}
-        className="object-cover transition duration-700 ease-out group-hover:scale-[1.04]"
+    <article className="group relative flex min-h-[280px] items-end overflow-hidden rounded-2xl bg-[#202723] sm:min-h-[360px]">
+      <div
+        role="img"
+        aria-label={alt}
+        className="absolute inset-0 bg-cover bg-center transition duration-700 group-hover:scale-105"
+        style={{ backgroundImage: `url("${image}")` }}
       />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
+      <h3 className="relative p-5 text-lg font-semibold text-white sm:p-6 sm:text-xl">{title}</h3>
     </article>
   );
 }
 
-export function LandingPage({
-  menu = DEFAULT_MENU,
-}: {
-  menu?: MenuItem[];
-}) {
-  const bestSellers = menu
-    .filter((item) => item.available !== false)
-    .slice(0, 5);
-
+function DashboardPreview() {
   return (
-    <div className="bg-black text-white">
-      <section className="relative min-h-svh overflow-hidden">
-        <Image
-          src="/images/hero-wide.jpg"
-          alt="Synorra cafe bar"
-          fill
-          loading="eager"
-          quality={95}
-          sizes="100vw"
-          className="object-cover object-center"
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-black/70" />
-        <SiteNav />
-        <div className="relative z-10 flex min-h-svh flex-col items-center justify-end px-5 pb-10 text-center sm:px-6 sm:pb-16">
-          <p className="font-script text-2xl text-white/90 sm:text-4xl">
-            have a seat, take a sip
-          </p>
-          <h1 className="font-display mt-3 max-w-5xl text-[2.7rem] leading-[0.9] tracking-[0.08em] text-white uppercase drop-shadow-[0_10px_30px_rgba(0,0,0,0.65)] sm:mt-5 sm:text-7xl sm:tracking-[0.12em] md:text-8xl">
-            Synorra
-          </h1>
-          <div className="mt-5 sm:mt-7">
-            <p className="text-[10px] tracking-[0.28em] text-white/55 uppercase">
-              Open Hours
-            </p>
-            <p className="mt-1.5 text-[11px] tracking-[0.22em] text-white/90 uppercase sm:text-sm sm:tracking-[0.28em]">
-              {CAFE.hours} · {CAFE.hoursNote}
-            </p>
-          </div>
-          <p className="mt-2 text-[10px] tracking-[0.22em] text-white/65 uppercase sm:text-[11px] sm:tracking-[0.38em]">
-            Tetuan · Zamboanga City
-          </p>
+    <div className="relative mx-auto w-full max-w-[570px] rounded-[26px] border border-white/10 bg-[#151a18] p-3 shadow-[0_32px_100px_rgba(0,0,0,0.42)] sm:p-5">
+      <div className="flex items-center justify-between border-b border-white/10 px-2 pb-4">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#b8f36b] text-sm font-black text-[#111711]">S</span>
+          <span className="text-sm font-semibold tracking-wide">synorra</span>
         </div>
-      </section>
-
-      <section className="border-t border-white/10 bg-[#0b0b0b] px-3 py-10 sm:px-6 sm:py-24">
-        <div className="mx-auto grid max-w-6xl items-stretch gap-3 sm:gap-4 md:grid-cols-12">
-          <article className="relative min-h-[280px] overflow-hidden bg-black sm:min-h-[420px] md:col-span-7 md:min-h-[640px]">
-            <Image
-              src="/images/open.jpg"
-              alt={`${CAFE.name} open ${CAFE.hours}`}
-              fill
-              sizes="(max-width: 768px) 100vw, 58vw"
-              className="object-cover"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
-            <div className="absolute bottom-0 left-0 p-5 sm:p-10">
-              <p className="font-serif text-5xl italic tracking-tight sm:text-8xl">
-                OPEN!
-              </p>
-              <p className="mt-2 text-[10px] tracking-[0.12em] text-white/80 uppercase sm:mt-3 sm:text-sm sm:tracking-[0.28em]">
-                {CAFE.hours} · {CAFE.hoursNote}
-              </p>
-            </div>
-          </article>
-          <Photo
-            src="/images/drinks.jpg"
-            alt="Signature iced drinks at Synorra"
-            className="min-h-[240px] sm:min-h-[360px] md:col-span-5 md:min-h-[640px]"
-            sizes="(max-width: 768px) 100vw, 42vw"
-          />
+        <div className="flex items-center gap-2 text-[10px] text-white/45">
+          <span className="h-2 w-2 rounded-full bg-[#b8f36b]" />
+          STORE OVERVIEW
         </div>
-      </section>
+      </div>
 
-      <section className="px-3 py-12 sm:px-6 sm:py-28">
-        <div className="mx-auto mb-8 max-w-6xl px-2 text-center sm:mb-12">
-          <p className="font-script text-3xl sm:text-5xl">have a seat, take a sip</p>
-          <Eyebrow>{CAFE.tagline}</Eyebrow>
-        </div>
-        <div className="mx-auto grid max-w-6xl gap-3 sm:gap-4 md:grid-cols-2">
-          <Photo
-            src="/images/cups.jpg"
-            alt="Iced latte and matcha at Synorra"
-            className="min-h-[260px] sm:min-h-[440px] md:min-h-[520px]"
-            sizes="(max-width: 768px) 100vw, 50vw"
-          />
-          <Photo
-            src="/images/signatures.jpg"
-            alt="Sea salt cream, Spanish latte, and brownie"
-            className="min-h-[260px] sm:min-h-[440px] md:min-h-[520px]"
-            sizes="(max-width: 768px) 100vw, 50vw"
-          />
-          <Photo
-            src="/images/matcha-umami.jpg"
-            alt="New in the menu: Matcha Umami"
-            className="min-h-[300px] sm:min-h-[520px]"
-            sizes="(max-width: 768px) 100vw, 50vw"
-          />
-          <Photo
-            src="/images/carrier.jpg"
-            alt="Have a seat, take a sip"
-            className="min-h-[300px] sm:min-h-[520px]"
-            sizes="(max-width: 768px) 100vw, 50vw"
-          />
-        </div>
-      </section>
-
-      <section
-        id="menu"
-        className="border-y border-white/10 bg-[#111] px-4 py-12 sm:px-6 sm:py-28"
-      >
-        <div className="mx-auto grid max-w-6xl items-start gap-8 lg:grid-cols-2 lg:gap-12">
-          <div>
-            <Eyebrow>Best Sellers</Eyebrow>
-            <h2 className="mt-4 font-serif text-4xl italic sm:text-5xl">
-              Synorra
-            </h2>
-            <p className="mt-4 max-w-md text-neutral-400">
-              Signatures from the bar: iced, crumbled, and pulled to share.
-            </p>
-
-            <ul className="mt-8 divide-y divide-white/10">
-              {bestSellers.map((item) => (
-                <li
-                  key={item.id}
-                  className="flex items-baseline justify-between gap-3 py-4 sm:gap-6"
-                >
-                  <div>
-                    <p className="font-medium tracking-wide text-white">{item.name}</p>
-                  </div>
-                  <p className="shrink-0 font-medium text-neutral-300">
-                    {formatMoney(item.price)}
-                  </p>
-                </li>
-              ))}
-            </ul>
-
-          <div className="mt-8 flex flex-wrap items-center gap-4">
-  <Link
-    href="/drinks"
-    className="inline-flex items-center justify-center rounded-full bg-white px-7 py-3.5 text-xs font-semibold uppercase tracking-[0.22em] text-black transition hover:bg-neutral-200"
-  >
-    View Synorra Drinks
-  </Link>
-  <a
-    href="https://taximaxim.onelink.me/KKXl?pid=refferalmztall&af_dp=maximzakaz%3A%2F%2F&af_web_dp=https%3A%2F%2Ftaximaxim.com%2Fapp&c=menumzt"
-    target="_blank"
-    rel="noreferrer"
-    className="inline-flex items-center justify-center rounded-full border border-white/25 px-7 py-3.5 text-xs font-semibold uppercase tracking-[0.22em] text-white transition hover:bg-white hover:text-black"
-  >
-    Get your drink on Maxim!
-  </a>
-</div>
-            
-          </div>
-          <Photo
-            src="/images/menu-carrier.jpg"
-            alt="Biscoff latte, caramel macchiato, Spanish latte, sea salt cream"
-            className="min-h-[280px] sm:min-h-[520px] lg:min-h-[680px]"
-            sizes="(max-width: 1024px) 100vw, 50vw"
-          />
-        </div>
-      </section>
-
-      <section id="about" className="px-4 py-12 sm:px-6 sm:py-28">
-        <div className="mx-auto grid max-w-6xl items-center gap-8 lg:grid-cols-2 lg:gap-12">
-          <Photo
-            src="/images/storefront.jpg"
-            alt="Synorra cafe storefront at night"
-            className="min-h-[280px] sm:min-h-[480px] lg:min-h-[620px]"
-            sizes="(max-width: 1024px) 100vw, 50vw"
-          />
-          <div className="max-w-lg lg:pl-6">
-            <Eyebrow>About Us</Eyebrow>
-            <Image
-              src="/images/logo.jpg"
-              alt={CAFE.name}
-              width={200}
-              height={200}
-              className="mt-8 h-20 w-20 rounded-full object-cover"
-            />
-            <h2 className="mt-6 text-3xl font-bold tracking-tight sm:text-4xl">{CAFE.name}</h2>
-            <p className="mt-3 text-[10px] tracking-[0.18em] text-neutral-500 uppercase sm:text-[11px] sm:tracking-[0.32em]">
-              {CAFE.tagline}
-            </p>
-            <p className="mt-8 text-base leading-7 text-neutral-300 sm:text-lg sm:leading-8">
-              Every cup tells a story, and every sip brings us closer together. A
-              quiet industrial house in Tetuan. Matcha umami, sea salt cream,
-              panini, and a table meant to be shared.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section
-        id="contact"
-        className="border-t border-white/10 bg-[#0b0b0b] px-3 py-12 sm:px-6 sm:py-28"
-      >
-        <div className="mx-auto mb-8 max-w-6xl px-2 text-center sm:mb-12">
-          <Eyebrow>Contact Us</Eyebrow>
-          <h2 className="mt-4 text-2xl font-semibold tracking-tight sm:text-4xl">
-            Where to find us?
-          </h2>
-        </div>
-        <div className="mx-auto grid max-w-6xl gap-3 sm:gap-4 lg:grid-cols-12">
-          <div className="flex flex-col justify-between border border-white/10 bg-black/40 px-5 py-8 sm:px-8 sm:py-10 lg:col-span-5">
+      <div className="grid gap-3 pt-4 sm:grid-cols-[1.3fr_0.7fr]">
+        <div className="rounded-2xl bg-[#202723] p-4 sm:p-5">
+          <div className="flex items-start justify-between">
             <div>
-              <p className="text-[11px] tracking-[0.28em] text-neutral-500 uppercase">
-                Visit
-              </p>
-              <a
-                href={CAFE.mapsHref}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-6 block text-lg leading-relaxed text-white transition hover:text-neutral-300 sm:text-xl"
-              >
-                {CAFE.street}
-                <span className="mt-2 block text-base text-neutral-400">
-                  ({CAFE.landmark})
-                </span>
-                <span className="mt-2 block text-base text-neutral-300">
-                  {CAFE.city}
-                </span>
-              </a>
+              <p className="text-[10px] tracking-[0.16em] text-white/45 uppercase">Sales overview</p>
+              <p className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Your business</p>
             </div>
-            <div className="mt-12 space-y-3 text-sm text-neutral-300">
-              <p className="text-[10px] tracking-[0.12em] uppercase sm:tracking-[0.18em]">
-                {CAFE.hours} · {CAFE.hoursNote}
-              </p>
-              <p>
-                <a href={CAFE.phoneHref} className="hover:text-white">
-                  {CAFE.phone}
-                </a>
-              </p>
-              <p>
-                <a href={CAFE.emailHref} className="hover:text-white">
-                  {CAFE.email}
-                </a>
-              </p>
-              <div className="pt-4">
-                <p className="text-[10px] tracking-[0.28em] text-neutral-500 uppercase">
-                  Follow
-                </p>
-                <div className="mt-3">
-                  <SocialLinks />
-                </div>
-              </div>
+            <span className="rounded-full bg-white/5 px-2.5 py-1 text-[9px] text-white/55">THIS WEEK</span>
+          </div>
+          <div className="mt-7 flex h-24 items-end gap-2 sm:h-32">
+            {[34, 52, 43, 76, 58, 91, 69, 100, 75, 85, 62, 95].map((height, index) => (
+              <div key={index} className="flex-1 rounded-t-sm bg-[#b8f36b]" style={{ height: `${height}%`, opacity: 0.38 + index * 0.05 }} />
+            ))}
+          </div>
+          <div className="mt-2 flex justify-between text-[9px] text-white/35"><span>MON</span><span>WED</span><span>FRI</span><span>SUN</span></div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-1">
+          <div className="rounded-2xl bg-[#202723] p-4">
+            <p className="text-[9px] tracking-[0.12em] text-white/45 uppercase">Sales</p>
+            <div className="mt-3 h-1.5 rounded-full bg-white/10"><div className="h-full w-3/4 rounded-full bg-[#b8f36b]" /></div>
+            <p className="mt-2 text-[10px] text-white/40">Track your progress</p>
+          </div>
+          <div className="rounded-2xl bg-[#202723] p-4">
+            <p className="text-[9px] tracking-[0.12em] text-white/45 uppercase">Inventory</p>
+            <div className="mt-3 flex items-center gap-2">
+              <span className="h-7 w-7 rounded-lg bg-[#b8f36b]/15 text-center text-sm leading-7 text-[#b8f36b]">✓</span>
+              <span className="text-[10px] text-white/65">Stock organized</span>
             </div>
           </div>
-          <div className="grid min-h-[220px] grid-cols-3 gap-1.5 overflow-hidden bg-black p-1.5 sm:min-h-[360px] sm:gap-3 sm:p-3 lg:col-span-7 lg:min-h-[560px]">
-            {[
-              { src: "/images/shem.jpg", alt: "Shem at Synorra café" },
-              { src: "/images/mouna.jpg", alt: "Mouna at Synorra café" },
-              { src: "/images/yas.jpg", alt: "Yas at Synorra café" },
-            ].map((photo) => (
-              <div key={photo.src} className="group relative min-h-full overflow-hidden bg-neutral-900">
-                <Image
-                  src={photo.src}
-                  alt={photo.alt}
-                  fill
-                  sizes="(max-width: 1024px) 33vw, 20vw"
-                  className="object-cover transition-transform duration-500 ease-out group-hover:scale-105"
-                />
-              </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/5 bg-[#1b211e] p-4 sm:col-span-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[9px] tracking-[0.12em] text-white/45 uppercase">Built around your workflow</p>
+              <p className="mt-1 text-sm font-medium">Orders · Team · Recipes</p>
+            </div>
+            <span className="rounded-full bg-[#b8f36b] px-3 py-1.5 text-[9px] font-bold tracking-wide text-[#111711]">SYNORRA POS</span>
+          </div>
+        </div>
+      </div>
+      <p className="mt-3 text-center text-[9px] tracking-[0.12em] text-white/30 uppercase">Product preview · Sample interface</p>
+    </div>
+  );
+}
+
+export function LandingPage() {
+  return (
+    <main className="overflow-hidden bg-[#f6f7f2] text-[#15201a]">
+      <header className="mx-auto flex max-w-7xl items-center justify-between px-5 py-5 sm:px-8 sm:py-6">
+        <Link href="/" aria-label="Synorra home" className="flex items-center gap-2.5">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#b8f36b] text-base font-black">S</span>
+          <span className="text-lg font-bold tracking-[-0.04em]">synorra</span>
+          <span className="ml-1 hidden rounded-full border border-[#15201a]/10 px-2 py-1 text-[9px] font-semibold tracking-[0.12em] text-[#536057] uppercase sm:inline-flex">POS</span>
+        </Link>
+        <nav className="hidden items-center gap-8 text-sm text-[#536057] md:flex">
+          <a href="#features" className="transition hover:text-[#15201a]">Features</a>
+          <a href="#about" className="transition hover:text-[#15201a]">About</a>
+          <a href="#contact" className="transition hover:text-[#15201a]">Contact</a>
+        </nav>
+        <Link href="/back-office" className="rounded-full bg-[#15201a] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#2d3b32] sm:px-5 sm:text-sm">
+          Log in
+        </Link>
+      </header>
+
+      <section className="relative px-5 pb-20 pt-12 sm:px-8 sm:pb-28 sm:pt-20">
+        <div className="pointer-events-none absolute -right-40 -top-24 h-[520px] w-[520px] rounded-full bg-[#b8f36b]/30 blur-[100px]" />
+        <div className="relative mx-auto grid max-w-7xl items-center gap-12 lg:grid-cols-[0.95fr_1.05fr] lg:gap-8">
+          <div className="max-w-xl">
+            <p className="inline-flex items-center gap-2 rounded-full border border-[#dce3d5] bg-white/70 px-3 py-1.5 text-[10px] font-semibold tracking-[0.14em] text-[#536057] uppercase">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#73b532]" />
+              Point of sale, made simple
+            </p>
+            <h1 className="mt-6 text-[3.25rem] leading-[0.98] font-semibold tracking-[-0.065em] sm:text-7xl lg:text-[5.3rem]">
+              Run your store.
+              <br />
+              <span className="text-[#6a9e38]">Know your business.</span>
+            </h1>
+            <p className="mt-6 max-w-lg text-base leading-7 text-[#657168] sm:text-lg sm:leading-8">
+              Synorra brings checkout, sales, inventory, recipes, and your team
+              into one clear system, shaped by the day-to-day needs of a real
+              café in Zamboanga City.
+            </p>
+            <div className="mt-8 flex flex-wrap items-center gap-3">
+              <Link href="/back-office" className="rounded-full bg-[#15201a] px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-[#15201a]/10 transition hover:-translate-y-0.5 hover:bg-[#2d3b32]">
+                Open Synorra POS <span aria-hidden="true" className="ml-2">↗</span>
+              </Link>
+              <a href="#features" className="rounded-full px-5 py-3.5 text-sm font-semibold text-[#536057] transition hover:bg-white">Explore features</a>
+            </div>
+            <div className="mt-9 flex flex-wrap gap-x-6 gap-y-2 text-[11px] text-[#78837a]">
+              <span>✓ Sales and reports</span>
+              <span>✓ Inventory and restocks</span>
+              <span>✓ Staff permissions</span>
+            </div>
+          </div>
+          <div className="relative px-0 sm:px-4 lg:pl-8">
+            <div className="absolute -left-4 top-8 hidden rounded-2xl border border-[#e5e9e1] bg-white px-4 py-3 shadow-xl shadow-[#15201a]/5 sm:block">
+              <p className="text-[9px] tracking-[0.12em] text-[#78837a] uppercase">One workspace</p>
+              <p className="mt-1 text-xs font-semibold">Sales · Stock · Team</p>
+            </div>
+            <DashboardPreview />
+          </div>
+        </div>
+      </section>
+
+      <section className="px-5 pb-16 sm:px-8 sm:pb-24">
+        <div className="mx-auto grid max-w-7xl gap-4 sm:grid-cols-3">
+          {stories.map((story) => <PhotoCard key={story.title} {...story} />)}
+        </div>
+        <p className="mx-auto mt-3 max-w-7xl text-right text-[10px] text-[#929c93]">
+          Photos: Unsplash
+        </p>
+      </section>
+
+      <section id="features" className="border-y border-[#e6e9e2] bg-white px-5 py-16 sm:px-8 sm:py-24">
+        <div className="mx-auto max-w-7xl">
+          <div className="max-w-2xl">
+            <p className="text-[10px] font-semibold tracking-[0.2em] text-[#6a9e38] uppercase">Everything in sync</p>
+            <h2 className="mt-4 text-3xl leading-tight font-semibold tracking-[-0.045em] sm:text-5xl">The tools you need, all in one place.</h2>
+            <p className="mt-4 text-sm leading-6 text-[#657168] sm:text-base">From the first order of the day to the last stock check, keep your operation moving with a system that works together.</p>
+          </div>
+          <div className="mt-10 grid gap-px overflow-hidden rounded-3xl border border-[#e6e9e2] bg-[#e6e9e2] sm:grid-cols-2 lg:grid-cols-4">
+            {features.map((feature) => (
+              <article key={feature.number} className="bg-white p-6 sm:p-7">
+                <div className="flex items-center justify-between">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#eef6e7] text-xl text-[#5f8e35]">{feature.icon}</span>
+                  <span className="text-[10px] tracking-[0.12em] text-[#9aa39b]">{feature.number}</span>
+                </div>
+                <h3 className="mt-8 text-base font-semibold tracking-tight">{feature.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-[#718076]">{feature.description}</p>
+              </article>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="border-t border-white/10 bg-black">
-        <div className="mx-auto flex max-w-6xl items-end justify-between gap-4 px-5 py-6 sm:px-6 sm:py-8">
-          <div>
-            <p className="text-[11px] tracking-[0.28em] text-neutral-500 uppercase">
-              Find us
-            </p>
-            <p className="mt-2 text-sm text-neutral-300">
-              {CAFE.street}, {CAFE.city}
-            </p>
+      <section id="how-it-works" className="px-5 py-16 sm:px-8 sm:py-24">
+        <div className="mx-auto grid max-w-7xl items-center gap-10 rounded-[28px] bg-[#15201a] px-6 py-10 text-white sm:px-12 sm:py-14 lg:grid-cols-[1fr_auto]">
+          <div className="max-w-2xl">
+            <p className="text-[10px] font-semibold tracking-[0.2em] text-[#b8f36b] uppercase">Ready when you are</p>
+            <h2 className="mt-4 text-3xl leading-tight font-semibold tracking-[-0.045em] sm:text-5xl">A clearer way to run your day.</h2>
+            <p className="mt-4 max-w-xl text-sm leading-6 text-white/60 sm:text-base">Sign in to your Synorra workspace and pick up right where your business needs you.</p>
           </div>
-          <a
-            href={CAFE.mapsHref}
-            target="_blank"
-            rel="noreferrer"
-            className="shrink-0 rounded-full border border-white/25 px-4 py-2 text-[10px] tracking-[0.18em] text-white uppercase transition hover:bg-white hover:text-black"
-          >
-            Open in Maps
-          </a>
-        </div>
-        <div className="relative h-[260px] overflow-hidden border-t border-white/10 sm:h-[380px] lg:h-[460px]">
-          <iframe
-            title="Synorra on Google Maps"
-            src={CAFE.mapsEmbed}
-            loading="lazy"
-            referrerPolicy="no-referrer-when-downgrade"
-            className="absolute inset-0 h-full w-full border-0 grayscale contrast-125"
-          />
+          <Link href="/back-office" className="inline-flex items-center justify-center rounded-full bg-[#b8f36b] px-6 py-3.5 text-sm font-bold text-[#15201a] transition hover:bg-[#c9fa8e]">
+            Log in to Synorra <span aria-hidden="true" className="ml-2">↗</span>
+          </Link>
         </div>
       </section>
 
-      <SiteFooter />
-    </div>
+      <section id="about" className="border-t border-[#e6e9e2] bg-white px-5 py-16 sm:px-8 sm:py-20">
+        <div className="mx-auto grid max-w-7xl gap-8 md:grid-cols-[0.8fr_1.2fr] md:items-end">
+          <div>
+            <p className="text-[10px] font-semibold tracking-[0.2em] text-[#6a9e38] uppercase">Built from the counter up</p>
+            <h2 className="mt-4 text-3xl leading-tight font-semibold tracking-[-0.045em] sm:text-4xl">Made for real café days.</h2>
+          </div>
+          <p className="max-w-2xl text-sm leading-7 text-[#657168] sm:text-base">
+            Synorra is shaped by the practical rhythm of running a café—from
+            taking orders and checking sales to keeping ingredients, recipes,
+            and staff in order. We are based in Tetuan, Zamboanga City.
+          </p>
+        </div>
+      </section>
+
+      <footer id="contact" className="bg-[#15201a] px-5 py-12 text-white sm:px-8 sm:py-16">
+        <div className="mx-auto grid max-w-7xl gap-10 sm:grid-cols-2 lg:grid-cols-[1.2fr_1fr_1fr_1fr]">
+          <div>
+            <Link href="/" className="inline-flex items-center gap-2.5 font-bold tracking-tight">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#b8f36b] text-base font-black text-[#15201a]">S</span>
+              <span className="text-lg">synorra <span className="font-normal text-white/50">POS</span></span>
+            </Link>
+            <p className="mt-4 max-w-xs text-sm leading-6 text-white/55">Simple tools for a smoother workday, built around the needs of a working café.</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold tracking-[0.18em] text-white/40 uppercase">Visit Synorra</p>
+            <p className="mt-4 text-sm leading-6 text-white/75">{CAFE.street}<br />{CAFE.city}</p>
+            <p className="mt-3 text-xs leading-5 text-white/45">{CAFE.landmark}</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold tracking-[0.18em] text-white/40 uppercase">Hours & contact</p>
+            <p className="mt-4 text-sm leading-6 text-white/75">{CAFE.hours}<br />{CAFE.hoursNote}</p>
+            <a href={CAFE.phoneHref} className="mt-3 block text-sm text-white/75 transition hover:text-[#b8f36b]">{CAFE.phone}</a>
+            <a href={CAFE.emailHref} className="mt-2 block break-all text-sm text-white/75 transition hover:text-[#b8f36b]">{CAFE.email}</a>
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold tracking-[0.18em] text-white/40 uppercase">Follow along</p>
+            <div className="mt-4 flex flex-col items-start gap-2">
+              {CAFE.socials.map((social) => (
+                <a key={social.id} href={social.href} target="_blank" rel="noreferrer" className="text-sm text-white/70 transition hover:text-[#b8f36b]">
+                  {social.label} <span aria-hidden="true">↗</span>
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="mx-auto mt-10 flex max-w-7xl flex-col gap-3 border-t border-white/10 pt-5 text-[10px] tracking-[0.12em] text-white/35 sm:flex-row sm:items-center sm:justify-between">
+          <p>© {new Date().getFullYear()} Synorra POS</p>
+          <p>Tetuan, Zamboanga City, Philippines</p>
+        </div>
+      </footer>
+    </main>
   );
 }

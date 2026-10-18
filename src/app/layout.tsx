@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Bebas_Neue, Great_Vibes, Inter, Playfair_Display } from "next/font/google";
-import { CAFE } from "@/lib/cafe";
 import "./globals.css";
 
 const inter = Inter({
@@ -28,12 +27,13 @@ const display = Bebas_Neue({
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#000000",
+  themeColor: "#15201a",
 };
 
 export const metadata: Metadata = {
-  title: CAFE.name,
-  description: `${CAFE.tagline} ${CAFE.street}, ${CAFE.city}. Open ${CAFE.hours} ${CAFE.hoursNote}.`,
+  title: "Synorra POS | Run your store with clarity",
+  description:
+    "Manage checkout, sales, inventory, recipes, and staff in one clear point-of-sale system.",
 };
 
 export default function RootLayout({
