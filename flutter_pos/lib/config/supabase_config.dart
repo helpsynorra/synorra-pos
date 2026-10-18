@@ -79,3 +79,4 @@ class SupabaseConfig {
 
   static const String posStateId = 'commune-coffee';
 }
+ 
