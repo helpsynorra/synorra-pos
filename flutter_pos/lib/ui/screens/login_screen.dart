@@ -87,8 +87,6 @@ class _LoginScreenState extends State<LoginScreen> {
             persistSessionToken: false,
           );
     if (authRes['requiresPasswordChange'] == true) {
-      _usernameController.clear();
-      _passwordController.clear();
       setState(() {
         _isLoading = false;
         _mustChangePassword = true;
@@ -237,6 +235,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 20),
                       ],
+                      if (!_mustChangePassword) ...[
                       const Text(
                         'EMAIL',
                         style: TextStyle(
@@ -269,6 +268,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         cursorColor: Colors.white,
                         decoration: _inputDecoration(),
                       ),
+                      ],
                       if (_mustChangePassword) ...[
                         const SizedBox(height: 22),
                         const Text(
@@ -290,6 +290,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ],
                       const SizedBox(height: 28),
+                      if (!_mustChangePassword) ...[
                       const Text(
                         'CURRENT PASSWORD',
                         style: TextStyle(
@@ -307,6 +308,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         decoration: _inputDecoration(),
                         onSubmitted: (_) => _handleLogin(),
                       ),
+                      ],
                       if (_errorMessage != null) ...[
                         const SizedBox(height: 12),
                         Text(
