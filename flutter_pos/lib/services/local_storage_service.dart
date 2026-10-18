@@ -35,6 +35,7 @@ class LocalStorageService {
   static const String _keyPosOpenedBy = 'v2_cache_pos_opened_by';
   static const String _keyPosOpenedAt = 'v2_cache_pos_opened_at';
   static const String _keyActiveStaffId = 'v1_active_staff_id';
+  static const String _keyActiveStoreOwnerId = 'v1_active_store_owner_id';
   static const String _keyActiveStaffProfile = 'v1_active_staff_profile';
   static const String _keyPosApiToken = 'v1_pos_api_token';
   static const String _keyActiveCheckout = 'v1_active_checkout';
@@ -103,6 +104,25 @@ class LocalStorageService {
     StaffUser staff, {
     String? posApiToken,
   }) async {
+    final nextOwnerId = staff.role.toLowerCase() == 'cashier' ? staff.id : null;
+    final previousOwnerId = _prefs.getString(_keyActiveStoreOwnerId) ??
+        ((getActiveStaffProfile()?.role.toLowerCase() == 'cashier')
+            ? getActiveStaffProfile()?.id
+            : null);
+    if (nextOwnerId != null && previousOwnerId != nextOwnerId) {
+      if (getPendingSyncCount() > 0) {
+        throw StateError('Sync this Owner’s pending POS changes before switching accounts.');
+      }
+      for (final key in <String>[
+        _keyMenu, _keyCategories, _keyCategoryOrder, _keyInventory, _keyOrders,
+        _keyStaff, _keyVoidRequests, _keyRestocks, _keyLoginActivity,
+        _keyPrintJobs, _keyRecipesData, _keyPosOpen, _keyPosOpenedBy,
+        _keyPosOpenedAt, _keyActiveCheckout,
+      ]) {
+        await _prefs.remove(key);
+      }
+    }
+    if (nextOwnerId != null) await _prefs.setString(_keyActiveStoreOwnerId, nextOwnerId);
     await _prefs.setString(_keyActiveStaffId, staff.id);
     await _prefs.setString(
       _keyActiveStaffProfile,
@@ -123,6 +143,7 @@ class LocalStorageService {
     await _prefs.remove(_keyActiveStaffId);
     await _prefs.remove(_keyActiveStaffProfile);
     await _prefs.remove(_keyPosApiToken);
+    await _prefs.remove(_keyActiveStoreOwnerId);
   }
 
   // --- Connection Config ---
