@@ -281,6 +281,17 @@ class SupabaseService {
     }
   }
 
+  Future<void> deleteOwnerAccount(String password) async {
+    final result = await _postPosApi({
+      'action': 'delete_owner_account',
+      'password': password,
+      'confirmation': 'DELETE MY ACCOUNT',
+    });
+    if (result['ok'] != true) {
+      throw Exception(result['error']?.toString() ?? 'Unable to delete account.');
+    }
+  }
+
   /// Fetches the centralized store through the signed Vercel POS API.
   Future<Map<String, dynamic>?> fetchFullStore() async {
     try {

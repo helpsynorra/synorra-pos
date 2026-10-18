@@ -11,6 +11,7 @@ class PosNavigationDrawer extends StatelessWidget {
   final String receiptConnection;
   final String syncStatus;
   final bool canLogout;
+  final bool canDeleteOwnerAccount;
   final bool inventoryFeaturesEnabled;
   final bool stockInventoryEnabled;
   final bool restockInventoryEnabled;
@@ -22,11 +23,12 @@ class PosNavigationDrawer extends StatelessWidget {
   final VoidCallback onOpenRestock;
   final VoidCallback onOpenBaristas;
   final VoidCallback onOpenBackOffice;
+  final VoidCallback onOpenHelpCenter;
+  final VoidCallback onOpenDeleteAccount;
   final VoidCallback onConnectLabels;
   final VoidCallback onConnectReceipt;
   final VoidCallback onSync;
   final VoidCallback onLogout;
-  final VoidCallback onContactSupport;
 
   const PosNavigationDrawer({
     super.key,
@@ -36,6 +38,7 @@ class PosNavigationDrawer extends StatelessWidget {
     required this.receiptConnection,
     required this.syncStatus,
     required this.canLogout,
+    required this.canDeleteOwnerAccount,
     required this.inventoryFeaturesEnabled,
     required this.stockInventoryEnabled,
     required this.restockInventoryEnabled,
@@ -47,11 +50,12 @@ class PosNavigationDrawer extends StatelessWidget {
     required this.onOpenRestock,
     required this.onOpenBaristas,
     required this.onOpenBackOffice,
+    required this.onOpenHelpCenter,
+    required this.onOpenDeleteAccount,
     required this.onConnectLabels,
     required this.onConnectReceipt,
     required this.onSync,
     required this.onLogout,
-    required this.onContactSupport,
   });
 
   @override
@@ -177,6 +181,40 @@ class PosNavigationDrawer extends StatelessWidget {
                     title: const Text('Back office'),
                     onTap: () => _closeThen(context, onOpenBackOffice),
                   ),
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 16, 16, 6),
+                    child: Text(
+                      'SUPPORT',
+                      style: TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.help_outline, color: Colors.black87),
+                    title: const Text('Help Center'),
+                    onTap: () => _closeThen(context, onOpenHelpCenter),
+                  ),
+                  if (canDeleteOwnerAccount) const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 16, 16, 6),
+                    child: Text(
+                      'ACCOUNT',
+                      style: TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ),
+                  if (canDeleteOwnerAccount) ListTile(
+                    leading: const Icon(Icons.delete_forever_outlined, color: Colors.redAccent),
+                    title: const Text('Delete account', style: TextStyle(color: Colors.redAccent)),
+                    onTap: () => _closeThen(context, onOpenDeleteAccount),
+                  ),
                   if (connectLabelsEnabled || connectReceiptEnabled) const Padding(
                     padding: EdgeInsets.fromLTRB(16, 16, 16, 6),
                     child: Text(
@@ -249,31 +287,11 @@ class PosNavigationDrawer extends StatelessWidget {
               ),
             ),
             const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  Image.asset(
-                    'lib/src/images/synorra.jpg',
-                    width: 68,
-                    height: 40,
-                    fit: BoxFit.contain,
-                  ),
-                  const SizedBox(width: 12),
-                  InkWell(
-                    onTap: onContactSupport,
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 10),
-                      child: Text(
-                        'Contact Support',
-                        style: TextStyle(
-                          color: Color(0xFF374151),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                'Synorra POS',
+                style: TextStyle(color: Color(0xFF667085), fontSize: 12),
               ),
             ),
           ],

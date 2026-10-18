@@ -19,6 +19,7 @@ import '../../services/bluetooth_printer_service.dart';
 import 'stock_screen.dart';
 import 'restock_screen.dart';
 import 'login_screen.dart';
+import 'support_account_screens.dart';
 
 class PosScreen extends StatefulWidget {
   final PosController controller;
@@ -56,28 +57,6 @@ class _PosScreenState extends State<PosScreen> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _contactSupport() async {
-    final uri = Uri(scheme: 'mailto', path: 'help.synorra@gmail.com');
-    try {
-      final launched = await launchUrl(uri);
-      if (!launched && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No email app is available on this device.'),
-          ),
-        );
-      }
-    } on PlatformException {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No email app is available on this device.'),
-          ),
-        );
-      }
-    }
-  }
-
   Future<void> _openBackOffice() async {
     final uri = Uri.parse('https://synorra-pos.vercel.app/back-office');
     try {
@@ -97,6 +76,30 @@ class _PosScreenState extends State<PosScreen> {
         );
       }
     }
+  }
+
+  void _openHelpCenter() {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => const HelpCenterScreen(),
+    ));
+  }
+
+  void _openDeleteAccount() {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => DeleteOwnerAccountScreen(
+        onDelete: (password) async {
+          await widget.controller.supabaseService.deleteOwnerAccount(password);
+          await widget.controller.clearActiveSession();
+          if (!mounted) return;
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute<void>(
+              builder: (_) => LoginScreen(controller: widget.controller),
+            ),
+            (_) => false,
+          );
+        },
+      ),
+    ));
   }
 
   Future<void> _openPrinterPicker(PrinterRole role) async {
@@ -442,6 +445,7 @@ class _PosScreenState extends State<PosScreen> {
       receiptConnection: _printerService.connectionSummary(PrinterRole.receipt),
       syncStatus: controller.syncService.isOnline ? 'Online' : 'Offline',
       canLogout: canLogout,
+      canDeleteOwnerAccount: controller.currentUser?.role == 'cashier',
       inventoryFeaturesEnabled:
           controller.syncService.inventoryFeaturesEnabled,
       stockInventoryEnabled: controller.syncService.hasPermission('stockInventory'),
@@ -456,11 +460,12 @@ class _PosScreenState extends State<PosScreen> {
       onOpenRestock: _navigateToRestock,
       onOpenBaristas: _openBaristaShiftDialog,
       onOpenBackOffice: _openBackOffice,
+      onOpenHelpCenter: _openHelpCenter,
+      onOpenDeleteAccount: _openDeleteAccount,
       onConnectLabels: () => _openPrinterPicker(PrinterRole.labels),
       onConnectReceipt: () => _openPrinterPicker(PrinterRole.receipt),
       onSync: () => controller.syncService.syncAll(),
       onLogout: _handleLogout,
-      onContactSupport: _contactSupport,
     );
   }
 

@@ -39,13 +39,6 @@ class PosAppBar extends StatelessWidget implements PreferredSizeWidget {
       title: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Image.asset(
-            'lib/src/images/favicon.png',
-            width: 22,
-            height: 22,
-            fit: BoxFit.contain,
-          ),
-          const SizedBox(width: 8),
           const Text(
             'synorra',
             style: TextStyle(
