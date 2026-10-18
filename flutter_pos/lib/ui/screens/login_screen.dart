@@ -17,7 +17,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   final _emailController = TextEditingController();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -25,11 +25,14 @@ class _LoginScreenState extends State<LoginScreen>
   final _emailFocusNode = FocusNode();
   String? _errorMessage;
   bool _isLoading = false;
+  bool _isTransitioning = false;
   bool _mustChangePassword = false;
   bool _isNewLogin = false;
   bool _obscurePassword = true;
   bool _obscureNewPassword = true;
   late final AnimationController _launchController;
+  late final AnimationController _authController;
+  late final AnimationController _successController;
 
   @override
   void initState() {
@@ -46,6 +49,14 @@ class _LoginScreenState extends State<LoginScreen>
         }
       })
       ..forward();
+    _authController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    );
+    _successController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
     // Pull latest staff accounts, menu, and inventory from Admin on login screen load
     widget.controller.syncService.syncAll();
   }
@@ -66,6 +77,8 @@ class _LoginScreenState extends State<LoginScreen>
     _newPasswordController.dispose();
     _emailFocusNode.dispose();
     _launchController.dispose();
+    _authController.dispose();
+    _successController.dispose();
     super.dispose();
   }
 
@@ -89,6 +102,8 @@ class _LoginScreenState extends State<LoginScreen>
       return;
     }
 
+    FocusManager.instance.primaryFocus?.unfocus();
+    final authAnimation = _authController.forward(from: 0);
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -194,12 +209,15 @@ class _LoginScreenState extends State<LoginScreen>
     await widget.controller
         .recordStaffSessionEvent(authenticatedStaff, 'login');
 
+    await authAnimation;
     if (mounted) {
       setState(() {
-        _isLoading = false;
+        _isTransitioning = true;
         _mustChangePassword = false;
       });
       FocusManager.instance.primaryFocus?.unfocus();
+      await _successController.forward(from: 0);
+      if (!mounted) return;
       Navigator.pushReplacement<void, void>(
         context,
         PageRouteBuilder<void>(
@@ -303,9 +321,10 @@ class _LoginScreenState extends State<LoginScreen>
                   ),
                 ),
                 IgnorePointer(
-                  ignoring: reveal < 1,
+                  ignoring: reveal < 1 || _isLoading || _isTransitioning,
                   child: Opacity(
-                    opacity: reveal,
+                    opacity: reveal *
+                        (_isLoading || _isTransitioning ? 0 : 1),
                     child: ImageFiltered(
                       imageFilter:
                           ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
@@ -718,8 +737,14 @@ class _LoginScreenState extends State<LoginScreen>
                                   .clamp(0.0, 1.0)
                                   .toDouble(),
                             )),
-                    status:
-                        statusReady ? 'Ready' : 'Initializing POS Modules...',
+                    status: statusReady
+                        ? 'Welcome to Synorra'
+                        : 'A better way to serve',
+                  ),
+                if (_isLoading || _isTransitioning)
+                  _SignInTransitionOverlay(
+                    animation: _authController,
+                    splitAnimation: _successController,
                   ),
               ],
             ),
@@ -866,6 +891,151 @@ class _LoginScreenState extends State<LoginScreen>
       );
 }
 
+class _SignInTransitionOverlay extends StatelessWidget {
+  final Animation<double> animation;
+  final Animation<double> splitAnimation;
+
+  const _SignInTransitionOverlay({
+    required this.animation,
+    required this.splitAnimation,
+  });
+
+  @override
+  Widget build(BuildContext context) => Positioned.fill(
+        child: RepaintBoundary(
+          child: DecoratedBox(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF111A2D),
+                  Color(0xFF1B294A),
+                  Color(0xFF263B65),
+                ],
+              ),
+            ),
+            child: AnimatedBuilder(
+              animation: Listenable.merge([animation, splitAnimation]),
+              builder: (context, _) {
+                final split = splitAnimation.value;
+                return Center(
+                  child: Opacity(
+                    opacity: 1 - split,
+                    child: Transform.translate(
+                      offset: Offset(0, -split * 220),
+                      child: Transform.scale(
+                        scale: 0.96 +
+                            Curves.easeOutBack.transform(
+                                  animation.value
+                                      .clamp(0.0, 1.0)
+                                      .toDouble(),
+                                ) *
+                                0.04,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _SplitBrandCard(progress: split),
+                            const SizedBox(height: 34),
+                            SizedBox(
+                              width: 58,
+                              height: 58,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 3,
+                                color: const Color(0xFFE06A73),
+                                backgroundColor: const Color(0x29FFFFFF),
+                              ),
+                            ),
+                            const SizedBox(height: 22),
+                            const Text(
+                              'Preparing your workspace',
+                              style: TextStyle(
+                                color: Color(0xFFE5EAF3),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+}
+
+class _SplitBrandCard extends StatelessWidget {
+  final double progress;
+
+  const _SplitBrandCard({required this.progress});
+
+  @override
+  Widget build(BuildContext context) {
+    Widget card() => Container(
+          width: 216,
+          height: 142,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(32),
+            boxShadow: const [
+              BoxShadow(color: Color(0x1A263B65), blurRadius: 35, offset: Offset(0, 14)),
+            ],
+          ),
+          child: Image.asset('lib/src/images/logo_wordmark.png', fit: BoxFit.contain),
+        );
+
+    if (progress <= 0) return card();
+    return SizedBox(
+      width: 216,
+      height: 142,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          ClipPath(
+            clipper: const _LogoHalfClipper(topHalf: true),
+            child: Transform.translate(
+              offset: Offset(0, -progress * 150),
+              child: card(),
+            ),
+          ),
+          ClipPath(
+            clipper: const _LogoHalfClipper(topHalf: false),
+            child: Transform.translate(
+              offset: Offset(0, progress * 150),
+              child: card(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LogoHalfClipper extends CustomClipper<Path> {
+  final bool topHalf;
+
+  const _LogoHalfClipper({required this.topHalf});
+
+  @override
+  Path getClip(Size size) => Path()
+    ..addRect(Rect.fromLTRB(
+      0,
+      topHalf ? 0 : size.height / 2,
+      size.width,
+      topHalf ? size.height / 2 : size.height,
+    ));
+
+  @override
+  bool shouldReclip(covariant _LogoHalfClipper oldClipper) =>
+      oldClipper.topHalf != topHalf;
+}
+
 class _LaunchBrandOverlay extends StatelessWidget {
   final double opacity;
   final double scale;
@@ -995,20 +1165,14 @@ class _CurtainRevealClipper extends CustomClipper<Path> {
 
   @override
   Path getClip(Size size) {
-    final revealWidth = size.width * progress * 1.55;
-    final revealHeight = size.height * progress * 1.55;
-    final revealRect = Rect.fromCenter(
-      center: Offset(size.width / 2, size.height * 0.78),
-      width: revealWidth,
-      height: revealHeight,
-    );
+    final halfHeight = size.height * progress / 2;
     return Path()
-      ..addRRect(
-        RRect.fromRectAndRadius(
-          revealRect,
-          Radius.circular(42 * (1 - progress)),
-        ),
-      );
+      ..addRect(Rect.fromLTRB(
+        0,
+        size.height / 2 - halfHeight,
+        size.width,
+        size.height / 2 + halfHeight,
+      ));
   }
 
   @override

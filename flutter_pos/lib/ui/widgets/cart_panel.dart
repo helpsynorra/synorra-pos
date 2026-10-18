@@ -26,11 +26,120 @@ class CartPanel extends StatefulWidget {
   State<CartPanel> createState() => _CartPanelState();
 }
 
+class _SplitPaymentScreen extends StatefulWidget {
+  final PosController controller;
+  final String initialDigitalMethod;
+  final ValueChanged<String> onDigitalMethodChanged;
+
+  const _SplitPaymentScreen({
+    required this.controller,
+    required this.initialDigitalMethod,
+    required this.onDigitalMethodChanged,
+  });
+
+  @override
+  State<_SplitPaymentScreen> createState() => _SplitPaymentScreenState();
+}
+
+class _SplitPaymentScreenState extends State<_SplitPaymentScreen> {
+  late final TextEditingController _cashController;
+  late String _digitalMethod;
+
+  @override
+  void initState() {
+    super.initState();
+    _digitalMethod = widget.initialDigitalMethod;
+    _cashController = TextEditingController(
+      text: widget.controller.tenderedAmount.toInt().toString(),
+    );
+    widget.controller.addListener(_syncCashAmount);
+  }
+
+  void _syncCashAmount() {
+    final amount = widget.controller.tenderedAmount.toInt().toString();
+    if (_cashController.text != amount) _cashController.text = amount;
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_syncCashAmount);
+    _cashController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = widget.controller;
+    final currency = NumberFormat('#,##0', 'en_PH');
+    final digitalAmount =
+        (controller.total - controller.tenderedAmount).clamp(0, controller.total);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Split payment')),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              Text('Total: ₱${currency.format(controller.total)}',
+                  style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 24),
+              TextField(
+                controller: _cashController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Cash portion',
+                  prefixText: '₱ ',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (value) => controller.setTenderedAmount(
+                  double.tryParse(value) ?? 0,
+                ),
+              ),
+              const SizedBox(height: 20),
+              DropdownButtonFormField<String>(
+                value: _digitalMethod,
+                decoration: const InputDecoration(
+                  labelText: 'Pay remainder with',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'gcash', child: Text('GCash')),
+                  DropdownMenuItem(value: 'maya', child: Text('Maya')),
+                ],
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() => _digitalMethod = value);
+                  widget.onDigitalMethodChanged(value);
+                },
+              ),
+              const SizedBox(height: 16),
+              Text('$_digitalMethod: ₱${currency.format(digitalAmount)}'),
+              const SizedBox(height: 32),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Done'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CartPanelState extends State<CartPanel> {
+  static const _navy = Color(0xFF202D43);
+  static const _ink = Color(0xFF14213A);
+  static const _muted = Color(0xFF7A8CA8);
+  static const _line = Color(0xFFE4EAF3);
   final TextEditingController _amountController = TextEditingController();
   final FocusNode _amountFocusNode = FocusNode();
   bool _hasSelectedCashAmount = false;
   String? _selectedPreset;
+  String _splitDigitalMethod = 'gcash';
 
   @override
   void initState() {
@@ -54,7 +163,8 @@ class _CartPanelState extends State<CartPanel> {
     }
     if (_amountFocusNode.hasFocus) return;
 
-    final amountText = widget.controller.paymentMethod != 'cash'
+    final amountText = widget.controller.paymentMethod != 'cash' &&
+            !widget.controller.paymentMethod.startsWith('split')
         ? widget.controller.total.toInt().toString()
         : widget.controller.tenderedAmount.toInt().toString();
     if (_amountController.text != amountText) {
@@ -77,11 +187,16 @@ class _CartPanelState extends State<CartPanel> {
     final keyboardOpen =
         widget.isKeyboardOpen || MediaQuery.viewInsetsOf(context).bottom > 0;
     final isCashPayment = controller.paymentMethod == 'cash';
+    final isSplitPayment = controller.paymentMethod.startsWith('split');
+    final acceptsCash = isCashPayment || isSplitPayment;
 
     return Container(
       width: widget.isFullWidth ? double.infinity : widget.panelWidth,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFFFCFDFF),
+        borderRadius: widget.isFullWidth
+            ? const BorderRadius.vertical(top: Radius.circular(28))
+            : null,
         border: widget.isFullWidth
             ? null
             : const Border(
@@ -90,35 +205,48 @@ class _CartPanelState extends State<CartPanel> {
       ),
       child: Column(
         children: [
+          if (widget.isFullWidth)
+            Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 7),
+              width: 48,
+              height: 5,
+              decoration: BoxDecoration(
+                color: const Color(0xFFCBD5E3),
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
           Padding(
             padding: EdgeInsets.only(
-              top: keyboardOpen ? 2 : 8,
-              bottom: keyboardOpen ? 1 : 4,
+              top: widget.isFullWidth ? 2 : (keyboardOpen ? 2 : 8),
+              bottom: widget.isFullWidth ? 10 : (keyboardOpen ? 1 : 4),
             ),
             child: Text(
               'Checkout',
               style: TextStyle(
-                fontSize: keyboardOpen ? 14 : 17,
-                fontWeight: FontWeight.bold,
-                color: const Color(0xFF111827),
-                letterSpacing: -0.4,
+                fontSize: widget.isFullWidth ? 24 : (keyboardOpen ? 14 : 17),
+                fontWeight: FontWeight.w700,
+                color: _ink,
+                letterSpacing: -.5,
               ),
             ),
           ),
           if (!keyboardOpen)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+            Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: widget.isFullWidth ? 20 : 12,
+                vertical: widget.isFullWidth ? 8 : 3,
+              ),
               child: Row(
                 children: [
                   Expanded(
-                    flex: 5,
+                    flex: 4,
                     child: Text(
                       'NAME',
                       style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF9CA3AF),
-                        letterSpacing: 0.5,
+                        fontSize: widget.isFullWidth ? 12 : 9,
+                        fontWeight: FontWeight.w700,
+                        color: _muted,
+                        letterSpacing: .8,
                       ),
                     ),
                   ),
@@ -128,10 +256,10 @@ class _CartPanelState extends State<CartPanel> {
                       'QTY',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF9CA3AF),
-                        letterSpacing: 0.5,
+                        fontSize: widget.isFullWidth ? 12 : 9,
+                        fontWeight: FontWeight.w700,
+                        color: _muted,
+                        letterSpacing: .8,
                       ),
                     ),
                   ),
@@ -141,39 +269,37 @@ class _CartPanelState extends State<CartPanel> {
                       'PRICE',
                       textAlign: TextAlign.right,
                       style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF9CA3AF),
-                        letterSpacing: 0.5,
+                        fontSize: widget.isFullWidth ? 12 : 9,
+                        fontWeight: FontWeight.w700,
+                        color: _muted,
+                        letterSpacing: .8,
                       ),
                     ),
                   ),
+                  if (widget.isFullWidth) const SizedBox(width: 48),
                 ],
               ),
             ),
-          const Divider(height: 1),
+          const Divider(height: 1, color: _line),
           Expanded(
             child: controller.cart.isEmpty
-                ? const Center(
-                    child: Text(
-                      'No items yet.',
-                      style: TextStyle(
-                        color: Color(0xFF9CA3AF),
-                        fontSize: 11,
-                      ),
-                    ),
-                  )
+                ? const SizedBox.shrink()
                 : ScrollConfiguration(
                     behavior: ScrollConfiguration.of(context).copyWith(
                       scrollbars: false,
                     ),
                     child: ListView.separated(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 4),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: widget.isFullWidth ? 18 : 12,
+                        vertical: widget.isFullWidth ? 3 : 4,
+                      ),
                       itemCount: controller.cart.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      separatorBuilder: (_, __) =>
+                          const Divider(height: 1, color: _line),
                       itemBuilder: (context, index) => Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
+                        padding: EdgeInsets.symmetric(
+                          vertical: widget.isFullWidth ? 8 : 3,
+                        ),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
@@ -186,10 +312,10 @@ class _CartPanelState extends State<CartPanel> {
                                     controller.cart[index].name,
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontWeight: FontWeight.w600,
-                                      fontSize: 11,
-                                      color: Color(0xFF111827),
+                                      fontSize: widget.isFullWidth ? 15 : 11,
+                                      color: _ink,
                                     ),
                                   ),
                                   if (controller.cart[index].optionsSummary
@@ -199,9 +325,9 @@ class _CartPanelState extends State<CartPanel> {
                                       controller.cart[index].optionsSummary,
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontSize: 9,
-                                        color: Color(0xFF6B7280),
+                                      style: TextStyle(
+                                        fontSize: widget.isFullWidth ? 12 : 9,
+                                        color: _muted,
                                       ),
                                     ),
                                   ],
@@ -209,33 +335,36 @@ class _CartPanelState extends State<CartPanel> {
                               ),
                             ),
                             Expanded(
-                              flex: 5,
+                              flex: 3,
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   _quantityButton(
                                     icon: Icons.remove,
-                                    label: 'Decrease ${controller.cart[index].name} quantity',
+                                    label:
+                                        'Decrease ${controller.cart[index].name} quantity',
                                     onTap: () => controller.updateCartQty(
                                       index,
                                       controller.cart[index].qty - 1,
                                     ),
                                   ),
                                   SizedBox(
-                                    width: 24,
+                                    width: widget.isFullWidth ? 22 : 24,
                                     child: Text(
                                       '${controller.cart[index].qty}',
                                       textAlign: TextAlign.center,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontWeight: FontWeight.bold,
-                                        fontSize: 10,
+                                        fontSize: widget.isFullWidth ? 15 : 10,
                                       ),
                                     ),
                                   ),
                                   _quantityButton(
                                     icon: Icons.add,
-                                    label: 'Increase ${controller.cart[index].name} quantity',
-                                    onTap: () => widget.controller.updateCartQty(
+                                    label:
+                                        'Increase ${controller.cart[index].name} quantity',
+                                    onTap: () =>
+                                        widget.controller.updateCartQty(
                                       index,
                                       controller.cart[index].qty + 1,
                                     ),
@@ -248,10 +377,10 @@ class _CartPanelState extends State<CartPanel> {
                               child: Text(
                                 '₱${currency.format(controller.cart[index].lineTotal)}',
                                 textAlign: TextAlign.right,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontWeight: FontWeight.w600,
-                                  fontSize: 11,
-                                  color: Color(0xFF111827),
+                                  fontSize: widget.isFullWidth ? 14 : 11,
+                                  color: _ink,
                                 ),
                               ),
                             ),
@@ -263,12 +392,18 @@ class _CartPanelState extends State<CartPanel> {
           ),
           Container(
             padding: EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: keyboardOpen ? 3 : 7,
+              horizontal: widget.isFullWidth ? 18 : 12,
+              vertical: widget.isFullWidth ? 12 : (keyboardOpen ? 3 : 7),
             ),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
+            decoration: BoxDecoration(
+              color: widget.isFullWidth
+                  ? const Color(0xFFF2F6FC)
+                  : const Color(0xFFFCFDFF),
+              border: widget.isFullWidth
+                  ? null
+                  : const Border(top: BorderSide(color: _line)),
+              borderRadius:
+                  widget.isFullWidth ? BorderRadius.circular(18) : null,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -285,58 +420,88 @@ class _CartPanelState extends State<CartPanel> {
                         const SizedBox(width: 8),
                       if (widget.takeOutEnabled)
                         Expanded(
-                          child: _buildServiceModeButton('take-out', 'Take Out'),
+                          child:
+                              _buildServiceModeButton('take-out', 'Take Out'),
                         ),
                     ],
                   ),
-                SizedBox(height: keyboardOpen ? 2 : 5),
+                SizedBox(
+                    height: keyboardOpen ? 2 : (widget.isFullWidth ? 9 : 5)),
                 Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'Amount',
+                        isSplitPayment ? 'Cash portion' : 'Amount',
                         style: TextStyle(
-                            fontSize: 12, color: Color(0xFF374151)),
+                            fontSize: widget.isFullWidth ? 18 : 12,
+                            color: _ink,
+                            fontWeight: widget.isFullWidth
+                                ? FontWeight.w500
+                                : FontWeight.normal),
                       ),
                     ),
                     SizedBox(
-                      width: 92,
-                      height: keyboardOpen ? 24 : 28,
+                      width: widget.isFullWidth ? 138 : 92,
+                      height:
+                          keyboardOpen ? 30 : (widget.isFullWidth ? 50 : 28),
                       child: TextField(
-                        enabled: isCashPayment,
+                        enabled: acceptsCash,
                         readOnly: true,
                         showCursor: false,
-                        onTap: isCashPayment ? _openAmountKeypad : null,
+                        onTap: acceptsCash ? _openAmountKeypad : null,
                         controller: _amountController,
                         focusNode: _amountFocusNode,
                         keyboardType: TextInputType.none,
                         textAlign: TextAlign.right,
-                        style: const TextStyle(
-                            fontSize: 11, fontWeight: FontWeight.w600),
+                        style: TextStyle(
+                            fontSize: widget.isFullWidth ? 19 : 11,
+                            fontWeight: FontWeight.w700,
+                            color: _ink),
                         decoration: InputDecoration(
+                          prefixText: widget.isFullWidth ? '₱ ' : null,
+                          prefixStyle: const TextStyle(
+                            color: Color(0xFF526681),
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
                           contentPadding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 4),
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(
+                                widget.isFullWidth ? 14 : 8),
                             borderSide:
-                                const BorderSide(color: Color(0xFFD1D5DB)),
+                                const BorderSide(color: Color(0xFFD4DEEC)),
                           ),
                           enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide:
-                                const BorderSide(color: Color(0xFFD1D5DB)),
+                            borderRadius: BorderRadius.circular(
+                                widget.isFullWidth ? 14 : 8),
+                            borderSide: const BorderSide(
+                                color: Color(0xFFD4DEEC), width: 1.3),
                           ),
                           focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(
+                                widget.isFullWidth ? 14 : 8),
                             borderSide: const BorderSide(
-                                color: Colors.black, width: 1.5),
+                                color: Color(0xFF5687FF), width: 1.5),
                           ),
                         ),
                       ),
                     ),
                   ],
                 ),
-                SizedBox(height: keyboardOpen ? 1 : 4),
+                SizedBox(
+                    height: keyboardOpen ? 1 : (widget.isFullWidth ? 8 : 4)),
+                if (widget.isFullWidth && !keyboardOpen)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 6),
+                    child: Text(
+                      'Quick Cash Bills',
+                      style: TextStyle(
+                          color: _muted,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
@@ -344,7 +509,7 @@ class _CartPanelState extends State<CartPanel> {
                       _buildPresetPill(
                         presetId: 'exact',
                         label: 'Exact',
-                        isEnabled: isCashPayment,
+                        isEnabled: acceptsCash,
                         onTap: () {
                           controller.setTenderedAmount(controller.total);
                           setState(() {
@@ -359,7 +524,7 @@ class _CartPanelState extends State<CartPanel> {
                       _buildPresetPill(
                         presetId: '500',
                         label: '₱500',
-                        isEnabled: isCashPayment,
+                        isEnabled: acceptsCash,
                         onTap: () {
                           controller.setTenderedAmount(500);
                           setState(() {
@@ -373,7 +538,7 @@ class _CartPanelState extends State<CartPanel> {
                       _buildPresetPill(
                         presetId: '1000',
                         label: '₱1,000',
-                        isEnabled: isCashPayment,
+                        isEnabled: acceptsCash,
                         onTap: () {
                           controller.setTenderedAmount(1000);
                           setState(() {
@@ -387,7 +552,7 @@ class _CartPanelState extends State<CartPanel> {
                       _buildPresetPill(
                         presetId: '2000',
                         label: '₱2,000',
-                        isEnabled: isCashPayment,
+                        isEnabled: acceptsCash,
                         onTap: () {
                           controller.setTenderedAmount(2000);
                           setState(() {
@@ -397,11 +562,11 @@ class _CartPanelState extends State<CartPanel> {
                           });
                         },
                       ),
-                       const SizedBox(width: 6),
+                      const SizedBox(width: 6),
                       _buildPresetPill(
                         presetId: '3000',
                         label: '₱3,000',
-                        isEnabled: isCashPayment,
+                        isEnabled: acceptsCash,
                         onTap: () {
                           controller.setTenderedAmount(3000);
                           setState(() {
@@ -411,11 +576,11 @@ class _CartPanelState extends State<CartPanel> {
                           });
                         },
                       ),
-                       const SizedBox(width: 6),
+                      const SizedBox(width: 6),
                       _buildPresetPill(
                         presetId: '4000',
                         label: '₱4,000',
-                        isEnabled: isCashPayment,
+                        isEnabled: acceptsCash,
                         onTap: () {
                           controller.setTenderedAmount(4000);
                           setState(() {
@@ -425,16 +590,31 @@ class _CartPanelState extends State<CartPanel> {
                           });
                         },
                       ),
+                      const SizedBox(width: 6),
+                      _buildPresetPill(
+                        presetId: '5000',
+                        label: '₱5,000',
+                        isEnabled: acceptsCash,
+                        onTap: () {
+                          controller.setTenderedAmount(5000);
+                          setState(() {
+                            _hasSelectedCashAmount = true;
+                            _selectedPreset = '5000';
+                            _amountController.text = '5000';
+                          });
+                        },
+                      ),
                     ],
                   ),
                 ),
                 if (!keyboardOpen) ...[
                   const SizedBox(height: 4),
-                  const Text(
-                    'Pay with',
+                  Text(
+                    'Payment Method',
                     style: TextStyle(
-                      fontSize: 10,
-                      color: Color(0xFF6B7280),
+                      fontSize: widget.isFullWidth ? 13 : 10,
+                      color: _muted,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 3),
@@ -486,25 +666,80 @@ class _CartPanelState extends State<CartPanel> {
                         });
                       },
                     ),
+                    const SizedBox(width: 8),
+                    _buildPaymentButton(
+                      label: 'Split',
+                      isSelected: isSplitPayment,
+                      isCompact: keyboardOpen,
+                      onTap: () {
+                        _amountFocusNode.unfocus();
+                        controller.setPaymentMethod('split');
+                        final cashPart = (controller.total / 2).ceilToDouble();
+                        controller.setTenderedAmount(cashPart);
+                        setState(() {
+                          _hasSelectedCashAmount = true;
+                          _selectedPreset = null;
+                          _amountController.text = cashPart.toInt().toString();
+                        });
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => _SplitPaymentScreen(
+                              controller: controller,
+                              initialDigitalMethod: _splitDigitalMethod,
+                              onDigitalMethodChanged: (method) =>
+                                  _splitDigitalMethod = method,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                   ],
                 ),
+                if (isSplitPayment && !keyboardOpen) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text('Cash +', style: TextStyle(color: _ink)),
+                      ),
+                      const Text('Pay remainder with ',
+                          style: TextStyle(color: _muted, fontSize: 12)),
+                      DropdownButton<String>(
+                        value: _splitDigitalMethod,
+                        underline: const SizedBox.shrink(),
+                        items: const [
+                          DropdownMenuItem(value: 'gcash', child: Text('GCash')),
+                          DropdownMenuItem(value: 'maya', child: Text('Maya')),
+                        ],
+                        onChanged: (value) => setState(() {
+                          if (value != null) _splitDigitalMethod = value;
+                        }),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    'Cash ₱${currency.format(controller.tenderedAmount)}  ·  '
+                    '$_splitDigitalMethod ₱${currency.format((controller.total - controller.tenderedAmount).clamp(0, controller.total))}',
+                    style: const TextStyle(color: _muted, fontSize: 12),
+                  ),
+                ],
                 SizedBox(height: keyboardOpen ? 2 : 5),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
+                    Text(
                       'Total',
                       style: TextStyle(
-                          fontSize: 13,
+                          fontSize: widget.isFullWidth ? 19 : 13,
                           fontWeight: FontWeight.bold,
-                          color: Colors.black),
+                          color: _ink),
                     ),
                     Text(
                       '₱${currency.format(controller.total)}',
-                      style: const TextStyle(
-                          fontSize: 14,
+                      style: TextStyle(
+                          fontSize: widget.isFullWidth ? 19 : 14,
                           fontWeight: FontWeight.bold,
-                          color: Colors.black),
+                          color: _ink),
                     ),
                   ],
                 ),
@@ -513,12 +748,15 @@ class _CartPanelState extends State<CartPanel> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Change',
+                      Text('Change',
                           style: TextStyle(
-                              fontSize: 11, color: Color(0xFF4B5563))),
+                              fontSize: widget.isFullWidth ? 15 : 11,
+                              color: _muted)),
                       Text('₱${currency.format(controller.change)}',
-                          style: const TextStyle(
-                              fontSize: 11, fontWeight: FontWeight.w600)),
+                          style: TextStyle(
+                              fontSize: widget.isFullWidth ? 15 : 11,
+                              fontWeight: FontWeight.w600,
+                              color: _muted)),
                     ],
                   ),
                   const SizedBox(height: 5),
@@ -529,31 +767,53 @@ class _CartPanelState extends State<CartPanel> {
                     onPressed: controller.cart.isEmpty ||
                             controller.isProcessing ||
                             controller.isVoidRequestPending ||
-                            (controller.paymentMethod == 'cash' &&
+                            ((controller.paymentMethod == 'cash' || isSplitPayment) &&
                                 !_hasSelectedCashAmount)
                         ? null
-                        : widget.onProceedOrder,
+                        : () {
+                            if (isSplitPayment) {
+                              final cashPart = controller.tenderedAmount
+                                  .clamp(0, controller.total);
+                              final digitalPart = controller.total - cashPart;
+                              controller.setPaymentMethod(
+                                'split:cash=${cashPart.toStringAsFixed(0)},'
+                                '$_splitDigitalMethod=${digitalPart.toStringAsFixed(0)}',
+                              );
+                            }
+                            widget.onProceedOrder();
+                          },
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.black,
-                      side: const BorderSide(color: Colors.black, width: 1.2),
+                      foregroundColor: Colors.white,
+                      backgroundColor: _navy,
+                      side: const BorderSide(color: _navy, width: 1.2),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
-                      minimumSize: Size(0, keyboardOpen ? 28 : 36),
+                          borderRadius: BorderRadius.circular(
+                              widget.isFullWidth ? 16 : 10)),
+                      minimumSize: Size(0,
+                          keyboardOpen ? 34 : (widget.isFullWidth ? 44 : 38)),
                       padding:
-                          EdgeInsets.symmetric(vertical: keyboardOpen ? 2 : 6),
-                      disabledForegroundColor: const Color(0xFF9CA3AF),
+                          EdgeInsets.symmetric(vertical: keyboardOpen ? 2 : 8),
+                      disabledForegroundColor: Colors.white70,
+                      disabledBackgroundColor: const Color(0xFF8995A9),
                     ),
                     child: controller.isProcessing
                         ? const SizedBox(
-                            width: 14,
-                            height: 14,
+                            width: 18,
+                            height: 18,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.black),
+                                strokeWidth: 2, color: Colors.white),
                           )
-                        : const Text(
-                            'Proceed Order',
-                            style: TextStyle(
-                                fontSize: 11, fontWeight: FontWeight.w600),
+                        : Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('Proceed Order',
+                                  style: TextStyle(
+                                    fontSize: widget.isFullWidth ? 14 : 11,
+                                    fontWeight: FontWeight.w700,
+                                  )),
+                              const SizedBox(width: 12),
+                              const Icon(Icons.arrow_forward_rounded, size: 18),
+                            ],
                           ),
                   ),
                 ),
@@ -580,9 +840,9 @@ class _CartPanelState extends State<CartPanel> {
           onTap: onTap,
           customBorder: const CircleBorder(),
           child: SizedBox(
-            width: 44,
-            height: 44,
-            child: Icon(icon, size: 20, color: const Color(0xFF111827)),
+            width: widget.isFullWidth ? 28 : 44,
+            height: widget.isFullWidth ? 32 : 44,
+            child: Icon(icon, size: widget.isFullWidth ? 16 : 20, color: _ink),
           ),
         ),
       ),
@@ -591,7 +851,8 @@ class _CartPanelState extends State<CartPanel> {
 
   Future<void> _openAmountKeypad() async {
     final controller = widget.controller;
-    if (controller.paymentMethod != 'cash') return;
+    if (controller.paymentMethod != 'cash' &&
+        !controller.paymentMethod.startsWith('split')) return;
 
     var amount = _amountController.text.replaceAll(RegExp(r'[^0-9]'), '');
     await showModalBottomSheet<void>(
@@ -703,28 +964,42 @@ class _CartPanelState extends State<CartPanel> {
     required bool isCompact,
     required VoidCallback onTap,
   }) {
+    final icon = label == 'Cash'
+        ? Icons.payments_outlined
+        : Icons.account_balance_wallet_outlined;
     return Expanded(
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(10),
         child: Container(
-          padding: EdgeInsets.symmetric(vertical: isCompact ? 2 : 5),
+          padding: EdgeInsets.symmetric(
+            vertical: isCompact ? 2 : (widget.isFullWidth ? 12 : 5),
+          ),
           decoration: BoxDecoration(
-            color: isSelected ? Colors.black : Colors.white,
-            borderRadius: BorderRadius.circular(10),
+            color: isSelected ? _navy : Colors.white,
+            borderRadius: BorderRadius.circular(widget.isFullWidth ? 14 : 10),
             border: Border.all(
-              color: isSelected ? Colors.black : const Color(0xFFD1D5DB),
+              color: isSelected ? _navy : const Color(0xFFD4DEEC),
               width: 1,
             ),
           ),
           child: Center(
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: isSelected ? Colors.white : const Color(0xFF111827),
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon,
+                    size: widget.isFullWidth ? 19 : 15,
+                    color: isSelected ? Colors.white : _muted),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: widget.isFullWidth ? 14 : 11,
+                    fontWeight: FontWeight.w600,
+                    color: isSelected ? Colors.white : _ink,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -776,28 +1051,32 @@ class _CartPanelState extends State<CartPanel> {
       onTap: isEnabled ? onTap : null,
       borderRadius: BorderRadius.circular(16),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+        padding: EdgeInsets.symmetric(
+          horizontal: widget.isFullWidth ? 14 : 9,
+          vertical: widget.isFullWidth ? 10 : 3,
+        ),
         decoration: BoxDecoration(
           color: !isEnabled
               ? const Color(0xFFF3F4F6)
               : isSelected
-                  ? Colors.black
+                  ? _navy
                   : Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: !isEnabled
                 ? const Color(0xFFE5E7EB)
                 : isSelected
-                    ? Colors.black
-                    : const Color(0xFFD1D5DB),
+                    ? const Color(0xFF5687FF)
+                    : const Color(0xFFD4DEEC),
+            width: isSelected && widget.isFullWidth ? 2 : 1,
           ),
         ),
         child: Center(
           child: Text(
             label,
             style: TextStyle(
-              fontSize: 9,
-              fontWeight: FontWeight.w500,
+              fontSize: widget.isFullWidth ? 13 : 9,
+              fontWeight: FontWeight.w600,
               color: !isEnabled
                   ? const Color(0xFF9CA3AF)
                   : isSelected

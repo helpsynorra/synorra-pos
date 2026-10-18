@@ -80,7 +80,10 @@ class _PosScreenState extends State<PosScreen> {
 
   void _openHelpCenter() {
     Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => const HelpCenterScreen(),
+      builder: (_) => SupportHubScreen(
+        canDeleteOwnerAccount: widget.controller.currentUser?.role == 'cashier',
+        onOpenDeleteAccount: _openDeleteAccount,
+      ),
     ));
   }
 
@@ -103,7 +106,8 @@ class _PosScreenState extends State<PosScreen> {
   }
 
   Future<void> _openPrinterPicker(PrinterRole role) async {
-    final permission = role == PrinterRole.labels ? 'connectLabels' : 'connectReceipt';
+    final permission =
+        role == PrinterRole.labels ? 'connectLabels' : 'connectReceipt';
     if (!widget.controller.syncService.hasPermission(permission)) return;
     await Future<void>.delayed(Duration.zero);
     if (!mounted) return;
@@ -242,9 +246,12 @@ class _PosScreenState extends State<PosScreen> {
         orders: widget.controller.orders,
         menu: widget.controller.menu,
         onPrint: _printOrder,
-        customerReceiptEnabled: widget.controller.syncService.hasPermission('customerReceipt'),
-        cupLabelsEnabled: widget.controller.syncService.hasPermission('cupLabels'),
-        printButtonEnabled: widget.controller.syncService.hasPermission('printButton'),
+        customerReceiptEnabled:
+            widget.controller.syncService.hasPermission('customerReceipt'),
+        cupLabelsEnabled:
+            widget.controller.syncService.hasPermission('cupLabels'),
+        printButtonEnabled:
+            widget.controller.syncService.hasPermission('printButton'),
       ),
     );
   }
@@ -369,20 +376,13 @@ class _PosScreenState extends State<PosScreen> {
         maxChildSize: 0.95,
         builder: (context, scrollController) => Column(
           children: [
-            Container(
-              margin: const EdgeInsets.only(top: 10, bottom: 4),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: const Color(0xFFD1D5DB),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
             Expanded(
               child: CartPanel(
                 controller: widget.controller,
-                dineInEnabled: widget.controller.syncService.hasPermission('dineIn'),
-                takeOutEnabled: widget.controller.syncService.hasPermission('takeOut'),
+                dineInEnabled:
+                    widget.controller.syncService.hasPermission('dineIn'),
+                takeOutEnabled:
+                    widget.controller.syncService.hasPermission('takeOut'),
                 isFullWidth: true,
                 isKeyboardOpen: keyboardOpen,
                 onProceedOrder: () => _handleProceedOrder(
@@ -418,7 +418,8 @@ class _PosScreenState extends State<PosScreen> {
   }
 
   void _navigateToRestock() {
-    if (!widget.controller.syncService.hasPermission('restockInventory')) return;
+    if (!widget.controller.syncService.hasPermission('restockInventory'))
+      return;
     _navigateToPos();
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -445,13 +446,15 @@ class _PosScreenState extends State<PosScreen> {
       receiptConnection: _printerService.connectionSummary(PrinterRole.receipt),
       syncStatus: controller.syncService.isOnline ? 'Online' : 'Offline',
       canLogout: canLogout,
-      canDeleteOwnerAccount: controller.currentUser?.role == 'cashier',
-      inventoryFeaturesEnabled:
-          controller.syncService.inventoryFeaturesEnabled,
-      stockInventoryEnabled: controller.syncService.hasPermission('stockInventory'),
-      restockInventoryEnabled: controller.syncService.hasPermission('restockInventory'),
-      connectLabelsEnabled: controller.syncService.hasPermission('connectLabels'),
-      connectReceiptEnabled: controller.syncService.hasPermission('connectReceipt'),
+      inventoryFeaturesEnabled: controller.syncService.inventoryFeaturesEnabled,
+      stockInventoryEnabled:
+          controller.syncService.hasPermission('stockInventory'),
+      restockInventoryEnabled:
+          controller.syncService.hasPermission('restockInventory'),
+      connectLabelsEnabled:
+          controller.syncService.hasPermission('connectLabels'),
+      connectReceiptEnabled:
+          controller.syncService.hasPermission('connectReceipt'),
       logoutDisabledMessage: controller.isVoidRequestPending
           ? 'Wait for void approval first'
           : 'Clear checkout first',
@@ -461,7 +464,6 @@ class _PosScreenState extends State<PosScreen> {
       onOpenBaristas: _openBaristaShiftDialog,
       onOpenBackOffice: _openBackOffice,
       onOpenHelpCenter: _openHelpCenter,
-      onOpenDeleteAccount: _openDeleteAccount,
       onConnectLabels: () => _openPrinterPicker(PrinterRole.labels),
       onConnectReceipt: () => _openPrinterPicker(PrinterRole.receipt),
       onSync: () => controller.syncService.syncAll(),
@@ -506,14 +508,14 @@ class _PosScreenState extends State<PosScreen> {
       resizeToAvoidBottomInset: false,
       appBar: PosAppBar(
         isVoidRequestPending: controller.isVoidRequestPending,
-        showPrintButton: !sync.printButtonHidden && sync.hasPermission('printButton'),
+        showPrintButton:
+            !sync.printButtonHidden && sync.hasPermission('printButton'),
         syncStatus: syncStatusLabel,
         syncDotColor: syncDotColor,
         onPrint: _openReceiptDialog,
         onSync: () => sync.syncAll(),
       ),
       drawer: _buildPosDrawer(PosSection.terminal),
-
       body: LayoutBuilder(
         builder: (context, screenConstraints) {
           final checkoutPanelWidth =

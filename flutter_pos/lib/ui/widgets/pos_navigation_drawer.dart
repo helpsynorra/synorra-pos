@@ -11,7 +11,6 @@ class PosNavigationDrawer extends StatelessWidget {
   final String receiptConnection;
   final String syncStatus;
   final bool canLogout;
-  final bool canDeleteOwnerAccount;
   final bool inventoryFeaturesEnabled;
   final bool stockInventoryEnabled;
   final bool restockInventoryEnabled;
@@ -24,7 +23,6 @@ class PosNavigationDrawer extends StatelessWidget {
   final VoidCallback onOpenBaristas;
   final VoidCallback onOpenBackOffice;
   final VoidCallback onOpenHelpCenter;
-  final VoidCallback onOpenDeleteAccount;
   final VoidCallback onConnectLabels;
   final VoidCallback onConnectReceipt;
   final VoidCallback onSync;
@@ -38,7 +36,6 @@ class PosNavigationDrawer extends StatelessWidget {
     required this.receiptConnection,
     required this.syncStatus,
     required this.canLogout,
-    required this.canDeleteOwnerAccount,
     required this.inventoryFeaturesEnabled,
     required this.stockInventoryEnabled,
     required this.restockInventoryEnabled,
@@ -51,7 +48,6 @@ class PosNavigationDrawer extends StatelessWidget {
     required this.onOpenBaristas,
     required this.onOpenBackOffice,
     required this.onOpenHelpCenter,
-    required this.onOpenDeleteAccount,
     required this.onConnectLabels,
     required this.onConnectReceipt,
     required this.onSync,
@@ -92,9 +88,11 @@ class PosNavigationDrawer extends StatelessWidget {
                     icon: Icons.point_of_sale_outlined,
                     title: 'POS Terminal',
                     selected: selectedSection == PosSection.terminal,
-                    onTap: () => _select(context, PosSection.terminal, onOpenTerminal),
+                    onTap: () =>
+                        _select(context, PosSection.terminal, onOpenTerminal),
                   ),
-                  if (inventoryFeaturesEnabled && (stockInventoryEnabled || restockInventoryEnabled)) ...[
+                  if (inventoryFeaturesEnabled &&
+                      (stockInventoryEnabled || restockInventoryEnabled)) ...[
                     const SizedBox(height: 20),
                     _sectionLabel('INVENTORY'),
                     if (stockInventoryEnabled)
@@ -102,14 +100,16 @@ class PosNavigationDrawer extends StatelessWidget {
                         icon: Icons.inventory_2_outlined,
                         title: 'Stock inventory',
                         selected: selectedSection == PosSection.stock,
-                        onTap: () => _select(context, PosSection.stock, onOpenStock),
+                        onTap: () =>
+                            _select(context, PosSection.stock, onOpenStock),
                       ),
                     if (restockInventoryEnabled)
                       _row(
                         icon: Icons.add_shopping_cart_outlined,
                         title: 'Restock inventory',
                         selected: selectedSection == PosSection.restock,
-                        onTap: () => _select(context, PosSection.restock, onOpenRestock),
+                        onTap: () =>
+                            _select(context, PosSection.restock, onOpenRestock),
                       ),
                   ],
                   const SizedBox(height: 20),
@@ -131,7 +131,7 @@ class PosNavigationDrawer extends StatelessWidget {
                   _sectionLabel('SUPPORT'),
                   _row(
                     icon: Icons.contact_support_outlined,
-                    title: 'Help Center',
+                    title: 'Support',
                     onTap: () => _closeThen(context, onOpenHelpCenter),
                   ),
                   if (connectLabelsEnabled || connectReceiptEnabled) ...[
@@ -150,16 +150,6 @@ class PosNavigationDrawer extends StatelessWidget {
                         onTap: () => _closeThen(context, onConnectReceipt),
                       ),
                   ],
-                  if (canDeleteOwnerAccount) ...[
-                    const SizedBox(height: 20),
-                    _sectionLabel('ACCOUNT & SECURITY'),
-                    _row(
-                      icon: Icons.delete_outline_rounded,
-                      title: 'Delete account',
-                      destructive: true,
-                      onTap: () => _closeThen(context, onOpenDeleteAccount),
-                    ),
-                  ],
                   const SizedBox(height: 20),
                   _sectionLabel('SYSTEM STATUS'),
                   _row(
@@ -167,7 +157,9 @@ class PosNavigationDrawer extends StatelessWidget {
                     title: syncStatus.toLowerCase().contains('online')
                         ? 'Sync Online'
                         : 'Sync Offline',
-                    leadingDot: isOnline ? const Color(0xFF32C66A) : const Color(0xFFF0A33A),
+                    leadingDot: isOnline
+                        ? const Color(0xFF32C66A)
+                        : const Color(0xFFF0A33A),
                     onTap: () => _closeThen(context, onSync),
                   ),
                   const SizedBox(height: 14),
@@ -182,8 +174,6 @@ class PosNavigationDrawer extends StatelessWidget {
   }
 
   Widget _header(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
-    final logoWidth = (width * .38).clamp(132.0, 190.0).toDouble();
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(22, 20, 18, 22),
@@ -201,19 +191,15 @@ class PosNavigationDrawer extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Container(
-                  width: logoWidth,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(9),
-                  ),
-                  child: Image.asset(
-                    'lib/src/images/logo_wordmark.png',
-                    width: logoWidth,
-                    height: 36,
-                    fit: BoxFit.contain,
-                    semanticLabel: 'Synorra',
+                child: Text(
+                  'Owner: $cashierName',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFFD0DBEA),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: .2,
                   ),
                 ),
               ),
@@ -224,20 +210,26 @@ class PosNavigationDrawer extends StatelessWidget {
                   color: Colors.white.withOpacity(.12),
                   borderRadius: BorderRadius.circular(30),
                   child: InkWell(
-                    onTap: canLogout ? () => _closeThen(context, onLogout) : null,
+                    onTap:
+                        canLogout ? () => _closeThen(context, onLogout) : null,
                     borderRadius: BorderRadius.circular(30),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 11),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.logout_rounded, size: 18,
+                          Icon(Icons.logout_rounded,
+                              size: 18,
                               color: canLogout ? Colors.white : Colors.white54),
                           const SizedBox(width: 7),
-                          Text('Logout', style: TextStyle(
-                            color: canLogout ? Colors.white : Colors.white54,
-                            fontSize: 13, fontWeight: FontWeight.w600,
-                          )),
+                          Text('Logout',
+                              style: TextStyle(
+                                color:
+                                    canLogout ? Colors.white : Colors.white54,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              )),
                         ],
                       ),
                     ),
@@ -245,18 +237,6 @@ class PosNavigationDrawer extends StatelessWidget {
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 14),
-          Text(
-            'Owner: $cashierName',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Color(0xFFD0DBEA),
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              letterSpacing: .2,
-            ),
           ),
         ],
       ),
@@ -308,7 +288,8 @@ class PosNavigationDrawer extends StatelessWidget {
                   Container(
                     width: 9,
                     height: 9,
-                    decoration: BoxDecoration(color: leadingDot, shape: BoxShape.circle),
+                    decoration: BoxDecoration(
+                        color: leadingDot, shape: BoxShape.circle),
                   ),
                 ],
                 const SizedBox(width: 16),
@@ -316,22 +297,24 @@ class PosNavigationDrawer extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(title, style: TextStyle(
-                        color: color,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                      )),
+                      Text(title,
+                          style: TextStyle(
+                            color: color,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                          )),
                       if (subtitle != null) ...[
                         const SizedBox(height: 3),
-                        Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: destructive ? color : _muted, fontSize: 11.5)),
+                        Text(subtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                color: destructive ? color : _muted,
+                                fontSize: 11.5)),
                       ],
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                Icon(Icons.chevron_right_rounded, size: 23,
-                    color: destructive ? color : const Color(0xFF687993)),
               ],
             ),
           ),

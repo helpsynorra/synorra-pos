@@ -36,33 +36,14 @@ class PosAppBar extends StatelessWidget implements PreferredSizeWidget {
         ),
       ),
       titleSpacing: 0,
-      title: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text(
-            'synorra',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-              letterSpacing: -0.6,
-            ),
-          ),
-          if (sectionTitle != null) ...[
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                sectionTitle!,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.normal,
-                  color: Color(0xFF9CA3AF),
-                ),
-              ),
-            ),
-          ],
-        ],
+      title: Text(
+        sectionTitle ?? 'POS',
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          color: Color(0xFFCFD5DF),
+        ),
       ),
       actions: [
         if (showPrintButton)
