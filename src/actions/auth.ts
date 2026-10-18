@@ -1,6 +1,8 @@
 "use server";
 
 import bcrypt from "bcryptjs";
+import { createHash, randomBytes } from "node:crypto";
+import nodemailer from "nodemailer";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -11,7 +13,7 @@ import {
   homeForRole,
   sessionCookieOptions,
 } from "@/lib/auth";
-import { getFreshStore, getStore, recordAuthActivity, upsertStaffUserRecord } from "@/lib/store";
+import { getFreshStore, getStore, isRealSupabaseConfigured, recordAuthActivity, supabaseAdmin, upsertStaffUserRecord } from "@/lib/store";
 import { loginPathForRole, normalizeLoginGates } from "@/lib/staff-gates";
 import { parseLoginRole, parseRole, toSession } from "@/lib/users";
 
@@ -20,6 +22,168 @@ export type LoginState = {
 };
 
 export type PasswordChangeState = { error?: string };
+export type PasswordResetRequestState = { sent?: boolean; error?: string };
+export type PasswordResetState = { reset?: boolean; error?: string };
+
+function passwordResetTokenHash(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+export async function requestOwnerPasswordReset(
+  _prev: PasswordResetRequestState,
+  formData: FormData,
+): Promise<PasswordResetRequestState> {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { error: "Enter a valid email address." };
+  }
+
+  const gmailAppPassword = process.env.GMAIL_APP_PASSWORD?.replace(/\s/g, "");
+  const sender = "help.syoorra@gmail.com";
+  if (!gmailAppPassword || !isRealSupabaseConfigured()) {
+    console.error("Owner password recovery is missing Gmail SMTP or Supabase server configuration.");
+    return { error: "Password recovery is not available right now. Please try again later." };
+  }
+
+  try {
+    const store = await getFreshStore();
+    const owner = store.users.find(
+      (user) =>
+        user.role === "cashier" &&
+        user.email?.trim().toLowerCase() === email &&
+        user.password,
+    );
+
+    if (owner) {
+      const supabase = supabaseAdmin();
+      const token = randomBytes(32).toString("hex");
+      const tokenHash = passwordResetTokenHash(token);
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+      const { error: clearError } = await supabase
+        .from("staff_password_resets")
+        .delete()
+        .eq("staff_user_id", owner.id);
+      if (clearError) throw clearError;
+
+      const { error: insertError } = await supabase
+        .from("staff_password_resets")
+        .insert({ staff_user_id: owner.id, token_hash: tokenHash, expires_at: expiresAt });
+      if (insertError) throw insertError;
+
+      const appUrl = (process.env.APP_URL || "https://synorra-pos.vercel.app").replace(/\/+$/, "");
+      const resetUrl = `${appUrl}/back-office/reset-password?token=${token}`;
+      const mailer = nodemailer.createTransport({
+        service: "gmail",
+        auth: { user: sender, pass: gmailAppPassword },
+      });
+      try {
+        await mailer.sendMail({
+          from: { name: "Synorra", address: sender },
+          to: email,
+          subject: "Synorra: password recovery",
+          text: `To create a new password, open this link: ${resetUrl}\n\nThis link expires in 1 hour. If you did not request this, ignore this email.`,
+          html: `<!doctype html>
+<html><body style="margin:0;background:#e7e7e7;font-family:Arial,Helvetica,sans-serif;color:#111;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#e7e7e7;padding:48px 16px;">
+    <tr><td align="center">
+      <table role="presentation" width="570" cellspacing="0" cellpadding="0" style="max-width:570px;width:100%;background:#fff;border-radius:3px;text-align:center;">
+        <tr><td style="padding:28px 24px 0;color:#171717;font-size:26px;font-weight:700;letter-spacing:3px;">SYNORRA</td></tr>
+        <tr><td style="padding:42px 24px 0;font-size:20px;">Password recovery</td></tr>
+        <tr><td style="padding:24px 24px 0;font-size:14px;line-height:1.6;">To create a new password click on the button below</td></tr>
+        <tr><td style="padding:38px 24px 0;"><a href="${resetUrl}" style="display:inline-block;background:#77b33d;color:#fff;text-decoration:none;font-size:13px;font-weight:700;padding:18px 24px;border-radius:3px;">CREATE A NEW PASSWORD</a></td></tr>
+        <tr><td style="padding:42px 28px 0;font-size:12px;line-height:1.7;">If you have questions, contact <a href="mailto:${sender}" style="color:#1687c9;text-decoration:none;">Synorra Support</a>.<br/>We are happy to assist.</td></tr>
+        <tr><td style="padding:28px 24px 24px;font-size:12px;">Sincerely, The Synorra team</td></tr>
+      </table>
+      <p style="padding-top:8px;color:#1687c9;font-size:12px;">© 2026 Synorra</p>
+      <p style="color:#666;font-size:11px;">This link expires in 1 hour. If you did not request this, you can ignore this email.</p>
+    </td></tr>
+  </table>
+</body></html>`,
+        });
+      } catch (sendError) {
+        await supabase.from("staff_password_resets").delete().eq("token_hash", tokenHash);
+        console.error("Gmail could not send the Owner password recovery email.", sendError);
+        return { error: "We couldn't send the reset instructions right now. Please try again later." };
+      }
+    }
+
+    // Keep the response identical for an unknown email and a known Owner email.
+    return { sent: true };
+  } catch (error) {
+    console.error("Owner password recovery request failed.", error);
+    return { error: "We couldn't send the reset instructions right now. Please try again later." };
+  }
+}
+
+export async function resetOwnerPassword(
+  _prev: PasswordResetState,
+  formData: FormData,
+): Promise<PasswordResetState> {
+  const token = String(formData.get("token") ?? "").trim().toLowerCase();
+  const password = String(formData.get("password") ?? "");
+  const confirmation = String(formData.get("confirmPassword") ?? "");
+  if (!/^[a-f0-9]{64}$/.test(token)) {
+    return { error: "This reset link is invalid or expired. Request another reset." };
+  }
+  if (password.length < 8 || password.length > 128) {
+    return { error: "Choose a password between 8 and 128 characters." };
+  }
+  if (password !== confirmation) {
+    return { error: "The passwords do not match." };
+  }
+  if (!isRealSupabaseConfigured()) {
+    return { error: "Password recovery is not available right now. Please try again later." };
+  }
+
+  try {
+    const supabase = supabaseAdmin();
+    const now = new Date().toISOString();
+    const { data: reset, error: findError } = await supabase
+      .from("staff_password_resets")
+      .select("id, staff_user_id")
+      .eq("token_hash", passwordResetTokenHash(token))
+      .is("used_at", null)
+      .gt("expires_at", now)
+      .maybeSingle();
+    if (findError) throw findError;
+    if (!reset) {
+      return { error: "This reset link is invalid or expired. Request another reset." };
+    }
+
+    // Claim the token before changing the password so it cannot be used twice.
+    const { data: claimed, error: claimError } = await supabase
+      .from("staff_password_resets")
+      .update({ used_at: now })
+      .eq("id", reset.id)
+      .is("used_at", null)
+      .gt("expires_at", now)
+      .select("id")
+      .maybeSingle();
+    if (claimError) throw claimError;
+    if (!claimed) {
+      return { error: "This reset link is invalid or expired. Request another reset." };
+    }
+
+    const store = await getFreshStore();
+    const owner = store.users.find(
+      (user) => user.id === reset.staff_user_id && user.role === "cashier",
+    );
+    if (!owner) {
+      return { error: "This reset link is invalid or expired. Request another reset." };
+    }
+
+    await upsertStaffUserRecord({
+      ...owner,
+      password: await bcrypt.hash(password, 12),
+      passwordChanged: true,
+    });
+    return { reset: true };
+  } catch (error) {
+    console.error("Owner password reset failed.", error);
+    return { error: "We couldn't reset your password right now. Please request a new link." };
+  }
+}
 
 export async function login(
   _prev: LoginState,

@@ -20,7 +20,7 @@ class SupabaseConfig {
   static String get supabasePublishableKey => publishableKey;
 
   static const String _defaultPosApiUrl =
-      'http://localhost:3000/api/sync';
+      'https://synorra-pos.vercel.app/api/sync';
   static const String _configuredPosApiUrl = String.fromEnvironment(
     'POS_API_URL',
     defaultValue: _defaultPosApiUrl,
