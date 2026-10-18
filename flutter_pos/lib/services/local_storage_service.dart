@@ -130,9 +130,19 @@ class LocalStorageService {
 
   String? getSupabaseAnonKey() => SupabaseConfig.anonKey;
 
-  String? getAdminApiUrl() => SupabaseConfig.normalizePosApiUrl(
-        _prefs.getString(_keyAdminApiUrl) ?? SupabaseConfig.adminApiBaseUrl,
-      );
+  String? getAdminApiUrl() {
+    final savedUrl = _prefs.getString(_keyAdminApiUrl);
+    final savedHost = Uri.tryParse(savedUrl ?? '')?.host.toLowerCase();
+    // Older installs persisted the retired Commune production endpoint.
+    // Ignore it so local development uses the current configured API URL.
+    if (savedHost == 'commune-cafe.com' ||
+        savedHost == 'www.commune-cafe.com') {
+      return SupabaseConfig.adminApiBaseUrl;
+    }
+    return SupabaseConfig.normalizePosApiUrl(
+      savedUrl ?? SupabaseConfig.adminApiBaseUrl,
+    );
+  }
 
   Future<void> setSupabaseConfig(String url, String anonKey,
       {String? adminApiUrl}) async {
