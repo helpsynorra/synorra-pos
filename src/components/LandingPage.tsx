@@ -1,5 +1,5 @@
+import Image from "next/image";
 import Link from "next/link";
-import { CAFE } from "@/lib/cafe";
 
 const features = [
   {
@@ -77,8 +77,14 @@ function DashboardPreview() {
     <div className="relative mx-auto w-full max-w-[570px] rounded-[26px] border border-white/10 bg-[#151a18] p-3 shadow-[0_32px_100px_rgba(0,0,0,0.42)] sm:p-5">
       <div className="flex items-center justify-between border-b border-white/10 px-2 pb-4">
         <div className="flex items-center gap-2.5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#b8f36b] text-sm font-black text-[#111711]">S</span>
-          <span className="text-sm font-semibold tracking-wide">synorra</span>
+          <Image
+            src="/images/logo-white.png"
+            alt="Synorra"
+            width={437}
+            height={366}
+            sizes="86px"
+            className="h-8 w-[86px] object-cover"
+          />
         </div>
         <div className="flex items-center gap-2 text-[10px] text-white/45">
           <span className="h-2 w-2 rounded-full bg-[#b8f36b]" />
@@ -138,14 +144,19 @@ export function LandingPage() {
     <main className="overflow-hidden bg-[#f6f7f2] text-[#15201a]">
       <header className="mx-auto flex max-w-7xl items-center justify-between px-5 py-5 sm:px-8 sm:py-6">
         <Link href="/" aria-label="Synorra home" className="flex items-center gap-2.5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#b8f36b] text-base font-black">S</span>
-          <span className="text-lg font-bold tracking-[-0.04em]">synorra</span>
-          <span className="ml-1 hidden rounded-full border border-[#15201a]/10 px-2 py-1 text-[9px] font-semibold tracking-[0.12em] text-[#536057] uppercase sm:inline-flex">POS</span>
+          <Image
+            src="/images/logo-transparent.png"
+            alt="Synorra POS"
+            width={437}
+            height={366}
+            priority
+            sizes="132px"
+            className="h-12 w-[132px] object-cover"
+          />
         </Link>
         <nav className="hidden items-center gap-8 text-sm text-[#536057] md:flex">
           <a href="#features" className="transition hover:text-[#15201a]">Features</a>
-          <a href="#about" className="transition hover:text-[#15201a]">About</a>
-          <a href="#contact" className="transition hover:text-[#15201a]">Contact</a>
+          <a href="#platform" className="transition hover:text-[#15201a]">Platform</a>
         </nav>
         <Link href="/back-office" className="rounded-full bg-[#15201a] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#2d3b32] sm:px-5 sm:text-sm">
           Log in
@@ -166,9 +177,8 @@ export function LandingPage() {
               <span className="text-[#6a9e38]">Know your business.</span>
             </h1>
             <p className="mt-6 max-w-lg text-base leading-7 text-[#657168] sm:text-lg sm:leading-8">
-              Synorra brings checkout, sales, inventory, recipes, and your team
-              into one clear system, shaped by the day-to-day needs of a real
-              café in Zamboanga City.
+              Synorra brings checkout, sales, inventory, recipes, and team
+              permissions into one workspace designed for café operations.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link href="/back-office" className="rounded-full bg-[#15201a] px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-[#15201a]/10 transition hover:-translate-y-0.5 hover:bg-[#2d3b32]">
@@ -236,54 +246,52 @@ export function LandingPage() {
         </div>
       </section>
 
-      <section id="about" className="border-t border-[#e6e9e2] bg-white px-5 py-16 sm:px-8 sm:py-20">
+      <section id="platform" className="border-t border-[#e6e9e2] bg-white px-5 py-16 sm:px-8 sm:py-20">
         <div className="mx-auto grid max-w-7xl gap-8 md:grid-cols-[0.8fr_1.2fr] md:items-end">
           <div>
-            <p className="text-[10px] font-semibold tracking-[0.2em] text-[#6a9e38] uppercase">Built from the counter up</p>
-            <h2 className="mt-4 text-3xl leading-tight font-semibold tracking-[-0.045em] sm:text-4xl">Made for real café days.</h2>
+            <p className="text-[10px] font-semibold tracking-[0.2em] text-[#6a9e38] uppercase">One workspace for your operation</p>
+            <h2 className="mt-4 text-3xl leading-tight font-semibold tracking-[-0.045em] sm:text-4xl">Your counter and back office, connected.</h2>
           </div>
           <p className="max-w-2xl text-sm leading-7 text-[#657168] sm:text-base">
-            Synorra is shaped by the practical rhythm of running a café—from
-            taking orders and checking sales to keeping ingredients, recipes,
-            and staff in order. We are based in Tetuan, Zamboanga City.
+            Take orders at the POS, review sales, manage stock and restocks,
+            configure recipe costing, and control staff access from one system.
+            Each Owner account has its own operational workspace for its menu,
+            inventory, sales, and staff.
           </p>
         </div>
       </section>
 
-      <footer id="contact" className="bg-[#15201a] px-5 py-12 text-white sm:px-8 sm:py-16">
+      <footer className="bg-[#15201a] px-5 py-12 text-white sm:px-8 sm:py-16">
         <div className="mx-auto grid max-w-7xl gap-10 sm:grid-cols-2 lg:grid-cols-[1.2fr_1fr_1fr_1fr]">
           <div>
             <Link href="/" className="inline-flex items-center gap-2.5 font-bold tracking-tight">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#b8f36b] text-base font-black text-[#15201a]">S</span>
-              <span className="text-lg">synorra <span className="font-normal text-white/50">POS</span></span>
+              <Image
+                src="/images/logo-white.png"
+                alt="Synorra POS"
+                width={437}
+                height={366}
+                sizes="132px"
+                className="h-12 w-[132px] object-cover"
+              />
             </Link>
-            <p className="mt-4 max-w-xs text-sm leading-6 text-white/55">Simple tools for a smoother workday, built around the needs of a working café.</p>
+            <p className="mt-4 max-w-xs text-sm leading-6 text-white/55">A point-of-sale and operations workspace for cafés and beverage shops.</p>
           </div>
           <div>
-            <p className="text-[10px] font-semibold tracking-[0.18em] text-white/40 uppercase">Visit Synorra</p>
-            <p className="mt-4 text-sm leading-6 text-white/75">{CAFE.street}<br />{CAFE.city}</p>
-            <p className="mt-3 text-xs leading-5 text-white/45">{CAFE.landmark}</p>
+            <p className="text-[10px] font-semibold tracking-[0.18em] text-white/40 uppercase">Point of sale</p>
+            <p className="mt-4 text-sm leading-6 text-white/75">Process orders<br />Handle dine-in and takeout</p>
           </div>
           <div>
-            <p className="text-[10px] font-semibold tracking-[0.18em] text-white/40 uppercase">Hours & contact</p>
-            <p className="mt-4 text-sm leading-6 text-white/75">{CAFE.hours}<br />{CAFE.hoursNote}</p>
-            <a href={CAFE.phoneHref} className="mt-3 block text-sm text-white/75 transition hover:text-[#b8f36b]">{CAFE.phone}</a>
-            <a href={CAFE.emailHref} className="mt-2 block break-all text-sm text-white/75 transition hover:text-[#b8f36b]">{CAFE.email}</a>
+            <p className="text-[10px] font-semibold tracking-[0.18em] text-white/40 uppercase">Operations</p>
+            <p className="mt-4 text-sm leading-6 text-white/75">Sales and reports<br />Inventory and recipe costing</p>
           </div>
           <div>
-            <p className="text-[10px] font-semibold tracking-[0.18em] text-white/40 uppercase">Follow along</p>
-            <div className="mt-4 flex flex-col items-start gap-2">
-              {CAFE.socials.map((social) => (
-                <a key={social.id} href={social.href} target="_blank" rel="noreferrer" className="text-sm text-white/70 transition hover:text-[#b8f36b]">
-                  {social.label} <span aria-hidden="true">↗</span>
-                </a>
-              ))}
-            </div>
+            <p className="text-[10px] font-semibold tracking-[0.18em] text-white/40 uppercase">Team access</p>
+            <p className="mt-4 text-sm leading-6 text-white/75">Staff accounts<br />Owner-managed permissions</p>
           </div>
         </div>
         <div className="mx-auto mt-10 flex max-w-7xl flex-col gap-3 border-t border-white/10 pt-5 text-[10px] tracking-[0.12em] text-white/35 sm:flex-row sm:items-center sm:justify-between">
           <p>© {new Date().getFullYear()} Synorra POS</p>
-          <p>Tetuan, Zamboanga City, Philippines</p>
+          <p>Sales · Inventory · Team</p>
         </div>
       </footer>
     </main>
