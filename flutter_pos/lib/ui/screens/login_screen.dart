@@ -14,11 +14,13 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
+  final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _newPasswordController = TextEditingController();
   String? _errorMessage;
   bool _isLoading = false;
   bool _mustChangePassword = false;
+  bool _isNewLogin = false;
 
   @override
   void initState() {
@@ -38,6 +40,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void dispose() {
     _emailController.dispose();
+    _usernameController.dispose();
     _passwordController.dispose();
     _newPasswordController.dispose();
     super.dispose();
@@ -45,11 +48,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _handleLogin() async {
     final email = _emailController.text.trim().toLowerCase();
+    final username = _usernameController.text.trim().toLowerCase();
     final password = _passwordController.text;
     final newPassword = _newPasswordController.text;
 
-    if (email.isEmpty || password.isEmpty) {
-      setState(() => _errorMessage = 'Please enter your Owner email and current password');
+    if (email.isEmpty || password.isEmpty || (_isNewLogin && username.isEmpty)) {
+      setState(() => _errorMessage = _isNewLogin
+          ? 'Please enter your Owner email, username, and password'
+          : 'Please enter your Owner email and password');
       return;
     }
     if (_mustChangePassword && newPassword.length < 8) {
@@ -76,12 +82,19 @@ class _LoginScreenState extends State<LoginScreen> {
             password: password,
             newPassword: newPassword,
           )
-        : await widget.controller.supabaseService.authenticateStaff(
-            '',
-            password,
-            email: email,
-            persistSessionToken: false,
-          );
+        : _isNewLogin
+            ? await widget.controller.supabaseService.authenticateNewOwner(
+                email: email,
+                username: username,
+                password: password,
+                persistSessionToken: false,
+              )
+            : await widget.controller.supabaseService.authenticateStaff(
+                '',
+                password,
+                email: email,
+                persistSessionToken: false,
+              );
     if (authRes['requiresPasswordChange'] == true) {
       setState(() {
         _isLoading = false;
@@ -92,11 +105,13 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     if (authRes['ok'] == true && authRes['user'] is StaffUser) {
       authenticatedStaff = authRes['user'] as StaffUser;
-    } else if (authRes['offline'] == true) {
+    } else if (authRes['offline'] == true && !_isNewLogin) {
       authenticatedStaff = await widget.controller
           .authenticateCachedStaffOffline(email: email, password: password);
       if (authenticatedStaff != null &&
-          (authenticatedStaff.email != email || !authenticatedStaff.passwordChanged)) {
+          ((authenticatedStaff.email.trim().toLowerCase() != email &&
+                  authenticatedStaff.username.trim().toLowerCase() != email) ||
+              !authenticatedStaff.passwordChanged)) {
         authenticatedStaff = null;
         setState(() => _errorMessage = 'Connect to the internet to verify this Owner account.');
       }
@@ -162,6 +177,21 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _selectLoginMode(bool isNewLogin) async {
+    if (_isNewLogin == isNewLogin || _isLoading || _mustChangePassword) return;
+    if (isNewLogin) {
+      await widget.controller.clearActiveSession();
+    }
+    if (!mounted) return;
+    setState(() {
+      _isNewLogin = isNewLogin;
+      _emailController.clear();
+      _usernameController.clear();
+      _passwordController.clear();
+      _errorMessage = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -223,6 +253,28 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       const SizedBox(height: 42),
+                      if (!_mustChangePassword) ...[
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _loginModeButton(
+                                label: 'Login',
+                                selected: !_isNewLogin,
+                                onPressed: () => _selectLoginMode(false),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _loginModeButton(
+                                label: 'New Login',
+                                selected: _isNewLogin,
+                                onPressed: () => _selectLoginMode(true),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+                      ],
                       if (_mustChangePassword) ...[
                         const Text(
                           'Credentials verified. Set a new password to finish signing in.',
@@ -248,6 +300,25 @@ class _LoginScreenState extends State<LoginScreen> {
                           cursorColor: Colors.white,
                           decoration: _inputDecoration(),
                         ),
+                        if (_isNewLogin) ...[
+                          const SizedBox(height: 22),
+                          const Text(
+                            'USERNAME',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _usernameController,
+                            keyboardType: TextInputType.text,
+                            style: const TextStyle(color: Colors.white),
+                            cursorColor: Colors.white,
+                            decoration: _inputDecoration(),
+                          ),
+                        ],
                         const SizedBox(height: 22),
                       ],
                       if (_mustChangePassword) ...[
@@ -273,7 +344,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 28),
                       if (!_mustChangePassword) ...[
                         const Text(
-                          'CURRENT PASSWORD',
+                          'PASSWORD',
                           style: TextStyle(
                             color: Colors.white70,
                             fontSize: 13,
@@ -322,7 +393,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 )
                               : Text(
-                                  _mustChangePassword ? 'Save new password' : 'Enter Synorra',
+                                  _mustChangePassword
+                                      ? 'Save new password'
+                                      : _isNewLogin
+                                          ? 'New Login'
+                                          : 'Login',
                                   style: TextStyle(
                                     fontSize: 15,
                                     fontWeight: FontWeight.w600,
@@ -355,6 +430,24 @@ class _LoginScreenState extends State<LoginScreen> {
       border: OutlineInputBorder(
         borderSide: BorderSide(color: Colors.white54),
       ),
+    );
+  }
+
+  Widget _loginModeButton({
+    required String label,
+    required bool selected,
+    required VoidCallback onPressed,
+  }) {
+    return OutlinedButton(
+      onPressed: _isLoading ? null : onPressed,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: selected ? Colors.black : Colors.white,
+        backgroundColor: selected ? Colors.white : Colors.transparent,
+        side: const BorderSide(color: Colors.white70),
+        shape: const StadiumBorder(),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+      ),
+      child: Text(label),
     );
   }
 }

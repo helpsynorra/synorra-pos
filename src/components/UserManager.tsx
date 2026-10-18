@@ -254,17 +254,22 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="text-xs font-medium text-neutral-600">
-                    <span className="mb-1.5 block">Name</span>
+                    <span className="mb-1.5 block">Busines name</span>
                     <input value={name} onChange={(event) => setName(event.target.value)} className={field} required />
                   </label>
                   <label className="text-xs font-medium text-neutral-600">
                     <span className="mb-1.5 block">Username</span>
                     <input value={username} onChange={(event) => setUsername(event.target.value)} className={field} required />
                   </label>
-                  {role === "Owner" ? (
+                  {role === "Owner" && editingId === "new" ? (
+                    <p className="sm:col-span-2 text-xs text-neutral-500">
+                      The Owner can sign in to POS with this username and password.
+                    </p>
+                  ) : null}
+                  {role === "Owner" && editingId !== "new" ? (
                     <label className="text-xs font-medium text-neutral-600">
-                      <span className="mb-1.5 block">Email</span>
-                      <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} className={field} required />
+                      <span className="mb-1.5 block">Email (optional)</span>
+                      <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} className={field} />
                     </label>
                   ) : null}
                   {role === "Barista" ? (

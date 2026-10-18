@@ -826,10 +826,11 @@ class PosController extends ChangeNotifier {
     required String email,
     required String password,
   }) async {
-    final normalizedEmail = email.trim().toLowerCase();
+    final identifier = email.trim().toLowerCase();
     final staff = localStorage.getStaff().where((cached) {
       return cached.role == 'cashier' &&
-          cached.email.trim().toLowerCase() == normalizedEmail;
+          (cached.email.trim().toLowerCase() == identifier ||
+              cached.username.trim().toLowerCase() == identifier);
     }).firstOrNull;
     if (staff == null) return null;
 

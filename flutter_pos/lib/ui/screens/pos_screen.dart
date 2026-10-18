@@ -276,16 +276,15 @@ class _PosScreenState extends State<PosScreen> {
     final permissions = controller.syncService;
     final dineInEnabled = permissions.hasPermission('dineIn');
     final takeOutEnabled = permissions.hasPermission('takeOut');
-    if (!dineInEnabled && !takeOutEnabled) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This Owner account has no service mode permission.')),
-      );
-      return;
-    }
-    if (controller.serviceMode == 'dine-in' && !dineInEnabled) {
-      controller.setServiceMode('take-out');
-    } else if (controller.serviceMode == 'take-out' && !takeOutEnabled) {
-      controller.setServiceMode('dine-in');
+    // Service-mode permissions control which choices are available. They must
+    // not block checkout when both choices are disabled; in that case keep the
+    // current mode and let the order proceed.
+    if (dineInEnabled || takeOutEnabled) {
+      if (controller.serviceMode == 'dine-in' && !dineInEnabled) {
+        controller.setServiceMode('take-out');
+      } else if (controller.serviceMode == 'take-out' && !takeOutEnabled) {
+        controller.setServiceMode('dine-in');
+      }
     }
     final stockShortfalls =
         controller.syncService.findStockShortfalls(controller.cart);

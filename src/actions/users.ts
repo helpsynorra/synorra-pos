@@ -127,8 +127,8 @@ function parseStaff(input: {
   if (!username || username.length < 2) {
     return { error: "Enter a username (letters and numbers)." };
   }
-  if (role === "cashier" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return { error: "Enter a valid email for cashier accounts." };
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { error: "Enter a valid email address." };
   }
   if (input.requirePassword && password.length < 4) {
     return { error: "Password must be at least 4 characters." };

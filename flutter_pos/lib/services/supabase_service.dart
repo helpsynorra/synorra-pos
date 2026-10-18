@@ -188,6 +188,64 @@ class SupabaseService {
     }
   }
 
+  /// First sign-in for an Owner account created by the host. It verifies the
+  /// issued username/password and attaches the Owner's email to that account.
+  Future<Map<String, dynamic>> authenticateNewOwner({
+    required String email,
+    required String username,
+    required String password,
+    bool persistSessionToken = true,
+  }) async {
+    if (email.trim().isEmpty || username.trim().isEmpty || password.isEmpty) {
+      return {
+        'ok': false,
+        'error': 'Please enter your Owner email, username, and password',
+      };
+    }
+
+    try {
+      final result = await _postPosApi(
+        {
+          'action': 'new_owner_login',
+          'email': email.trim().toLowerCase(),
+          'username': username.trim().toLowerCase(),
+          'password': password,
+        },
+        authenticated: false,
+      );
+      if (result['ok'] == true && result['requiresPasswordChange'] == true) {
+        return {'ok': true, 'requiresPasswordChange': true};
+      }
+      if (result['ok'] != true || result['user'] is! Map) {
+        return {
+          'ok': false,
+          'error': result['error'] ?? 'Invalid Owner credentials',
+        };
+      }
+      final token = result['token']?.toString() ?? '';
+      if (token.isEmpty) {
+        return {'ok': false, 'error': 'The POS API did not return a session token.'};
+      }
+      if (persistSessionToken) _posApiToken = token;
+      return {
+        'ok': true,
+        'user': StaffUser.fromJson(
+          Map<String, dynamic>.from(result['user'] as Map),
+        ),
+        'token': token,
+      };
+    } on TimeoutException catch (e) {
+      debugPrint('New Owner login network error (API: $_posApiUri): $e');
+      return {'ok': false, 'error': 'Internet is required for New Login.', 'offline': true};
+    } on http.ClientException catch (e) {
+      debugPrint('New Owner login network error (API: $_posApiUri): $e');
+      return {'ok': false, 'error': 'Internet is required for New Login.', 'offline': true};
+    } catch (e) {
+      debugPrint('New Owner login error (API: $_posApiUri): $e');
+      return {'ok': false, 'error': 'Unable to verify Owner credentials'};
+    }
+  }
+
   Future<Map<String, dynamic>> changeCashierPassword({
     required String email,
     required String password,

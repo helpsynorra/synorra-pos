@@ -173,14 +173,17 @@ export async function POST(req: NextRequest) {
       const newPassword = String(body.newPassword ?? "");
       if (!email || !password || newPassword.length < 8) {
         return NextResponse.json(
-          { ok: false, error: "Enter email, current password, and a new password with at least 8 characters." },
+          { ok: false, error: "Enter your Owner username or email, current password, and a new password with at least 8 characters." },
           { status: 400, headers: corsHeaders },
         );
       }
 
       const store = await getFreshStore();
       const user = store.users.find(
-        (entry) => entry.email?.trim().toLowerCase() === email && entry.role === "cashier",
+        (entry) =>
+          entry.role === "cashier" &&
+          (entry.email?.trim().toLowerCase() === email ||
+            entry.username.trim().toLowerCase() === email),
       );
       const currentPasswordMatches = user?.password
         ? user.password.startsWith("$2")
@@ -189,7 +192,6 @@ export async function POST(req: NextRequest) {
         : false;
       if (
         !user ||
-        user.email?.trim().toLowerCase() !== email ||
         user.passwordChanged ||
         !currentPasswordMatches
       ) {
@@ -228,27 +230,101 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (action === "new_owner_login") {
+      const email = String(body.email ?? "").trim().toLowerCase();
+      const username = String(body.username ?? "").trim().toLowerCase();
+      const password = String(body.password ?? "");
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !username || !password) {
+        return NextResponse.json(
+          { ok: false, error: "Enter a valid email, the issued Owner username, and password." },
+          { status: 400, headers: corsHeaders },
+        );
+      }
+
+      const store = await getFreshStore();
+      const user = store.users.find(
+        (entry) => entry.role === "cashier" && entry.username.trim().toLowerCase() === username,
+      );
+      const passwordMatches = user?.password
+        ? user.password.startsWith("$2")
+          ? await bcrypt.compare(password, user.password)
+          : user.password === password || user.password.trim() === password.trim()
+        : false;
+      if (!user || !passwordMatches) {
+        return NextResponse.json(
+          { ok: false, error: "The Owner username or password is incorrect." },
+          { status: 401, headers: corsHeaders },
+        );
+      }
+
+      const emailInUse = store.users.some(
+        (entry) => entry.id !== user.id && entry.email?.trim().toLowerCase() === email,
+      );
+      if (emailInUse) {
+        return NextResponse.json(
+          { ok: false, error: "That email is already assigned to another account." },
+          { status: 409, headers: corsHeaders },
+        );
+      }
+      if (user.email?.trim() && user.email.trim().toLowerCase() !== email) {
+        return NextResponse.json(
+          { ok: false, error: "This Owner account is already linked to a different email." },
+          { status: 409, headers: corsHeaders },
+        );
+      }
+
+      const updatedUser = user.email?.trim() ? user : { ...user, email };
+      if (!user.email?.trim()) await upsertStaffUserRecord(updatedUser);
+      if (!updatedUser.passwordChanged) {
+        return NextResponse.json(
+          { ok: true, requiresPasswordChange: true },
+          { headers: corsHeaders },
+        );
+      }
+
+      return NextResponse.json(
+        {
+          ok: true,
+          token: createPosApiToken({
+            userId: updatedUser.id,
+            username: updatedUser.username,
+            name: updatedUser.name,
+            role: "cashier",
+          }),
+          user: {
+            id: updatedUser.id,
+            username: updatedUser.username,
+            email: updatedUser.email,
+            name: updatedUser.name,
+            passwordChanged: true,
+            role: "cashier",
+            title: updatedUser.title || "Owner",
+          },
+        },
+        { headers: corsHeaders },
+      );
+    }
+
     if (action === "auth") {
       const username = String(body.username ?? "").trim().toLowerCase();
       const email = String(body.email ?? "").trim().toLowerCase();
       const password = String(body.password ?? "");
       if ((!username && !email) || !password) {
         return NextResponse.json(
-          { ok: false, error: "Enter your Owner email and current password." },
+          { ok: false, error: "Enter your Owner username or email and password." },
           { status: 400, headers: corsHeaders },
         );
       }
 
       const store = await getFreshStore();
-      const user = username
-        ? store.users.find(
-            (u) =>
-              u.username.trim().toLowerCase() === username ||
-              u.name.trim().toLowerCase() === username,
-          )
-        : store.users.find(
-            (u) => u.role === "cashier" && u.email?.trim().toLowerCase() === email,
-          );
+      const identifier = username || email;
+      const user = store.users.find(
+        (u) =>
+          (u.role === "cashier" || u.role === "admin") &&
+          (u.username.trim().toLowerCase() === identifier ||
+            u.name.trim().toLowerCase() === identifier ||
+            Boolean(u.email && u.email.trim().toLowerCase() === identifier)),
+      );
       if (!user || !user.password) {
         console.warn("POS staff authentication rejected: staff account unavailable.");
         return NextResponse.json(
@@ -270,12 +346,6 @@ export async function POST(req: NextRequest) {
       }
 
       const resolvedRole = parseRole(String(user.title ?? ""), user.role);
-      if (resolvedRole === "cashier" && user.email?.trim().toLowerCase() !== email) {
-        return NextResponse.json(
-          { ok: false, error: "Email, username, or password is incorrect." },
-          { status: 401, headers: corsHeaders },
-        );
-      }
       if (resolvedRole === "cashier" && !user.passwordChanged) {
         return NextResponse.json(
           { ok: true, requiresPasswordChange: true },

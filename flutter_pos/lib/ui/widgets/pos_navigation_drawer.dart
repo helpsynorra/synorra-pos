@@ -160,6 +160,18 @@ class PosNavigationDrawer extends StatelessWidget {
                     title: const Text('Baristas on shift'),
                     onTap: () => _closeThen(context, onOpenBaristas),
                   ),
+                   const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 16, 16, 6),
+                    child: Text(
+                      'Sales & Admin',
+                      style: TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ),
                   ListTile(
                     leading: const Icon(Icons.open_in_new, color: Colors.black87),
                     title: const Text('Back office'),
@@ -205,7 +217,7 @@ class PosNavigationDrawer extends StatelessWidget {
                   ),
                   ListTile(
                     leading: const Icon(Icons.sync, color: Colors.black87),
-                    title: const Text('Sync with Admin Database'),
+                    title: const Text('Sync'),
                     subtitle: Text(syncStatus),
                     onTap: () => _closeThen(context, onSync),
                   ),
