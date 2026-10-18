@@ -265,16 +265,6 @@ export function LandingPage() {
       <footer className="bg-[#101d37] px-5 py-12 text-white sm:px-8 sm:py-16">
         <div className="mx-auto grid max-w-7xl gap-10 sm:grid-cols-2 lg:grid-cols-[1.2fr_1fr_1fr_1fr]">
           <div>
-            <Link href="/" className="inline-flex items-center gap-2.5 font-bold tracking-tight">
-              <Image
-                src="/images/logo-white.png"
-                alt="Synorra POS"
-                width={437}
-                height={366}
-                sizes="132px"
-                className="h-12 w-[132px] object-cover"
-              />
-            </Link>
             <p className="mt-4 max-w-xs text-sm leading-6 text-white/55">A point-of-sale and operations workspace for cafés and beverage shops.</p>
           </div>
           <div>
