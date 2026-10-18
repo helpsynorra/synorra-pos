@@ -241,7 +241,6 @@ class _StockScreenState extends State<StockScreen> {
             ? const Color(0xFF22C55E)
             : const Color(0xFF9CA3AF),
         onPrint: widget.onPrint,
-        onVoid: widget.onVoid,
         onSync: () => widget.controller.syncService.syncAll(),
       ),
       drawer: widget.drawerBuilder(PosSection.stock),

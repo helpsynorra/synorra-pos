@@ -10,7 +10,7 @@ import 'ui/screens/pos_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  runApp(CommunePosApp(initialization: _initializeController()));
+  runApp(SynorraPosApp(initialization: _initializeController()));
 }
 
 Future<PosController> _initializeController() async {
@@ -43,17 +43,17 @@ Future<PosController> _initializeController() async {
   return posController;
 }
 
-class CommunePosApp extends StatelessWidget {
+class SynorraPosApp extends StatelessWidget {
   final Future<PosController> initialization;
 
-  const CommunePosApp({super.key, required this.initialization});
+  const SynorraPosApp({super.key, required this.initialization});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Commune Coffee POS',
+      title: 'Synorra',
       debugShowCheckedModeBanner: false,
-      theme: CommuneTheme.theme,
+      theme: SynorraTheme.theme,
       home: FutureBuilder<PosController>(
         future: initialization,
         builder: (context, snapshot) {
@@ -63,15 +63,15 @@ class CommunePosApp extends StatelessWidget {
                 ? LoginScreen(controller: controller)
                 : PosScreen(controller: controller);
           }
-          return const CommuneLaunchScreen();
+          return const SynorraLaunchScreen();
         },
       ),
     );
   }
 }
 
-class CommuneLaunchScreen extends StatelessWidget {
-  const CommuneLaunchScreen({super.key});
+class SynorraLaunchScreen extends StatelessWidget {
+  const SynorraLaunchScreen({super.key});
 
   @override
   Widget build(BuildContext context) {

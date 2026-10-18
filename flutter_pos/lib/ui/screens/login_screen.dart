@@ -13,10 +13,13 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  final _emailController = TextEditingController();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _newPasswordController = TextEditingController();
   String? _errorMessage;
   bool _isLoading = false;
+  bool _mustChangePassword = false;
 
   @override
   void initState() {
@@ -36,16 +39,24 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void dispose() {
     _usernameController.dispose();
+    _emailController.dispose();
     _passwordController.dispose();
+    _newPasswordController.dispose();
     super.dispose();
   }
 
   Future<void> _handleLogin() async {
+    final email = _emailController.text.trim().toLowerCase();
     final username = _usernameController.text.trim().toLowerCase();
     final password = _passwordController.text;
+    final newPassword = _newPasswordController.text;
 
-    if (username.isEmpty || password.isEmpty) {
-      setState(() => _errorMessage = 'Please enter username and password');
+    if (email.isEmpty || username.isEmpty || password.isEmpty) {
+      setState(() => _errorMessage = 'Please enter email, username, and password');
+      return;
+    }
+    if (_mustChangePassword && newPassword.length < 8) {
+      setState(() => _errorMessage = 'Your new password must be at least 8 characters');
       return;
     }
 
@@ -62,13 +73,39 @@ class _LoginScreenState extends State<LoginScreen> {
     StaffUser? authenticatedStaff;
 
     // 1. Authenticate through the POS API without persisting a token yet.
-    final authRes = await widget.controller.supabaseService
-        .authenticateStaff(username, password, persistSessionToken: false);
+    final authRes = _mustChangePassword
+        ? await widget.controller.supabaseService.changeCashierPassword(
+            email: email,
+            username: username,
+            password: password,
+            newPassword: newPassword,
+          )
+        : await widget.controller.supabaseService.authenticateStaff(
+            username,
+            password,
+            email: email,
+            persistSessionToken: false,
+          );
+    if (authRes['requiresPasswordChange'] == true) {
+      _usernameController.clear();
+      _passwordController.clear();
+      setState(() {
+        _isLoading = false;
+        _mustChangePassword = true;
+        _errorMessage = null;
+      });
+      return;
+    }
     if (authRes['ok'] == true && authRes['user'] is StaffUser) {
       authenticatedStaff = authRes['user'] as StaffUser;
     } else if (authRes['offline'] == true) {
       authenticatedStaff = await widget.controller
           .authenticateCachedStaffOffline(username, password);
+      if (authenticatedStaff != null &&
+          (authenticatedStaff.email != email || !authenticatedStaff.passwordChanged)) {
+        authenticatedStaff = null;
+        setState(() => _errorMessage = 'Connect to the internet to verify this Owner account.');
+      }
     }
 
     if (authenticatedStaff == null) {
@@ -77,7 +114,7 @@ class _LoginScreenState extends State<LoginScreen> {
         _errorMessage = authRes['offline'] == true &&
                 widget.controller.syncService.isOnline
             ? 'Unable to verify credentials. Please try again.'
-            : authRes['error']?.toString() ?? 'Invalid Cashier credentials';
+            : _errorMessage ?? authRes['error']?.toString() ?? 'Invalid Owner credentials';
       });
       return;
     }
@@ -92,7 +129,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (authRes['ok'] == true) {
       await widget.controller.localStorage
-          .saveOfflineStaffCredential(authenticatedStaff.id, password);
+          .saveOfflineStaffCredential(authenticatedStaff.id, _mustChangePassword ? newPassword : password);
     }
 
     final authenticatedToken = authRes['token']?.toString();
@@ -120,6 +157,7 @@ class _LoginScreenState extends State<LoginScreen> {
         .recordStaffSessionEvent(authenticatedStaff, 'login');
 
     setState(() => _isLoading = false);
+    _mustChangePassword = false;
 
     if (mounted) {
       Navigator.pushReplacement(
@@ -170,9 +208,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 14),
                       const Text(
-                        'WE COMMUNE, OVER COFFEE',
+                        'SYNORRA',
                         textAlign: TextAlign.center,
-                        style: TextStyle(
+                                   style: const TextStyle(
                           color: Colors.white70,
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
@@ -181,7 +219,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 26),
                       const Text(
-                        'CASHIER LOGIN',
+                        'OWNER LOGIN',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: Colors.white,
@@ -191,6 +229,31 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       const SizedBox(height: 42),
+                      if (_mustChangePassword) ...[
+                        const Text(
+                          'Credentials verified. Set a new password to finish signing in.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white70, fontSize: 13),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
+                      const Text(
+                        'EMAIL',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        style: const TextStyle(color: Colors.white),
+                        cursorColor: Colors.white,
+                        decoration: _inputDecoration(),
+                      ),
+                      const SizedBox(height: 22),
                       const Text(
                         'USERNAME',
                         style: TextStyle(
@@ -206,9 +269,29 @@ class _LoginScreenState extends State<LoginScreen> {
                         cursorColor: Colors.white,
                         decoration: _inputDecoration(),
                       ),
+                      if (_mustChangePassword) ...[
+                        const SizedBox(height: 22),
+                        const Text(
+                          'NEW PASSWORD (AT LEAST 8 CHARACTERS)',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _newPasswordController,
+                          obscureText: true,
+                          style: const TextStyle(color: Colors.white),
+                          cursorColor: Colors.white,
+                          decoration: _inputDecoration(),
+                          onSubmitted: (_) => _handleLogin(),
+                        ),
+                      ],
                       const SizedBox(height: 28),
                       const Text(
-                        'PASSWORD',
+                        'CURRENT PASSWORD',
                         style: TextStyle(
                           color: Colors.white70,
                           fontSize: 13,
@@ -255,8 +338,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                     color: Colors.black,
                                   ),
                                 )
-                              : const Text(
-                                  'Enter commune',
+                              : Text(
+                                  _mustChangePassword ? 'Save new password' : 'Enter Synorra',
                                   style: TextStyle(
                                     fontSize: 15,
                                     fontWeight: FontWeight.w600,

@@ -1,10 +1,11 @@
-export type Role = "admin" | "manager" | "cashier" | "barista";
+export type Role = "admin" | "cashier" | "barista";
 
 export type Session = {
   userId: string;
   username: string;
   name: string;
   role: Role;
+  mustChangePassword?: boolean;
 };
 
 export type DrinkStyle = "iced" | "hot";
@@ -125,7 +126,9 @@ export type PosState = {
 export type StaffUser = {
   id: string;
   username: string;
+  email?: string;
   password: string;
+  passwordChanged?: boolean;
   name: string;
   role: Role;
   title: string;

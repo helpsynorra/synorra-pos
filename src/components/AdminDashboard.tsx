@@ -135,11 +135,11 @@ function voidStatusLabel(order: Order, users: StoreData["users"]) {
   const actor = users.find((user) => user.id === order.voidedBy);
   const snapshotName = order.voidedByName?.trim();
   // A stored name can still be a bad legacy snapshot of the cashier's ID.
-  // Never display it unless the linked staff account is a manager or admin.
-  if (actor && !["manager", "admin"].includes(parseRole(actor.title, actor.role))) return "VOID";
+  // Never display it unless the linked staff account is an admin.
+  if (actor && parseRole(actor.title, actor.role) !== "admin") return "VOID";
   const accountName = actor?.name.trim();
   const username = actor?.username.trim();
-  const isRoleLabel = /^(admin|manager|cashier|barista|sale in charge)$/i;
+  const isRoleLabel = /^(admin|cashier|barista|sale in charge)$/i;
   const personName = snapshotName || (accountName && isRoleLabel.test(accountName) && username
     ? username
     : accountName || username);
@@ -490,9 +490,7 @@ export function AdminDashboard({
       return orderTime >= startOfPeriod.getTime() && orderTime <= now.getTime();
     })
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  const pendingVoidRequests = (store.voidRequests ?? []).filter(
-    (request) => request.status === "pending",
-  );
+  const pendingVoidRequests: typeof store.voidRequests = [];
 
   const createEntry = async (
     event: React.FormEvent,
@@ -1162,7 +1160,7 @@ export function AdminDashboard({
           <div className="mt-4">
             <div className="hidden grid-cols-9 gap-x-4 border-b border-neutral-200 pb-2 text-xs text-neutral-500 lg:grid">
               <p className="min-w-0">Time</p>
-              <p className="min-w-0">Cashier</p>
+              <p className="min-w-0">Owner</p>
               <p className="min-w-0">Order ID</p>
               <p className="min-w-0">Items</p>
               <p className="min-w-0">Status</p>

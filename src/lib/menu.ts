@@ -375,7 +375,7 @@ export function pricedOrderLine(
 
 export const DEFAULT_MENU: MenuItem[] = ([
   // Special
-  { id: "commune-signature", name: "Commune Signature", price: 170, category: "Special", available: true },
+  { id: "commune-signature", name: "Synorra Signature", price: 170, category: "Special", available: true },
   { id: "honey-oat", name: "Honey Oat", price: 170, category: "Special", available: true },
   { id: "spanish-latte", name: "Spanish Latte", price: 125, category: "Special", available: true },
   { id: "sea-salt-cream", name: "Sea Salt Cream", price: 135, category: "Special", available: true },

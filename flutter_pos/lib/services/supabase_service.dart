@@ -122,6 +122,7 @@ class SupabaseService {
   Future<Map<String, dynamic>> authenticateStaff(
     String username,
     String password, {
+    String email = '',
     bool persistSessionToken = true,
   }) async {
     final cleanUsername = username.trim().toLowerCase();
@@ -135,10 +136,14 @@ class SupabaseService {
         {
           'action': 'auth',
           'username': cleanUsername,
+          'email': email.trim().toLowerCase(),
           'password': password,
         },
         authenticated: false,
       );
+      if (result['ok'] == true && result['requiresPasswordChange'] == true) {
+        return {'ok': true, 'requiresPasswordChange': true};
+      }
       if (result['ok'] != true || result['user'] is! Map) {
         debugPrint(
           'POS API auth rejected (API: $_posApiUri): '
@@ -180,6 +185,43 @@ class SupabaseService {
     } catch (e) {
       debugPrint('POS API auth error (API: $_posApiUri): $e');
       return {'ok': false, 'error': 'Unable to verify credentials'};
+    }
+  }
+
+  Future<Map<String, dynamic>> changeCashierPassword({
+    required String email,
+    required String username,
+    required String password,
+    required String newPassword,
+  }) async {
+    try {
+      final result = await _postPosApi(
+        {
+          'action': 'change_cashier_password',
+          'email': email.trim().toLowerCase(),
+          'username': username.trim().toLowerCase(),
+          'password': password,
+          'newPassword': newPassword,
+        },
+        authenticated: false,
+      );
+      if (result['ok'] != true || result['user'] is! Map) {
+        return {'ok': false, 'error': result['error'] ?? 'Could not change password.'};
+      }
+      final token = result['token']?.toString() ?? '';
+      if (token.isEmpty) return {'ok': false, 'error': 'The POS API did not return a session token.'};
+      _posApiToken = token;
+      return {
+        'ok': true,
+        'user': StaffUser.fromJson(Map<String, dynamic>.from(result['user'] as Map)),
+        'token': token,
+      };
+    } on TimeoutException {
+      return {'ok': false, 'error': 'Connect to the internet to set your new password.'};
+    } on http.ClientException {
+      return {'ok': false, 'error': 'Connect to the internet to set your new password.'};
+    } catch (e) {
+      return {'ok': false, 'error': 'Could not change password: $e'};
     }
   }
 

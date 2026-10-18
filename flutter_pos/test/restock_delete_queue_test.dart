@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:commune_pos/services/local_storage_service.dart';
+import 'package:synorra_pos/services/local_storage_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

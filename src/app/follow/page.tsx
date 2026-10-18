@@ -28,11 +28,11 @@ export default function FollowPage() {
       <main className="relative flex min-h-[72vh] flex-col overflow-hidden bg-[radial-gradient(ellipse_at_50%_0%,rgba(120,85,55,0.22),transparent_55%),#0a0a0a] px-5 pb-20 pt-12 text-white sm:px-8 sm:pt-16">
         <div className="mx-auto w-full max-w-5xl flex-1">
           <p className="text-center font-script text-3xl text-amber-100/75 sm:text-4xl">
-            we commune, over coffee
+            Synorra
           </p>
           <div className="mx-auto mt-12 max-w-2xl text-center sm:mt-16">
             <h1 className="mt-2 font-serif text-4xl italic sm:text-6xl">
-              Follow commune.
+              Follow Synorra.
             </h1>
           </div>
 

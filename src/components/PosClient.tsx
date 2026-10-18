@@ -81,10 +81,10 @@ type PosClientProps = {
   >;
 };
 
-type PosPanel = "pos" | "voids" | Extract<InventoryTab, "stock" | "restock">;
+type PosPanel = "pos" | Extract<InventoryTab, "stock" | "restock">;
 
 const CASH_PRESETS = [500, 1000, 2000];
-const CHECKOUT_KEY = "commune_pos_checkout";
+const CHECKOUT_KEY = "synorra_pos_checkout";
 const TEST_PRINTER_ENABLED = process.env.NEXT_PUBLIC_TEST_PRINTER === "true";
 type SavedCheckout = {
   userId: string;
@@ -314,7 +314,7 @@ export function PosClient({
   const isCash = paymentMethod === "cash";
   const paid = isCash ? Number(tendered) || 0 : total;
   const change = isCash && paid >= total ? paid - total : 0;
-  const isManager = session.role === "manager" || session.role === "admin";
+  const isManager = false;
   const voidTickets = useMemo(() => {
     const needle = voidSearch.trim().toLowerCase();
     const today = phDateString();
@@ -767,7 +767,7 @@ export function PosClient({
             }}
             className="text-base font-bold tracking-tight lowercase"
           >
-            commune.
+            synorra
           </button>
           {activePanel !== "pos" ? (
             <p className="truncate text-sm font-medium text-white/70">
@@ -803,7 +803,7 @@ export function PosClient({
               }}
               className="text-sm font-semibold tracking-tight lowercase"
             >
-              commune.
+              synorra
             </button>
             <button
               type="button"
@@ -833,23 +833,7 @@ export function PosClient({
             >
               POS
             </button>
-            {isManager ? (
-              <button
-                type="button"
-                aria-current={activePanel === "voids" ? "page" : undefined}
-                onClick={() => {
-                  setActivePanel("voids");
-                  setMenuOpen(false);
-                }}
-                className={`mb-3 w-full rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
-                  activePanel === "voids"
-                    ? "bg-black text-white"
-                    : "text-neutral-600 hover:bg-neutral-100 hover:text-black"
-                }`}
-              >
-                Void tickets
-              </button>
-            ) : null}
+
 
             {inventoryFeaturesEnabled ? <div>
               <p className="px-4 pb-1 text-[11px] font-medium tracking-wide text-neutral-400 uppercase">
@@ -982,7 +966,7 @@ export function PosClient({
             <p className="px-4 py-2 text-sm font-medium text-neutral-900">
               {session.name}
               <span className="ml-2 text-xs font-normal text-neutral-400">
-                {isManager ? "manager" : "cashier"}
+                {session.role}
               </span>
             </p>
             <button
@@ -1565,154 +1549,7 @@ export function PosClient({
               showTabs={false}
             />
           </div>
-        ) : activePanel === "voids" ? (
-          <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-neutral-100">
-            <div className="shrink-0 border-b border-neutral-200 bg-white px-4 py-4 sm:px-6">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                  <div>
-                    <h2 className="text-xl font-semibold tracking-tight">Void tickets</h2>
-                    <p className="mt-0.5 text-sm text-neutral-500">
-                      {voidTickets.length} open {voidTickets.length === 1 ? "ticket" : "tickets"}
-                      {voidTodayOnly ? " today" : ""}
-                    </p>
-                  </div>
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                    <div className="flex rounded-full border border-neutral-200 bg-neutral-50 p-1">
-                      <button
-                        type="button"
-                        onClick={() => setVoidTodayOnly(true)}
-                        className={`rounded-full px-3 py-1.5 text-xs font-medium ${
-                          voidTodayOnly ? "bg-black text-white" : "text-neutral-600 hover:text-black"
-                        }`}
-                      >
-                        Today
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setVoidTodayOnly(false)}
-                        className={`rounded-full px-3 py-1.5 text-xs font-medium ${
-                          !voidTodayOnly ? "bg-black text-white" : "text-neutral-600 hover:text-black"
-                        }`}
-                      >
-                        All
-                      </button>
-                    </div>
-                    <div className="relative sm:w-72">
-                      <svg
-                        viewBox="0 0 24 24"
-                        className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 stroke-neutral-400"
-                        fill="none"
-                      >
-                        <circle cx="11" cy="11" r="6" strokeWidth="1.6" />
-                        <path d="M16 16l4 4" strokeWidth="1.6" />
-                      </svg>
-                      <input
-                        value={voidSearch}
-                        onChange={(event) => setVoidSearch(event.target.value)}
-                        placeholder="Search ticket, item, or cashier"
-                        className="w-full rounded-full border border-neutral-300 bg-white py-2 pr-4 pl-10 text-sm outline-none placeholder:text-neutral-400 focus:border-black"
-                      />
-                    </div>
-                  </div>
-                </div>
-                {message ? <p className="mt-3 text-sm text-neutral-600">{message}</p> : null}
-              </div>
-
-              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
-                {voidTickets.length === 0 ? (
-                  <div className="flex h-full min-h-[240px] items-center justify-center rounded-2xl border border-dashed border-neutral-300 bg-white text-sm text-neutral-400">
-                    No tickets to void.
-                  </div>
-                ) : (
-                  <>
-                    <div className="space-y-3 md:hidden">
-                      {voidTickets.map((order) => (
-                        <article key={order.id} className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="text-base font-semibold">
-                                #{order.ticketNo ?? order.id.slice(-4)}
-                              </p>
-                              <p className="mt-0.5 text-xs text-neutral-500">
-                                {phDateTimeLabel(order.createdAt)} · {order.baristaName}
-                              </p>
-                            </div>
-                            <p className="text-base font-semibold">{formatMoney(order.total)}</p>
-                          </div>
-                          <p className="mt-2 text-sm text-neutral-700">
-                            {order.items.map((item) => `${item.qty}× ${orderLineListLabel(item)}`).join(", ")}
-                          </p>
-                          <p className="mt-1 text-xs text-neutral-400">{paymentLabel(order.paymentMethod)}</p>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setVoidTargetId(order.id);
-                              setVoidReason("");
-                              setVoidModalOpen(true);
-                            }}
-                            className="mt-3 w-full rounded-xl bg-black py-3 text-sm font-medium text-white hover:bg-neutral-800"
-                          >
-                            Void ticket
-                          </button>
-                        </article>
-                      ))}
-                    </div>
-
-                    <div className="hidden overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm md:block">
-                      <table className="w-full text-left text-sm">
-                        <thead className="bg-black text-xs font-semibold tracking-wide text-white uppercase">
-                          <tr>
-                            <th className="px-4 py-3">Ticket</th>
-                            <th className="px-4 py-3">Time</th>
-                            <th className="px-4 py-3">Cashier</th>
-                            <th className="px-4 py-3">Items</th>
-                            <th className="px-4 py-3">Pay</th>
-                            <th className="px-4 py-3 text-right">Total</th>
-                            <th className="px-4 py-3 text-right"> </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {voidTickets.map((order) => (
-                            <tr key={order.id} className="border-t border-neutral-100 hover:bg-neutral-50">
-                              <td className="px-4 py-4 font-semibold whitespace-nowrap">
-                                #{order.ticketNo ?? order.id.slice(-4)}
-                              </td>
-                              <td className="px-4 py-4 whitespace-nowrap text-neutral-600">
-                                {phDateTimeLabel(order.createdAt)}
-                              </td>
-                              <td className="px-4 py-4 whitespace-nowrap">{order.baristaName}</td>
-                              <td className="max-w-[320px] px-4 py-4 text-neutral-700">
-                                {order.items.map((item) => `${item.qty}× ${orderLineListLabel(item)}`).join(", ")}
-                              </td>
-                              <td className="px-4 py-4 whitespace-nowrap text-neutral-500">
-                                {paymentLabel(order.paymentMethod)}
-                              </td>
-                              <td className="px-4 py-4 text-right font-semibold whitespace-nowrap">
-                                {formatMoney(order.total)}
-                              </td>
-                              <td className="px-4 py-4 text-right">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setVoidTargetId(order.id);
-                                    setVoidReason("");
-                                    setVoidModalOpen(true);
-                                  }}
-                                  className="rounded-full bg-black px-4 py-2 text-xs font-medium text-white hover:bg-neutral-800"
-                                >
-                                  Void
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
-                )}
-              </div>
-            </section>
-          ) : (
+        ) : (
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
               {!pos.isOpen ? (
                 <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-neutral-100 px-6 text-center">
@@ -1917,7 +1754,7 @@ export function PosClient({
                 <span>{formatMoney(isCash ? change : total)}</span>
               </div>
 
-              <div className="grid grid-cols-2 gap-1.5 pt-1">
+              <div className="grid grid-cols-1 gap-1.5 pt-1">
                 <button
                   type="button"
                   onClick={printTicket}
@@ -1929,17 +1766,6 @@ export function PosClient({
                   }`}
                 >
                   Print
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setVoidTargetId(cart.length === 0 ? lastOrderId : null);
-                    setVoidModalOpen(true);
-                  }}
-                  disabled={voidRequestPending || (cart.length === 0 && !lastOrderId)}
-                  className="rounded-lg border border-neutral-300 py-2 text-xs hover:border-black disabled:opacity-40 transition"
-                >
-                  Void
                 </button>
               </div>
 

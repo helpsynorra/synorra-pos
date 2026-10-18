@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:commune_pos/models/menu_item.dart';
+import 'package:synorra_pos/models/menu_item.dart';
 
 void main() {
   test('does not add styles when none are configured', () {

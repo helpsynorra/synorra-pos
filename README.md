@@ -1,4 +1,4 @@
-git status# Commune Coffee
+git status# Synorra POS
 
 Next.js (App Router) + TypeScript project.
 

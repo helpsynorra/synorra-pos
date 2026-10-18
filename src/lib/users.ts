@@ -9,7 +9,7 @@ export const DEFAULT_USERS: StaffUser[] = [
     password: "commune",
     name: "Admin",
     role: "admin",
-    title: "Owner",
+    title: "Admin",
   },
   {
     id: "cashier-1",
@@ -17,15 +17,7 @@ export const DEFAULT_USERS: StaffUser[] = [
     password: "commune",
     name: "Sale In Charge",
     role: "cashier",
-    title: "Cashier",
-  },
-  {
-    id: "manager-1",
-    username: "manager",
-    password: "commune",
-    name: "Manager",
-    role: "manager",
-    title: "Manager",
+    title: "Owner",
   },
   {
     id: "barista-1",
@@ -51,6 +43,7 @@ export function toSession(user: StaffUser): Session {
     username: user.username,
     name: user.name,
     role: user.role,
+    mustChangePassword: user.role === "cashier" && !user.passwordChanged,
   };
 }
 
@@ -58,6 +51,8 @@ export function publicUser(user: StaffUser): PublicStaffUser {
   return {
     id: user.id,
     username: user.username,
+    email: user.email,
+    passwordChanged: user.passwordChanged,
     name: user.name,
     role: user.role,
     title: user.title,
@@ -69,28 +64,11 @@ export function parseRole(value: string, fallbackRole?: string): Role {
   const fallback = String(fallbackRole ?? "").trim().toLowerCase();
   const combined = `${normalized} ${fallback}`.trim();
 
-  if (
-    normalized === "admin" ||
-    normalized === "owner" ||
-    fallback === "admin" ||
-    /admin|owner/i.test(combined)
-  ) {
-    return "admin";
-  }
-  if (
-    normalized === "manager" ||
-    fallback === "manager" ||
-    /manager/i.test(combined)
-  ) {
-    return "manager";
-  }
-  if (
-    normalized === "cashier" ||
-    fallback === "cashier" ||
-    /cashier|sale\s+in\s+charge/i.test(combined)
-  ) {
-    return "cashier";
-  }
+  if (normalized === "admin" || fallback === "admin") return "admin";
+  if (/admin/i.test(combined)) return "admin";
+  if (normalized === "cashier" || fallback === "cashier") return "cashier";
+  if (/owner|cashier|sale\s+in\s+charge/i.test(combined)) return "cashier";
+  if (normalized === "barista" || fallback === "barista") return "barista";
   return "barista";
 }
 
@@ -99,6 +77,7 @@ export function parseLoginRole(value: string): "admin" | "cashier" | null {
   if (normalized === "admin" || normalized === "cashier") {
     return normalized;
   }
+  if (normalized === "owner") return "cashier";
   return null;
 }
 
@@ -107,7 +86,7 @@ export function canUsePos(role: Role) {
 }
 
 export function normalizeStaffRole(item: Pick<StaffUser, "role" | "password">): Role {
-  if (item.role === "admin" || item.role === "manager" || item.role === "cashier" || item.role === "barista") {
+  if (item.role === "admin" || item.role === "cashier" || item.role === "barista") {
     return item.role;
   }
   return item.password ? "cashier" : "barista";

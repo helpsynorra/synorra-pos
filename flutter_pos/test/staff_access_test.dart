@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:commune_pos/models/login_activity.dart';
-import 'package:commune_pos/models/staff_user.dart';
+import 'package:synorra_pos/models/login_activity.dart';
+import 'package:synorra_pos/models/staff_user.dart';
 
 void main() {
   test('POS access is cashier-only and shift access is barista-only', () {

@@ -387,7 +387,7 @@ class _PosScreenState extends State<PosScreen> {
 
     return PosNavigationDrawer(
       selectedSection: section,
-      cashierName: controller.currentUser?.name ?? 'Cashier',
+      cashierName: controller.currentUser?.name ?? 'Owner',
       labelsConnection: _printerService.connectionSummary(PrinterRole.labels),
       receiptConnection: _printerService.connectionSummary(PrinterRole.receipt),
       syncStatus: controller.syncService.isOnline ? 'Online' : 'Offline',
@@ -449,7 +449,6 @@ class _PosScreenState extends State<PosScreen> {
         syncStatus: syncStatusLabel,
         syncDotColor: syncDotColor,
         onPrint: _openReceiptDialog,
-        onVoid: _openVoidDialog,
         onSync: () => sync.syncAll(),
       ),
       drawer: _buildPosDrawer(PosSection.terminal),

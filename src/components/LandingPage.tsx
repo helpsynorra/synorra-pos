@@ -56,7 +56,7 @@ export function LandingPage({
       <section className="relative min-h-svh overflow-hidden">
         <Image
           src="/images/hero-wide.jpg"
-          alt="commune cafe bar"
+          alt="Synorra cafe bar"
           fill
           loading="eager"
           quality={95}
@@ -70,9 +70,7 @@ export function LandingPage({
             have a seat, take a sip
           </p>
           <h1 className="font-display mt-3 max-w-5xl text-[2.7rem] leading-[0.9] tracking-[0.08em] text-white uppercase drop-shadow-[0_10px_30px_rgba(0,0,0,0.65)] sm:mt-5 sm:text-7xl sm:tracking-[0.12em] md:text-8xl">
-            We commune,
-            <br />
-            over coffee
+            Synorra
           </h1>
           <div className="mt-5 sm:mt-7">
             <p className="text-[10px] tracking-[0.28em] text-white/55 uppercase">
@@ -110,7 +108,7 @@ export function LandingPage({
           </article>
           <Photo
             src="/images/drinks.jpg"
-            alt="Signature iced drinks at commune"
+            alt="Signature iced drinks at Synorra"
             className="min-h-[240px] sm:min-h-[360px] md:col-span-5 md:min-h-[640px]"
             sizes="(max-width: 768px) 100vw, 42vw"
           />
@@ -125,7 +123,7 @@ export function LandingPage({
         <div className="mx-auto grid max-w-6xl gap-3 sm:gap-4 md:grid-cols-2">
           <Photo
             src="/images/cups.jpg"
-            alt="Iced latte and matcha at commune"
+            alt="Iced latte and matcha at Synorra"
             className="min-h-[260px] sm:min-h-[440px] md:min-h-[520px]"
             sizes="(max-width: 768px) 100vw, 50vw"
           />
@@ -158,7 +156,7 @@ export function LandingPage({
           <div>
             <Eyebrow>Best Sellers</Eyebrow>
             <h2 className="mt-4 font-serif text-4xl italic sm:text-5xl">
-              We commune, over coffee
+              Synorra
             </h2>
             <p className="mt-4 max-w-md text-neutral-400">
               Signatures from the bar: iced, crumbled, and pulled to share.
@@ -185,7 +183,7 @@ export function LandingPage({
     href="/drinks"
     className="inline-flex items-center justify-center rounded-full bg-white px-7 py-3.5 text-xs font-semibold uppercase tracking-[0.22em] text-black transition hover:bg-neutral-200"
   >
-    View Commune Drinks
+    View Synorra Drinks
   </Link>
   <a
     href="https://taximaxim.onelink.me/KKXl?pid=refferalmztall&af_dp=maximzakaz%3A%2F%2F&af_web_dp=https%3A%2F%2Ftaximaxim.com%2Fapp&c=menumzt"
@@ -211,7 +209,7 @@ export function LandingPage({
         <div className="mx-auto grid max-w-6xl items-center gap-8 lg:grid-cols-2 lg:gap-12">
           <Photo
             src="/images/storefront.jpg"
-            alt="commune cafe storefront at night"
+            alt="Synorra cafe storefront at night"
             className="min-h-[280px] sm:min-h-[480px] lg:min-h-[620px]"
             sizes="(max-width: 1024px) 100vw, 50vw"
           />
@@ -294,9 +292,9 @@ export function LandingPage({
           </div>
           <div className="grid min-h-[220px] grid-cols-3 gap-1.5 overflow-hidden bg-black p-1.5 sm:min-h-[360px] sm:gap-3 sm:p-3 lg:col-span-7 lg:min-h-[560px]">
             {[
-              { src: "/images/shem.jpg", alt: "Shem at commune café" },
-              { src: "/images/mouna.jpg", alt: "Mouna at commune café" },
-              { src: "/images/yas.jpg", alt: "Yas at commune café" },
+              { src: "/images/shem.jpg", alt: "Shem at Synorra café" },
+              { src: "/images/mouna.jpg", alt: "Mouna at Synorra café" },
+              { src: "/images/yas.jpg", alt: "Yas at Synorra café" },
             ].map((photo) => (
               <div key={photo.src} className="group relative min-h-full overflow-hidden bg-neutral-900">
                 <Image
@@ -333,7 +331,7 @@ export function LandingPage({
         </div>
         <div className="relative h-[260px] overflow-hidden border-t border-white/10 sm:h-[380px] lg:h-[460px]">
           <iframe
-            title="Commune Cafe on Google Maps"
+            title="Synorra on Google Maps"
             src={CAFE.mapsEmbed}
             loading="lazy"
             referrerPolicy="no-referrer-when-downgrade"

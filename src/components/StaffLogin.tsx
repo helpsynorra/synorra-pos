@@ -15,7 +15,7 @@ export function StaffLogin({ role = "admin" }: { role?: "admin" | "cashier" }) {
           <BrandLogo size="md" showTagline />
         </div>
         <p className="mt-6 mb-10 text-xs tracking-[0.3em] text-neutral-300 uppercase">
-          {isCashier ? "Staff POS login" : "Admin login"}
+          {isCashier ? "Owner back-office login" : "Admin login"}
         </p>
         <LoginForm role={role} />
       </div>

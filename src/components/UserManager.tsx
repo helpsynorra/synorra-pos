@@ -8,7 +8,6 @@ import {
   deleteStaffUser,
   punchStaff,
   setOffRequestStatus,
-  updateLoginGates,
   updateStaffSessionTimes,
   deleteStaffSession,
   updateStaffUser,
@@ -17,7 +16,6 @@ import type { PublicStaffUser } from "@/lib/users";
 import { phDateString, phDateTimeInputValue, phDateTimeLabel } from "@/lib/datetime";
 import { pairLoginSessions, type StaffSession } from "@/lib/staff-sessions";
 import type { LoginActivity, OffRequest, Session } from "@/lib/types";
-import type { LoginGates } from "@/lib/staff-gates";
 
 const field =
   "w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm text-neutral-900 outline-none transition-all focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900";
@@ -27,19 +25,21 @@ type UserManagerProps = {
   session: Session;
   loginActivity: LoginActivity[];
   offRequests: OffRequest[];
-  loginGates: LoginGates;
+  showShiftTabs?: boolean;
+  showAdminRole?: boolean;
+  showBaristaRole?: boolean;
 };
 
 type SubTab = "staff" | "inout" | "off" | "gates";
-type StaffRole = "Admin" | "Barista" | "Manager" | "Cashier";
+type StaffRole = "Admin" | "Barista" | "Owner";
 
-export function UserManager({ users, session, loginActivity, offRequests, loginGates }: UserManagerProps) {
+export function UserManager({ users, session, loginActivity, offRequests, showShiftTabs = true, showAdminRole = true, showBaristaRole = true }: UserManagerProps) {
   const [tab, setTab] = useState<SubTab>("staff");
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
-  const [role, setRole] = useState<StaffRole>("Cashier");
-  const [title, setTitle] = useState("");
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<StaffRole>("Owner");
   const [password, setPassword] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -50,7 +50,6 @@ export function UserManager({ users, session, loginActivity, offRequests, loginG
   const [offUserId, setOffUserId] = useState("");
   const [offDate, setOffDate] = useState(phDateString());
   const [offReason, setOffReason] = useState("");
-  const [adminGate, setAdminGate] = useState(loginGates.admin);
   
   // Global filter/display date state for In / Out
   const [selectedDate, setSelectedDate] = useState(phDateString());
@@ -93,8 +92,8 @@ export function UserManager({ users, session, loginActivity, offRequests, loginG
     setEditingId("new");
     setName("");
     setUsername("");
-    setRole("Cashier");
-    setTitle("");
+    setEmail("");
+    setRole("Owner");
     setPassword("");
     setNotice(null);
     setTab("staff");
@@ -104,15 +103,13 @@ export function UserManager({ users, session, loginActivity, offRequests, loginG
     setEditingId(user.id);
     setName(user.name);
     setUsername(user.username);
-    setTitle(user.title ?? "");
+    setEmail(user.email ?? "");
     const lowerRole = user.role.toLowerCase();
     setRole(
       lowerRole === "admin"
         ? "Admin"
-        : lowerRole === "manager"
-          ? "Manager"
-          : lowerRole === "cashier"
-            ? "Cashier"
+        : lowerRole === "cashier"
+            ? "Owner"
             : "Barista",
     );
     setPassword("");
@@ -142,7 +139,9 @@ export function UserManager({ users, session, loginActivity, offRequests, loginG
               { id: "off", label: "Request off" },
               { id: "gates", label: "Login links" },
             ] as const
-          ).map((entry) => (
+          )
+            .filter((entry) => showShiftTabs || (entry.id !== "inout" && entry.id !== "off"))
+            .map((entry) => (
             <button
               key={entry.id}
               type="button"
@@ -181,13 +180,16 @@ export function UserManager({ users, session, loginActivity, offRequests, loginG
                 className="space-y-4 rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5"
                 onSubmit={(event) => {
                   event.preventDefault();
+                  const submittedPassword = password;
+                  setPassword("");
                   startTransition(async () => {
                     const payload = {
                       name,
                       username,
-                      title: role === "Barista" ? "Barista" : title || role,
-                      role: role.toLowerCase(),
-                      password,
+                      email,
+                      title: role,
+                      role: role === "Owner" ? "cashier" : role.toLowerCase(),
+                      password: submittedPassword,
                     };
                     const result =
                       editingId === "new"
@@ -225,16 +227,17 @@ export function UserManager({ users, session, loginActivity, offRequests, loginG
                     <span className="mb-1.5 block">Username</span>
                     <input value={username} onChange={(event) => setUsername(event.target.value)} className={field} required />
                   </label>
-                  {role !== "Barista" ? (
+                  {role === "Owner" ? (
                     <label className="text-xs font-medium text-neutral-600">
-                      <span className="mb-1.5 block">Title</span>
-                      <input value={title} onChange={(event) => setTitle(event.target.value)} className={field} />
+                      <span className="mb-1.5 block">Email</span>
+                      <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} className={field} required />
                     </label>
-                  ) : (
+                  ) : null}
+                  {role === "Barista" ? (
                     <p className="sm:col-span-2 text-xs text-neutral-500">
                       Baristas use this username and password to clock in and out on POS.
                     </p>
-                  )}
+                  ) : null}
                   <label className="text-xs font-medium text-neutral-600">
                     <span className="mb-1.5 block">Password</span>
                     <input
@@ -247,8 +250,11 @@ export function UserManager({ users, session, loginActivity, offRequests, loginG
                     />
                   </label>
                 </div>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {(["Admin", "Manager", "Cashier", "Barista"] as const).map((id) => (
+                <div
+                  className="grid gap-2"
+                  style={{ gridTemplateColumns: `repeat(${(showAdminRole ? 1 : 0) + 1 + (showBaristaRole ? 1 : 0)}, minmax(0, 1fr))` }}
+                >
+                  {([...(showAdminRole ? ["Admin" as const] : []), "Owner", ...(showBaristaRole ? ["Barista" as const] : [])] as const).map((id) => (
                     <button
                       key={id}
                       type="button"
@@ -284,7 +290,7 @@ export function UserManager({ users, session, loginActivity, offRequests, loginG
                       ) : null}
                     </div>
                     <p className="mt-0.5 text-xs text-neutral-400">
-                      {`${user.username} · ${user.title || user.role}`}
+                      {`${user.username} · ${user.role === "admin" ? "Admin" : user.role === "cashier" ? "Owner" : "Barista"}`}
                     </p>
                   </div>
                   <div className="flex items-center gap-1">
@@ -681,50 +687,11 @@ export function UserManager({ users, session, loginActivity, offRequests, loginG
 
         {tab === "gates" ? (
           <>
-            <h1 className="text-xl font-semibold tracking-tight">Admin login link</h1>
-            <p className="text-xs text-neutral-500">
-              The POS has been moved to the standalone POS application. Configure the website Admin access path here.
-            </p>
-            <form
-              className="space-y-4 rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5"
-              onSubmit={(event) => {
-                event.preventDefault();
-                startTransition(async () => {
-                  const result = await updateLoginGates(adminGate);
-                  if (result && "error" in result && result.error) {
-                    setNotice(typeof result.error === "string" ? result.error : "Could not save.");
-                    return;
-                  }
-                  if (result && "ok" in result && result.ok) {
-                    setAdminGate(result.admin);
-                  }
-                  setNotice(null);
-                });
-              }}
-            >
-              <label className="block text-xs font-medium text-neutral-600">
-                <span className="mb-1.5 block">Admin path</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-neutral-400">/</span>
-                  <input
-                    value={adminGate}
-                    onChange={(event) => setAdminGate(event.target.value)}
-                    className={field}
-                    required
-                  />
-                </div>
-                <span className="mt-1.5 block text-xs font-normal text-neutral-400">
-                  Open: /{adminGate.trim() || "…"}
-                </span>
-              </label>
-              <button
-                type="submit"
-                disabled={pending}
-                className="rounded-full bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-40"
-              >
-                {pending ? "Saving..." : "Save link"}
-              </button>
-            </form>
+            <h1 className="text-xl font-semibold tracking-tight">Login links</h1>
+            <div className="space-y-3 rounded-2xl border border-neutral-200 bg-white p-4 text-sm sm:p-5">
+              <p><span className="font-medium">Synorra Host Admin:</span> /mouna1234</p>
+              <p><span className="font-medium">Owner:</span> /back-office</p>
+            </div>
           </>
         ) : null}
       </div>

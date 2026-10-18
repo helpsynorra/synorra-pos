@@ -100,15 +100,10 @@ export function supabaseAdmin() {
 function formatDbStaffTitle(user: StaffUser): string {
   const rawTitle = (user.title ?? "").trim();
   if (user.role === "admin") {
-    return rawTitle && /admin|owner/i.test(rawTitle) ? rawTitle : "Owner";
-  }
-  if (user.role === "manager") {
-    if (!rawTitle) return "Manager";
-    return /manager/i.test(rawTitle) ? rawTitle : `Manager (${rawTitle})`;
+    return "Admin";
   }
   if (user.role === "cashier") {
-    if (!rawTitle) return "Cashier";
-    return /cashier|sale\s+in\s+charge/i.test(rawTitle) ? rawTitle : `Cashier (${rawTitle})`;
+    return "Owner";
   }
   return rawTitle || "Barista";
 }
@@ -350,11 +345,9 @@ function normalizeStore(store: StoreData): StoreData {
         title:
           item.title ||
           (resolvedRole === "admin"
-            ? "Owner"
-            : resolvedRole === "manager"
-              ? "Manager"
-              : resolvedRole === "cashier"
-                ? "Cashier"
+            ? "Admin"
+            : resolvedRole === "cashier"
+                ? "Owner"
                 : "Barista"),
         role: resolvedRole,
         password: String(item.password ?? ""),
@@ -364,17 +357,6 @@ function normalizeStore(store: StoreData): StoreData {
     store.users = Array.from(
       new Map(normalizedUsers.map((user) => [user.id, user])).values(),
     );
-    if (!store.users.some((user) => user.role === "manager" && user.password)) {
-      const managerUsernameTaken = store.users.some((user) => user.username === "manager");
-      store.users.push({
-        id: "manager-1",
-        username: managerUsernameTaken ? `manager-${Date.now().toString(36)}` : "manager",
-        password: "commune",
-        name: "Manager",
-        role: "manager",
-        title: "Manager",
-      });
-    }
     if (!store.users.some((user) => user.role === "barista" && user.password)) {
       const baristaUsernameTaken = store.users.some((user) => user.username === "barista");
       store.users.push({
@@ -509,18 +491,12 @@ async function readStore(options?: { fresh?: boolean }): Promise<StoreData> {
             {
               id: row.id,
               username: row.username,
+              email: row.email ?? "",
               password: row.password,
+              passwordChanged: Boolean(row.password_changed),
               name: row.name,
-              role: parseRole(
-                row.role === "admin" || /admin|owner/i.test(row.title ?? "")
-                  ? "admin"
-                  : row.username === "cashier" || row.role === "cashier" || /cashier|sale\s+in\s+charge/i.test(row.title ?? "")
-                    ? "cashier"
-                    : row.username === "manager" || row.role === "manager" || /manager/i.test(row.title ?? "")
-                      ? "manager"
-                      : "barista",
-              ),
-              title: row.title || (row.role === "cashier" ? "Cashier" : row.role === "manager" ? "Manager" : row.role === "admin" ? "Owner" : "Barista"),
+              role: parseRole(String(row.role ?? row.title ?? ""), String(row.title ?? row.username ?? "")),
+              title: row.role === "admin" ? "Admin" : row.role === "cashier" ? "Owner" : row.title || "Barista",
             },
           ]),
         ).values(),
@@ -707,9 +683,10 @@ async function writeStore(store: StoreData): Promise<void> {
   memoryStoreReadAt = Date.now();
 }
 
-// One-time bootstrap for a virgin database (see the virgin check in
-// readStore). Inserts the shipping defaults directly - no StoreData
-// snapshot is involved, so nothing stale can leak in.
+// Bootstrap defaults directly - no StoreData snapshot is involved, so
+// nothing stale can leak in. Each write ignores rows another simultaneous
+// request may already have seeded, making the virgin-database check safe
+// across concurrent server requests.
 async function seedInitialStore(
   supabase: ReturnType<typeof supabaseAdmin>,
 ): Promise<void> {
@@ -722,8 +699,8 @@ async function seedInitialStore(
     categoryRows.map((row) => [row.name.toLowerCase(), row.id]),
   );
   const results = await Promise.all([
-    supabase.from("menu_categories").insert(categoryRows),
-    supabase.from("staff_users").insert(
+    supabase.from("menu_categories").upsert(categoryRows, { onConflict: "id", ignoreDuplicates: true }),
+    supabase.from("staff_users").upsert(
       DEFAULT_USERS.map((user) => ({
         id: user.id,
         username: user.username.trim().toLowerCase(),
@@ -732,6 +709,7 @@ async function seedInitialStore(
         role: user.role === "admin" ? "admin" : "barista",
         title: user.title,
       })),
+      { onConflict: "id", ignoreDuplicates: true },
     ),
     supabase.from("pos_state").upsert({
       id: POS_STATE_ID,
@@ -745,7 +723,7 @@ async function seedInitialStore(
   if (seedError) {
     throw new Error(`Unable to seed store data: ${seedError.message}`);
   }
-  const { error: menuError } = await supabase.from("menu_items").insert(
+  const { error: menuError } = await supabase.from("menu_items").upsert(
     DEFAULT_MENU.map((item) => ({
       id: item.id,
       name: item.name,
@@ -757,6 +735,7 @@ async function seedInitialStore(
       styles: normalizeMenuStyles(item),
       addons: normalizeMenuAddons(item),
     })),
+    { onConflict: "id", ignoreDuplicates: true },
   );
   if (menuError) {
     throw new Error(`Unable to seed menu items: ${menuError.message}`);
@@ -1674,9 +1653,11 @@ export async function upsertStaffUserRecord(user: StaffUser): Promise<void> {
       {
         id: normalized.id,
         username: normalized.username,
+        email: normalized.email ?? null,
         password: normalized.password,
+        password_changed: Boolean(normalized.passwordChanged),
         name: normalized.name,
-        role: normalized.role === "admin" ? "admin" : "barista",
+        role: normalized.role,
         title: normalized.title,
       },
       { onConflict: "id" },

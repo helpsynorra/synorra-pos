@@ -69,14 +69,14 @@ class _DrinkOptionsDialogState extends State<DrinkOptionsDialog> {
                             style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
-                              color: CommuneTheme.textMain,
+                              color: SynorraTheme.textMain,
                             ),
                           ),
                           Text(
                             'Base: ₱${widget.item.price.toStringAsFixed(0)}',
                             style: const TextStyle(
                               fontSize: 12,
-                              color: CommuneTheme.textMuted,
+                              color: SynorraTheme.textMuted,
                             ),
                           ),
                         ],
@@ -102,7 +102,7 @@ class _DrinkOptionsDialogState extends State<DrinkOptionsDialog> {
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 0.8,
-                      color: CommuneTheme.textMuted,
+                      color: SynorraTheme.textMuted,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -117,15 +117,15 @@ class _DrinkOptionsDialogState extends State<DrinkOptionsDialog> {
                                 setState(() => _selectedStyle = style),
                             style: OutlinedButton.styleFrom(
                               backgroundColor: isSelected
-                                  ? CommuneTheme.primary
+                                  ? SynorraTheme.primary
                                   : Colors.transparent,
                               foregroundColor: isSelected
                                   ? Colors.white
-                                  : CommuneTheme.textMain,
+                                  : SynorraTheme.textMain,
                               side: BorderSide(
                                   color: isSelected
-                                      ? CommuneTheme.primary
-                                      : CommuneTheme.border),
+                                      ? SynorraTheme.primary
+                                      : SynorraTheme.border),
                               shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12)),
                               padding: const EdgeInsets.symmetric(vertical: 12),
@@ -159,7 +159,7 @@ class _DrinkOptionsDialogState extends State<DrinkOptionsDialog> {
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 0.8,
-                      color: CommuneTheme.textMuted,
+                      color: SynorraTheme.textMuted,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -192,7 +192,7 @@ class _DrinkOptionsDialogState extends State<DrinkOptionsDialog> {
                                       '+₱${addon.price.toStringAsFixed(0)}',
                                       style: const TextStyle(
                                         fontSize: 11,
-                                        color: CommuneTheme.textMuted,
+                                        color: SynorraTheme.textMuted,
                                       ),
                                     ),
                                   ],
@@ -320,7 +320,7 @@ class _DrinkOptionsDialogState extends State<DrinkOptionsDialog> {
                           Navigator.pop(context);
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: CommuneTheme.primary,
+                          backgroundColor: SynorraTheme.primary,
                           foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14)),

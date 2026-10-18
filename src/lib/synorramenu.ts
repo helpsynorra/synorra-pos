@@ -3,7 +3,7 @@ import type { MenuItem } from "@/lib/types";
 
 // Halimbawa: Kunin lang ang mga signature drinks o specific categories mula sa DEFAULT_MENU
 // o kaya ay i-filter base sa gusto mong logic na galing din sa menu.ts
-export const COMMUNE_MENU: MenuItem[] = DEFAULT_MENU.filter(
+export const SYNORRA_MENU: MenuItem[] = DEFAULT_MENU.filter(
   (item) => 
     item.category === "Signature Coffee" || 
     item.category === "Non-Coffee / Matcha" ||

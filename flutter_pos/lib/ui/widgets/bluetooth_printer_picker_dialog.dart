@@ -186,7 +186,7 @@ class _BluetoothPrinterPickerDialogState
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Text(
                   _error!,
-                  style: const TextStyle(color: CommuneTheme.voidRed, fontSize: 12),
+                  style: const TextStyle(color: SynorraTheme.voidRed, fontSize: 12),
                 ),
               ),
             if (_loading && _devices.isEmpty)
@@ -215,7 +215,7 @@ class _BluetoothPrinterPickerDialogState
                       title: Text(device.displayName),
                       subtitle: Text(device.address),
                       trailing: connected
-                          ? const Icon(Icons.check_circle, color: CommuneTheme.statusOnline)
+                          ? const Icon(Icons.check_circle, color: SynorraTheme.statusOnline)
                           : const Icon(Icons.bluetooth_connected),
                       enabled: !_loading,
                       onTap: () => _connect(device),

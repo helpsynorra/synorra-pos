@@ -6,7 +6,6 @@ class PosAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String syncStatus;
   final Color syncDotColor;
   final VoidCallback onPrint;
-  final VoidCallback onVoid;
   final VoidCallback onSync;
 
   const PosAppBar({
@@ -16,7 +15,6 @@ class PosAppBar extends StatelessWidget implements PreferredSizeWidget {
     required this.syncStatus,
     required this.syncDotColor,
     required this.onPrint,
-    required this.onVoid,
     required this.onSync,
   });
 
@@ -47,7 +45,7 @@ class PosAppBar extends StatelessWidget implements PreferredSizeWidget {
           ),
           const SizedBox(width: 8),
           const Text(
-            'commune.',
+            'synorra',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
@@ -83,18 +81,6 @@ class PosAppBar extends StatelessWidget implements PreferredSizeWidget {
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
           child: const Text('Print', style: TextStyle(fontSize: 12)),
-        ),
-        const SizedBox(width: 6),
-        TextButton(
-          onPressed: onVoid,
-          style: TextButton.styleFrom(
-            foregroundColor: Colors.white,
-            side: const BorderSide(color: Colors.white54),
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            minimumSize: const Size(0, 32),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-          child: const Text('Void', style: TextStyle(fontSize: 12)),
         ),
         const SizedBox(width: 6),
         InkWell(

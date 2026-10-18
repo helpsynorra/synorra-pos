@@ -65,7 +65,7 @@ export async function createAdminLedgerEntry(
     date: phDateString(),
   });
   await insertAdminLedgerEntryRecord(entry);
-  revalidatePath("/admin");
+  revalidatePath("/owner");
 }
 
 export async function deleteAdminLedgerEntry(
@@ -77,7 +77,7 @@ export async function deleteAdminLedgerEntry(
     throw new Error("Invalid ledger entry.");
   }
   await deleteAdminLedgerEntryRecord(id, kind);
-  revalidatePath("/admin");
+  revalidatePath("/owner");
 }
 
 export async function importLegacyAdminLedgerEntries(
@@ -89,5 +89,5 @@ export async function importLegacyAdminLedgerEntries(
   }
   const entries = untrustedEntries.map(validateEntry);
   await importAdminLedgerEntries(entries);
-  revalidatePath("/admin");
+  revalidatePath("/owner");
 }

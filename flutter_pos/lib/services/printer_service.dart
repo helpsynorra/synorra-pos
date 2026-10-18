@@ -4,7 +4,7 @@ import '../models/menu_item.dart';
 import '../models/order.dart';
 
 class PrinterService {
-  static const String cafeName = 'commune';
+  static const String cafeName = 'Synorra';
   static const String cafeStreet = 'Veterans Ave, Tetuan';
   static const String cafeCity = 'Zamboanga City';
   static const String cafeTagline = 'have a seat, take a sip';
@@ -199,7 +199,7 @@ class PrinterService {
     final cashier =
         order.baristaName.trim().isNotEmpty ? order.baristaName.trim() : 'N/A';
 
-    buffer.writeln(_row('CASHIER', cashier));
+    buffer.writeln(_row('OWNER', cashier));
     buffer.writeln(_center(order.serviceMode == 'take-out' ? 'TAKE OUT' : 'DINE IN'));
 
     buffer.writeln(_doubleLine());

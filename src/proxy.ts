@@ -10,7 +10,7 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
-  if (pathname.startsWith("/admin")) {
+  if (pathname.startsWith("/synorra-host")) {
     if (!session) {
       return NextResponse.redirect(new URL("/", request.url));
     }
@@ -19,9 +19,18 @@ export function proxy(request: NextRequest) {
     }
   }
 
+  if (pathname.startsWith("/owner")) {
+    if (!session) {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+    if (session.role !== "cashier") {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/login"],
+  matcher: ["/owner/:path*", "/synorra-host/:path*", "/admin/:path*", "/login"],
 };

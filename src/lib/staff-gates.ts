@@ -3,8 +3,11 @@ export type LoginGates = {
 };
 
 export const DEFAULT_LOGIN_GATES: LoginGates = {
-  admin: "mouna1233",
+  admin: "mouna1234",
 };
+
+export const ADMIN_LOGIN_GATE = "mouna1234";
+export const OWNER_LOGIN_GATE = "back-office";
 
 const RESERVED = new Set(["admin", "pos", "login", "drinks", "images", "api", "sale1803"]);
 
@@ -32,11 +35,12 @@ export function normalizeLoginGates(gates?: Partial<LoginGates> | null): LoginGa
 export function roleForLoginGate(gate: string, gates: LoginGates): "admin" | "cashier" | null {
   const value = gate.trim().replace(/^\/+|\/+$/g, "").toLowerCase();
   if (!value || value === "sale1803") return null;
-  if (value === gates.admin.toLowerCase()) return "admin";
+  if (value === OWNER_LOGIN_GATE) return "cashier";
+  if (value === ADMIN_LOGIN_GATE) return "admin";
   return null;
 }
 
 export function loginPathForRole(role: "admin" | "cashier", gates: LoginGates) {
-  if (role === "admin") return `/${gates.admin}`;
-  return "/";
+  if (role === "admin") return `/${ADMIN_LOGIN_GATE}`;
+  return `/${OWNER_LOGIN_GATE}`;
 }

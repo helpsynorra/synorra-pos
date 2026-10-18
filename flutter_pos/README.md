@@ -1,6 +1,6 @@
-# Commune Coffee POS — Standalone Flutter Application
+# Synorra POS — Standalone Flutter Application
 
-A standalone, local-first Flutter Point-of-Sale (POS) terminal application for **Commune Coffee**.
+A standalone, local-first Flutter Point-of-Sale (POS) terminal application for **Synorra**.
 
 ## Architecture & Features
 

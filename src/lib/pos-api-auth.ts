@@ -4,7 +4,7 @@ export type PosApiClaims = {
   userId: string;
   username: string;
   name: string;
-  role: "admin" | "manager" | "cashier" | "barista";
+  role: "admin" | "cashier" | "barista";
   exp: number;
 };
 
@@ -53,7 +53,7 @@ export function readPosApiToken(authorization: string | null): PosApiClaims | nu
     }
 
     const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as PosApiClaims;
-    const validRole = ["admin", "manager", "cashier", "barista"].includes(claims.role);
+    const validRole = ["admin", "cashier", "barista"].includes(claims.role);
     if (
       !validRole ||
       typeof claims.userId !== "string" ||

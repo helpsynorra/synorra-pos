@@ -42,14 +42,15 @@ async function requireAdmin() {
 }
 
 function refresh() {
-  revalidatePath("/admin");
+  revalidatePath("/synorra-host");
+  revalidatePath("/owner");
   revalidatePath("/pos");
 }
 
 async function requirePosSession() {
   const session = await getSession();
   if (!session || !canUsePos(session.role)) {
-    throw new Error("Only an active Cashier POS session can open the barista shift module.");
+    throw new Error("Only an active Owner POS session can open the barista shift module.");
   }
   return session;
 }
@@ -96,11 +97,12 @@ function appendPunch(store: StoreData, user: StaffUser, type: "login" | "logout"
 function parseStaff(input: {
   name: string;
   username: string;
+  email: string;
   title: string;
   role: string;
   password: string;
   requirePassword: boolean;
-}): { error: string } | { name: string; username: string; title: string; role: Role; password?: string } {
+}): { error: string } | { name: string; username: string; email: string; title: string; role: Role; password?: string } {
   const name = input.name.trim();
   const role = parseRole(input.role);
   if (!name) return { error: "Enter a display name." };
@@ -109,11 +111,10 @@ function parseStaff(input: {
     role === "barista"
       ? (input.title.trim() || "Barista")
       : role === "cashier"
-        ? (input.title.trim() || "Cashier")
-        : role === "manager"
-          ? (input.title.trim() || "Manager")
-          : input.title.trim() || "Owner";
+        ? "Owner"
+        : "Admin";
   const password = input.password;
+  const email = input.email.trim().toLowerCase();
   const username = (
     input.username.trim() ||
     name.toLowerCase().replace(/[^a-z0-9]+/g, "")
@@ -125,6 +126,9 @@ function parseStaff(input: {
   if (!username || username.length < 2) {
     return { error: "Enter a username (letters and numbers)." };
   }
+  if (role === "cashier" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { error: "Enter a valid email for cashier accounts." };
+  }
   if (input.requirePassword && password.length < 4) {
     return { error: "Password must be at least 4 characters." };
   }
@@ -135,6 +139,7 @@ function parseStaff(input: {
   return {
     name,
     username,
+    email,
     title,
     role,
     password: password ? password : undefined,
@@ -144,6 +149,7 @@ function parseStaff(input: {
 export async function createStaffUser(input: {
   name: string;
   username: string;
+  email: string;
   title: string;
   role: string;
   password: string;
@@ -159,15 +165,20 @@ export async function createStaffUser(input: {
   if (taken) {
     return { error: "That username is already in use." };
   }
+  if (parsed.email && (store.users ?? []).some((user) => user.email?.toLowerCase() === parsed.email)) {
+    return { error: "That email is already assigned to a staff account." };
+  }
 
   try {
     await upsertStaffUserRecord({
       id: staffUserId(parsed.username),
       name: parsed.name,
       username: parsed.username,
+      email: parsed.email,
       title: parsed.title,
       role: parsed.role,
       password: parsed.password ?? "",
+      passwordChanged: false,
     });
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Could not create staff account." };
@@ -181,6 +192,7 @@ export async function updateStaffUser(input: {
   id: string;
   name: string;
   username: string;
+  email: string;
   title: string;
   role: string;
   password: string;
@@ -200,6 +212,9 @@ export async function updateStaffUser(input: {
   if (taken) {
     return { error: "That username is already in use." };
   }
+  if (parsed.email && (store.users ?? []).some((entry) => entry.id !== input.id && entry.email?.toLowerCase() === parsed.email)) {
+    return { error: "That email is already assigned to a staff account." };
+  }
   const admins = (store.users ?? []).filter((entry) => entry.role === "admin");
   if (
     user.role === "admin" &&
@@ -213,9 +228,11 @@ export async function updateStaffUser(input: {
     ...user,
     name: parsed.name,
     username: parsed.username,
+    email: parsed.email,
     title: parsed.title,
     role: parsed.role,
     password: parsed.password ? parsed.password : user.password,
+    passwordChanged: parsed.password ? false : user.passwordChanged,
   };
 
   try {
@@ -437,7 +454,7 @@ export async function createOffRequest(input: { userId?: string; date: string; r
   if (!reason) return { error: "Enter a reason." };
 
   const asAdmin = session.role === "admin";
-  if (!asAdmin && session.role !== "cashier" && session.role !== "manager") {
+  if (!asAdmin && session.role !== "cashier") {
     return { error: "Only staff can request off." };
   }
 

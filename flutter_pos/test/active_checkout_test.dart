@@ -3,18 +3,18 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:commune_pos/models/menu_item.dart';
-import 'package:commune_pos/models/inventory_item.dart';
-import 'package:commune_pos/models/order.dart';
-import 'package:commune_pos/models/order_item.dart';
-import 'package:commune_pos/models/staff_user.dart';
-import 'package:commune_pos/manila_time.dart';
-import 'package:commune_pos/services/local_storage_service.dart';
-import 'package:commune_pos/services/offline_credential_store.dart';
-import 'package:commune_pos/services/supabase_service.dart';
-import 'package:commune_pos/services/sync_service.dart';
-import 'package:commune_pos/state/pos_controller.dart';
-import 'package:commune_pos/ui/widgets/cart_panel.dart';
+import 'package:synorra_pos/models/menu_item.dart';
+import 'package:synorra_pos/models/inventory_item.dart';
+import 'package:synorra_pos/models/order.dart';
+import 'package:synorra_pos/models/order_item.dart';
+import 'package:synorra_pos/models/staff_user.dart';
+import 'package:synorra_pos/manila_time.dart';
+import 'package:synorra_pos/services/local_storage_service.dart';
+import 'package:synorra_pos/services/offline_credential_store.dart';
+import 'package:synorra_pos/services/supabase_service.dart';
+import 'package:synorra_pos/services/sync_service.dart';
+import 'package:synorra_pos/state/pos_controller.dart';
+import 'package:synorra_pos/ui/widgets/cart_panel.dart';
 
 class _RetryableFailureSupabaseService extends SupabaseService {
   @override

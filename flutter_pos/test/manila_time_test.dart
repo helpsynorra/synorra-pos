@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:commune_pos/manila_time.dart';
+import 'package:synorra_pos/manila_time.dart';
 
 void main() {
   test('converts UTC timestamps to Manila time', () {

@@ -1,6 +1,6 @@
 export const CAFE = {
-  name: "commune.",
-  tagline: "WE COMMUNE, OVER COFFEE",
+  name: "synorra",
+  tagline: "SYNORRA",
   hours: "10:30AM - 11:30PM",
   hoursNote: "DAILY",
   street: "Crispin Atilano St., Tetuan",

@@ -1,18 +1,18 @@
 class SupabaseConfig {
   static const String projectUrl = String.fromEnvironment(
     'SUPABASE_URL',
-    defaultValue: 'https://mzulfloebacecqzponrk.supabase.co',
+    defaultValue: 'https://zdkemoxxguiowbmznxtj.supabase.co',
   );
   static String get restBaseUrl => '$projectUrl/rest/v1';
 
   static const String publishableKey = String.fromEnvironment(
     'SUPABASE_PUBLISHABLE_KEY',
-    defaultValue: 'sb_publishable_Pm64A_jKuqiMMSs_99UG7A_y7ZKYU1q',
+    defaultValue: 'sb_publishable_9trZUPUbKwKoAvif5vW59A_nghPPg-E',
   );
   static const String anonKey = String.fromEnvironment(
     'SUPABASE_ANON_KEY',
     defaultValue:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im16dWxmbG9lYmFjZWNxenBvbnJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA3NDgxMDYsImV4cCI6MjEwNjMyNDEwNn0.UVkz6iPobycK4K9sgXCjAUmXe8myk4fea5SaKM_lsvo',
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpka2Vtb3h4Z3Vpb3dibXpueHRqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIzMDQ3OTYsImV4cCI6MjEwNzg4MDc5Nn0.bKjLfOwbxKUfUOcxevJQrQVpfMJLbWbmFDxfnGIIl7U',
   );
 
   static String get supabaseUrl => projectUrl;
@@ -20,7 +20,7 @@ class SupabaseConfig {
   static String get supabasePublishableKey => publishableKey;
 
   static const String _defaultPosApiUrl =
-      'https://www.commune-cafe.com/api/sync';
+      'http://192.168.1.31:3000/api/sync';
   static const String _configuredPosApiUrl = String.fromEnvironment(
     'POS_API_URL',
     defaultValue: _defaultPosApiUrl,

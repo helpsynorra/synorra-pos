@@ -6,7 +6,6 @@ import { StaffHeader, type AdminPanel } from "@/components/StaffHeader";
 import { UserManager } from "@/components/UserManager";
 import { SalePurchaseTransactions } from "@/components/SalePurchaseTransactions";
 import { MenuCatalog } from "@/components/MenuCatalog";
-import { VoidRequestApproval } from "@/components/VoidRequestApproval";
 import { PosSettings } from "@/components/PosSettings";
 import type { PublicStaffUser } from "@/lib/users";
 import type { Session, StoreData } from "@/lib/types";
@@ -21,8 +20,8 @@ type AdminShellProps = {
 function readSavedPanel(): AdminPanel {
   const savedPanel = window.localStorage.getItem("admin_activePanel");
   const savedSection = window.localStorage.getItem("admin_section");
-  if (savedPanel === "staff" || savedSection === "staff") return "staff";
-  if (savedPanel === "menu" || savedPanel === "transactions" || savedPanel === "voids") {
+  if (savedPanel === "staff" || savedSection === "staff") return "sales";
+  if (savedPanel === "menu" || savedPanel === "transactions") {
     return savedPanel;
   }
   if (savedPanel === "pos-settings") return savedPanel;
@@ -35,7 +34,7 @@ export function AdminShell({ session, users, store, children }: AdminShellProps)
   const router = useRouter();
 
   useEffect(() => {
-    if (panel !== "transactions" && panel !== "sales" && panel !== "voids" && panel !== "staff" && panel !== "pos-settings") return;
+    if (panel !== "transactions" && panel !== "sales" && panel !== "staff" && panel !== "pos-settings") return;
     const refreshTimer = window.setInterval(() => router.refresh(), 5000);
     return () => window.clearInterval(refreshTimer);
   }, [panel, router]);
@@ -59,11 +58,11 @@ export function AdminShell({ session, users, store, children }: AdminShellProps)
 
       {current === "staff" ? (
         <UserManager
-          users={users}
+          users={users.filter((user) => user.role !== "admin")}
           session={session}
           loginActivity={store.loginActivity ?? []}
           offRequests={store.offRequests ?? []}
-          loginGates={store.loginGates ?? { admin: "mouna1233" }}
+          showAdminRole={false}
         />
       ) : null}
       {current === "sales" ? children : null}
@@ -76,7 +75,6 @@ export function AdminShell({ session, users, store, children }: AdminShellProps)
         />
       ) : null}
       {current === "transactions" ? <SalePurchaseTransactions store={store} /> : null}
-      {current === "voids" ? <VoidRequestApproval requests={store.voidRequests ?? []} /> : null}
       {current === "pos-settings" ? <PosSettings store={store} /> : null}
     </>
   );

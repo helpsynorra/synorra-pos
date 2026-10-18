@@ -97,7 +97,7 @@ function CustomerSlip({ ticket }: { ticket: ReceiptTicket }) {
       <Rule />
       <p className="text-center text-base font-bold">Order No. {ticket.ticketNo}</p>
       <p className="text-center">{receiptWhen(ticket.at)}</p>
-      <p className="text-center">Cashier: {ticket.barista}</p>
+      <p className="text-center">Owner: {ticket.barista}</p>
       {ticket.serviceMode ? <p className="text-center font-semibold">{ticket.serviceMode === "take-out" ? "Take out" : "Dine in"}</p> : null}
       <Rule />
       <Row left="Item" right="Amount" strong />

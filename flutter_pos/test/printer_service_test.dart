@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:commune_pos/models/menu_item.dart';
-import 'package:commune_pos/models/order.dart';
-import 'package:commune_pos/models/order_item.dart';
-import 'package:commune_pos/services/printer_service.dart';
+import 'package:synorra_pos/models/menu_item.dart';
+import 'package:synorra_pos/models/order.dart';
+import 'package:synorra_pos/models/order_item.dart';
+import 'package:synorra_pos/services/printer_service.dart';
 
 void main() {
   test('cup label category filter excludes food and pastries', () {
@@ -120,7 +120,7 @@ void main() {
     final label = PrinterService.formatCupLabel(order, 0);
 
     final lines = label.split('\n').map((line) => line.trim()).toList();
-    expect(lines, contains('COMMUNE'));
+    expect(lines, contains('SYNORRA'));
     expect(lines, contains('ORDER #A-011'));
     expect(lines, contains('(ICED) 1X HAZELNUT BLANC'));
     expect(lines, contains('+1 Oat, +1 Coffee Beans'));

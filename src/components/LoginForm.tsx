@@ -10,22 +10,33 @@ const field =
 
 export function LoginForm({ role }: { role: "admin" | "cashier" }) {
   const [state, action, pending] = useActionState(login, initial);
+  const isCashier = role === "cashier";
 
   return (
     <form action={action} className="w-full max-w-md space-y-6">
       <input type="hidden" name="role" value={role} />
 
-      <label className="block text-left text-sm">
-        <span className="mb-2 block tracking-wide text-neutral-400 uppercase">
-          Username
-        </span>
-        <input
-          name="username"
-          autoComplete="username"
-          autoFocus
-          className={field}
-        />
-      </label>
+      {isCashier ? (
+        <label className="block text-left text-sm">
+          <span className="mb-2 block tracking-wide text-neutral-400 uppercase">
+            Owner email
+          </span>
+          <input
+            name="email"
+            type="email"
+            autoComplete="email"
+            className={field}
+            required
+          />
+        </label>
+      ) : null}
+
+      {!isCashier ? (
+        <label className="block text-left text-sm">
+          <span className="mb-2 block tracking-wide text-neutral-400 uppercase">Username</span>
+          <input name="username" autoComplete="username" autoFocus className={field} required />
+        </label>
+      ) : null}
 
       <label className="block text-left text-sm">
         <span className="mb-2 block tracking-wide text-neutral-400 uppercase">
@@ -35,6 +46,7 @@ export function LoginForm({ role }: { role: "admin" | "cashier" }) {
           name="password"
           type="password"
           autoComplete="current-password"
+          required
           className={field}
         />
       </label>
@@ -48,7 +60,7 @@ export function LoginForm({ role }: { role: "admin" | "cashier" }) {
         disabled={pending}
         className="w-full rounded-full bg-white py-3 text-sm font-medium text-black transition hover:bg-neutral-200 disabled:opacity-60"
       >
-        {pending ? "Signing in…" : "Enter commune"}
+        {pending ? "Signing in…" : "Enter Synorra"}
       </button>
     </form>
   );

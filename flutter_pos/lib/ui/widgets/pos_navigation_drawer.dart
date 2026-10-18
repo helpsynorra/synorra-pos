@@ -63,7 +63,7 @@ class PosNavigationDrawer extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'commune.',
+                          'synorra',
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 24,
@@ -71,7 +71,7 @@ class PosNavigationDrawer extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          'Cashier: $cashierName',
+                          'Owner: $cashierName',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(

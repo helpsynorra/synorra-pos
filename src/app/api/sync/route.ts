@@ -14,6 +14,7 @@ import {
   getFreshStore,
   insertLoginActivityRecord,
   insertVoidRequestRecord,
+  upsertStaffUserRecord,
   updateStore,
   voidOrderAtomic,
 } from "@/lib/store";
@@ -84,6 +85,15 @@ export async function GET(request: NextRequest) {
 
   try {
     const store = await getFreshStore();
+    if (claims.role === "cashier") {
+      const cashier = store.users.find((user) => user.id === claims.userId);
+      if (!cashier?.passwordChanged) {
+        return NextResponse.json(
+          { ok: false, error: "Change your Owner password before using the POS." },
+          { status: 403, headers: corsHeaders },
+        );
+      }
+    }
     return NextResponse.json(
       {
         ok: true,
@@ -108,16 +118,16 @@ export async function GET(request: NextRequest) {
           return {
             id: u.id,
             username: u.username,
+            email: u.email,
             name: u.name,
+            passwordChanged: Boolean(u.passwordChanged),
             role: resolvedRole,
             title:
               u.title ||
               (resolvedRole === "admin"
                 ? "Owner"
-                : resolvedRole === "manager"
-                  ? "Manager"
-                  : resolvedRole === "cashier"
-                    ? "Cashier"
+                : resolvedRole === "cashier"
+                    ? "Owner"
                     : "Barista"),
           };
         }),
@@ -139,9 +149,78 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const action = String(body?.action ?? "").trim();
+    if (["void_checkout", "void_order", "create_void_request", "delete_void_request", "approve_void_request"].includes(action)) {
+      return NextResponse.json(
+        { ok: false, error: "Voiding is disabled." },
+        { status: 410, headers: corsHeaders },
+      );
+    }
+
+    if (action === "change_cashier_password") {
+      const username = String(body.username ?? "").trim().toLowerCase();
+      const email = String(body.email ?? "").trim().toLowerCase();
+      const password = String(body.password ?? "");
+      const newPassword = String(body.newPassword ?? "");
+      if (!username || !email || !password || newPassword.length < 8) {
+        return NextResponse.json(
+          { ok: false, error: "Enter email, username, current password, and a new password with at least 8 characters." },
+          { status: 400, headers: corsHeaders },
+        );
+      }
+
+      const store = await getFreshStore();
+      const user = store.users.find(
+        (entry) => entry.username.toLowerCase() === username && entry.role === "cashier",
+      );
+      const currentPasswordMatches = user?.password
+        ? user.password.startsWith("$2")
+          ? await bcrypt.compare(password, user.password)
+          : user.password === password || user.password.trim() === password.trim()
+        : false;
+      if (
+        !user ||
+        user.email?.trim().toLowerCase() !== email ||
+        user.passwordChanged ||
+        !currentPasswordMatches
+      ) {
+        return NextResponse.json(
+          { ok: false, error: "Those details do not match an Owner account that needs a password change." },
+          { status: 401, headers: corsHeaders },
+        );
+      }
+
+      const updatedUser = {
+        ...user,
+        password: await bcrypt.hash(newPassword, 12),
+        passwordChanged: true,
+      };
+      await upsertStaffUserRecord(updatedUser);
+      return NextResponse.json(
+        {
+          ok: true,
+          token: createPosApiToken({
+            userId: updatedUser.id,
+            username: updatedUser.username,
+            name: updatedUser.name,
+            role: "cashier",
+          }),
+          user: {
+            id: updatedUser.id,
+            username: updatedUser.username,
+            email: updatedUser.email,
+            name: updatedUser.name,
+            passwordChanged: true,
+            role: "cashier",
+            title: updatedUser.title || "Owner",
+          },
+        },
+        { headers: corsHeaders },
+      );
+    }
 
     if (action === "auth") {
       const username = String(body.username ?? "").trim().toLowerCase();
+      const email = String(body.email ?? "").trim().toLowerCase();
       const password = String(body.password ?? "");
       if (!username || !password) {
         return NextResponse.json(
@@ -177,6 +256,18 @@ export async function POST(req: NextRequest) {
       }
 
       const resolvedRole = parseRole(String(user.title ?? ""), user.role);
+      if (resolvedRole === "cashier" && user.email?.trim().toLowerCase() !== email) {
+        return NextResponse.json(
+          { ok: false, error: "Email, username, or password is incorrect." },
+          { status: 401, headers: corsHeaders },
+        );
+      }
+      if (resolvedRole === "cashier" && !user.passwordChanged) {
+        return NextResponse.json(
+          { ok: true, requiresPasswordChange: true },
+          { headers: corsHeaders },
+        );
+      }
       return NextResponse.json(
         {
           ok: true,
@@ -189,9 +280,11 @@ export async function POST(req: NextRequest) {
           user: {
             id: user.id,
             username: user.username,
+            email: user.email,
             name: user.name,
+            passwordChanged: Boolean(user.passwordChanged),
             role: resolvedRole,
-            title: user.title || (resolvedRole === "admin" ? "Owner" : resolvedRole === "manager" ? "Manager" : resolvedRole === "cashier" ? "Cashier" : "Barista"),
+            title: user.title || (resolvedRole === "admin" ? "Admin" : resolvedRole === "cashier" ? "Owner" : "Barista"),
           },
         },
         { headers: corsHeaders },
@@ -211,11 +304,21 @@ export async function POST(req: NextRequest) {
         { status: 403, headers: corsHeaders },
       );
     }
+    if (claims.role === "cashier") {
+      const store = await getFreshStore();
+      const cashier = store.users.find((user) => user.id === claims.userId);
+      if (!cashier?.passwordChanged) {
+        return NextResponse.json(
+          { ok: false, error: "Change your Owner password before using the POS." },
+          { status: 403, headers: corsHeaders },
+        );
+      }
+    }
 
     if (action === "create_order") {
       const rawOrder = body.order ?? {};
-      if (!claims || !["cashier", "manager", "admin"].includes(claims.role)) {
-        return NextResponse.json({ ok: false, error: "Cashier access required." }, { status: 403, headers: corsHeaders });
+      if (!claims || !["cashier", "admin"].includes(claims.role)) {
+        return NextResponse.json({ ok: false, error: "Owner access required." }, { status: 403, headers: corsHeaders });
       }
       if (rawOrder.voided) {
         return NextResponse.json(
@@ -248,7 +351,7 @@ export async function POST(req: NextRequest) {
       const requestedCashier = store.users.find((user) => {
         if (user.id !== requestedCashierId) return false;
         const role = parseRole(String(user.title ?? ''), user.role);
-        return ['cashier', 'manager', 'admin'].includes(role);
+        return ['cashier', 'admin'].includes(role);
       });
       const order: Order = {
         id: String(rawOrder.id || `ord-${Date.now()}`),
@@ -338,7 +441,7 @@ export async function POST(req: NextRequest) {
       let voidedBy = claims.userId;
       let voidedByName = claims.name;
       const store = await getFreshStore();
-      if (claims.role !== "manager" && claims.role !== "admin") {
+      if (claims.role !== "admin") {
         const managerUsername = String(body.managerUsername ?? "").trim().toLowerCase();
         const managerPassword = String(body.managerPassword ?? "");
         const manager = store.users.find((user) => user.username.trim().toLowerCase() === managerUsername);
@@ -346,7 +449,7 @@ export async function POST(req: NextRequest) {
         const validPassword = manager && (manager.password.startsWith("$2")
           ? await bcrypt.compare(managerPassword, manager.password)
           : manager.password === managerPassword);
-        if (!manager || !validPassword || (managerRole !== "manager" && managerRole !== "admin")) {
+        if (!manager || !validPassword || managerRole !== "admin") {
           return NextResponse.json({ ok: false, error: "Manager or Admin credentials required to void." }, { status: 403, headers: corsHeaders });
         }
         // The cashier token identifies who rang up the order. The manager
@@ -381,7 +484,7 @@ export async function POST(req: NextRequest) {
       const requestedCashier = store.users.find((user) => {
         if (user.id !== requestedCashierId) return false;
         const role = parseRole(String(user.title ?? ''), user.role);
-        return ['cashier', 'manager', 'admin'].includes(role);
+        return ['cashier', 'admin'].includes(role);
       });
       const order: Order = {
         id: orderId || `ord-${Date.now()}`,
@@ -418,7 +521,7 @@ export async function POST(req: NextRequest) {
 
       let voidedBy = claims.userId;
       let voidedByName = claims.name;
-      if (claims.role !== "admin" && claims.role !== "manager") {
+      if (claims.role !== "admin") {
         if (!managerUsername || !managerPassword) {
           return NextResponse.json(
             { ok: false, error: "Manager approval required to void an order." },
@@ -428,7 +531,7 @@ export async function POST(req: NextRequest) {
         const store = await getFreshStore();
         const manager = store.users.find((u) => u.username.trim().toLowerCase() === managerUsername);
         const role = manager ? parseRole(String(manager.title ?? ""), manager.role) : "barista";
-        if (!manager || (role !== "manager" && role !== "admin")) {
+        if (!manager || role !== "admin") {
           return NextResponse.json(
             { ok: false, error: "Manager or Admin credentials required to void an order." },
             { status: 403, headers: corsHeaders },
@@ -582,10 +685,10 @@ export async function POST(req: NextRequest) {
         const isOwnBaristaShift =
           claims.role === "barista" && requestedUserId === claims.userId;
         if (
-          !["cashier", "manager", "admin"].includes(claims.role) &&
+          !["cashier", "admin"].includes(claims.role) &&
           !isOwnBaristaShift
         ) {
-          return NextResponse.json({ ok: false, error: "Cashier access required to record a barista shift." }, { status: 403, headers: corsHeaders });
+          return NextResponse.json({ ok: false, error: "Owner access required to record a barista shift." }, { status: 403, headers: corsHeaders });
         }
         const store = await getFreshStore();
         staff = store.users.find((user) => user.id === requestedUserId);

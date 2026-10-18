@@ -38,9 +38,19 @@ import type {
   StoreData,
 } from "@/lib/types";
 
+async function cashierMustChangePassword(userId: string) {
+  const store = await getFreshStore();
+  return !store.users.some((user) => user.id === userId && user.role === "cashier" && user.passwordChanged);
+}
+
 async function requirePos() {
   const session = await getSession();
-  if (!session || !canUsePos(session.role)) {
+  if (
+    !session ||
+    !canUsePos(session.role) ||
+    session.mustChangePassword ||
+    (session.role === "cashier" && await cashierMustChangePassword(session.userId))
+  ) {
     throw new Error("Only POS staff can use the POS.");
   }
   return session;
@@ -48,7 +58,12 @@ async function requirePos() {
 
 async function requireCashier() {
   const session = await getSession();
-  if (!session || !canUsePos(session.role)) {
+  if (
+    !session ||
+    !canUsePos(session.role) ||
+    session.mustChangePassword ||
+    (session.role === "cashier" && await cashierMustChangePassword(session.userId))
+  ) {
     throw new Error("Only authorized staff can take orders.");
   }
   return session;
@@ -66,6 +81,8 @@ async function requireInventoryAccess(hasAdminOnlyData: boolean) {
   const session = await getSession();
   if (
     !session ||
+    session.mustChangePassword ||
+    (session.role === "cashier" && await cashierMustChangePassword(session.userId)) ||
     (session.role !== "admin" && !canUsePos(session.role)) ||
     (session.role !== "admin" && hasAdminOnlyData)
   ) {
@@ -171,7 +188,7 @@ export async function saveAdminData(data: {
     if (data.recipeCostings) store.recipeCostings = data.recipeCostings;
   });
   revalidatePath("/pos");
-  revalidatePath("/admin");
+  revalidatePath("/owner");
   return { ok: true };
 }
 
@@ -181,7 +198,7 @@ export async function setPosInventoryFeaturesEnabled(enabled: boolean) {
     store.pos.inventoryFeaturesEnabled = enabled;
   });
   revalidatePath("/pos");
-  revalidatePath("/admin");
+  revalidatePath("/owner");
   return { ok: true };
 }
 
@@ -206,7 +223,7 @@ export async function deleteAdminRecord(kind: "order" | "inventory" | "restock" 
   }
 
   revalidatePath("/pos");
-  revalidatePath("/admin");
+  revalidatePath("/owner");
   return { ok: true };
 }
 
@@ -222,7 +239,7 @@ export async function createRestock(input: {
   await requireInventoryAccess(false);
   await createRestockAtomic(input);
   revalidatePath("/pos");
-  revalidatePath("/admin");
+  revalidatePath("/owner");
   return { ok: true };
 }
 
@@ -240,7 +257,7 @@ export async function editRestock(input: {
   await requireInventoryAccess(false);
   await editRestockAtomic(input);
   revalidatePath("/pos");
-  revalidatePath("/admin");
+  revalidatePath("/owner");
   return { ok: true };
 }
 
@@ -248,7 +265,7 @@ export async function deleteRestock(input: { id: string }) {
   await requireInventoryAccess(false);
   await deleteRestockAtomic(input);
   revalidatePath("/pos");
-  revalidatePath("/admin");
+  revalidatePath("/owner");
   return { ok: true };
 }
 
@@ -263,7 +280,7 @@ export async function openPos() {
     };
   });
   revalidatePath("/pos");
-  revalidatePath("/admin");
+  revalidatePath("/owner");
 }
 
 export async function closePos() {
@@ -277,7 +294,7 @@ export async function closePos() {
     };
   });
   revalidatePath("/pos");
-  revalidatePath("/admin");
+  revalidatePath("/owner");
 }
 
 export async function createOrder(
@@ -380,7 +397,7 @@ export async function createOrder(
   await appendPrintJobs(createdPrintJobs);
 
   revalidatePath("/pos");
-  revalidatePath("/admin");
+  revalidatePath("/owner");
   return {
     ok: true as const,
     total,
@@ -391,12 +408,17 @@ export async function createOrder(
   };
 }
 
+function voidingIsDisabled(): boolean {
+  return true;
+}
+
 export async function verifyManager(username: string, password: string) {
+  if (voidingIsDisabled()) return { error: "Voiding is disabled." };
   await requirePos();
   const store = await getStore();
   const user = store.users.find(
     (entry) =>
-      (entry.role === "manager" || entry.role === "admin") &&
+      entry.role === "admin" &&
       entry.username === username.trim().toLowerCase() &&
       Boolean(entry.password) &&
       entry.password === password,
@@ -413,6 +435,7 @@ export async function voidOrder(
   managerUsername?: string,
   managerPassword?: string,
 ) {
+  if (voidingIsDisabled()) return { error: "Voiding is disabled." };
   const session = await requirePos();
   if (!reason.trim()) {
     return { error: "Enter a reason for voiding." };
@@ -424,7 +447,7 @@ export async function voidOrder(
     const auth = await verifyManager(managerUsername ?? "", managerPassword ?? "");
     if ("error" in auth) return auth;
     voidedBy = auth.id;
-  } else if (session.role === "manager" || session.role === "admin") {
+  } else if (session.role === "admin") {
     voidedBy = session.userId;
   } else {
     return { error: "Only a manager or admin can void a transaction." };
@@ -434,7 +457,7 @@ export async function voidOrder(
   if (!result.ok) return { error: result.error };
 
   revalidatePath("/pos");
-  revalidatePath("/admin");
+  revalidatePath("/owner");
   return { ok: true };
 }
 
@@ -444,6 +467,7 @@ export async function requestVoidApproval(
   orderId?: string | null,
   paymentMethod?: string | null,
 ) {
+  if (voidingIsDisabled()) return { error: "Voiding is disabled." };
   const session = await requireCashier();
   const trimmedReason = reason.trim();
   if (!trimmedReason) return { error: "Enter a reason for voiding." };
@@ -534,7 +558,7 @@ export async function requestVoidApproval(
   }
 
   revalidatePath("/pos");
-  revalidatePath("/admin");
+  revalidatePath("/owner");
   return { ok: true, requestId };
 }
 
@@ -555,6 +579,7 @@ export async function getVoidRequestStatus(requestId: string) {
 }
 
 export async function deleteVoidRequest(requestId: string) {
+  if (voidingIsDisabled()) return { error: "Voiding is disabled." };
   await requireAdmin();
   const request = await getVoidRequestRecord(requestId);
   if (!request) {
@@ -564,11 +589,12 @@ export async function deleteVoidRequest(requestId: string) {
   await deleteVoidRequestRecord(requestId);
 
   revalidatePath("/pos");
-  revalidatePath("/admin");
+  revalidatePath("/owner");
   return { ok: true };
 }
 
 export async function approveVoidRequest(requestId: string) {
+  if (voidingIsDisabled()) return { error: "Voiding is disabled." };
   const session = await requireAdmin();
   try {
     // Read durable state rather than a potentially stale cached snapshot.
@@ -593,7 +619,7 @@ export async function approveVoidRequest(requestId: string) {
     if (!result.ok) return { error: result.error };
 
     revalidatePath("/pos");
-    revalidatePath("/admin");
+    revalidatePath("/owner");
     return { ok: true };
   } catch (error) {
     console.error("Unable to approve void request:", error);
@@ -612,6 +638,7 @@ export async function voidCheckout(
   managerPassword: string,
   paymentMethod?: string | null,
 ) {
+  if (voidingIsDisabled()) return { error: "Voiding is disabled." };
   const session = await requireCashier();
   if (!reason.trim()) {
     return { error: "Enter a reason for voiding." };
@@ -666,7 +693,7 @@ export async function voidCheckout(
   if (!result.ok) return { error: result.error };
 
   revalidatePath("/pos");
-  revalidatePath("/admin");
+  revalidatePath("/owner");
   return { ok: true, id: orderId };
 }
 

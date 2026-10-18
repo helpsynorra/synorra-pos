@@ -18,7 +18,8 @@ export default async function GatePage({
   if (!role) notFound();
 
   const session = await getSession();
-  if (session) {
+  if (session?.role === role) {
+    if (session.mustChangePassword) redirect("/cashier/change-password");
     redirect(homeForRole(session.role));
   }
 

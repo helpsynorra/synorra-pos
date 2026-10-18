@@ -27,7 +27,7 @@ class _ThermalSlip extends StatelessWidget {
           style: const TextStyle(
             fontSize: 10,
             letterSpacing: 1.8,
-            color: CommuneTheme.textMuted,
+            color: SynorraTheme.textMuted,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -146,7 +146,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
-                          color: CommuneTheme.textMain,
+                          color: SynorraTheme.textMain,
                         ),
                       ),
                       SizedBox(height: 2),
@@ -154,7 +154,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                         'Receipt and cup-label jobs are independent',
                         style: TextStyle(
                           fontSize: 12,
-                          color: CommuneTheme.textMuted,
+                          color: SynorraTheme.textMuted,
                         ),
                       ),
                     ],
@@ -178,7 +178,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: CommuneTheme.textMuted,
+                  color: SynorraTheme.textMuted,
                 ),
               ),
             ),
@@ -193,11 +193,11 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: CommuneTheme.border),
+                  borderSide: const BorderSide(color: SynorraTheme.border),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: CommuneTheme.border),
+                  borderSide: const BorderSide(color: SynorraTheme.border),
                 ),
               ),
               items: completedOrders
@@ -245,7 +245,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                                     style: TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w700,
-                                      color: CommuneTheme.textMain,
+                                      color: SynorraTheme.textMain,
                                     ),
                                   ),
                                   Container(
@@ -298,7 +298,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                                     style: TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w700,
-                                      color: CommuneTheme.textMain,
+                                      color: SynorraTheme.textMain,
                                     ),
                                   ),
                                   Container(
@@ -327,7 +327,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                                     child: Text(
                                       'This order has no drink labels.',
                                       style: TextStyle(
-                                        color: CommuneTheme.textMuted,
+                                        color: SynorraTheme.textMuted,
                                         fontSize: 12,
                                       ),
                                     ),
@@ -366,8 +366,8 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                   child: OutlinedButton(
                     onPressed: () => Navigator.pop(context),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: CommuneTheme.primary,
-                      side: const BorderSide(color: CommuneTheme.border),
+                      foregroundColor: SynorraTheme.primary,
+                      side: const BorderSide(color: SynorraTheme.border),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12)),
                       padding: const EdgeInsets.symmetric(vertical: 14),
@@ -382,7 +382,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                     icon: const Icon(Icons.print_outlined, size: 18),
                     label: const Text('Print order'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: CommuneTheme.primary,
+                      backgroundColor: SynorraTheme.primary,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12)),
