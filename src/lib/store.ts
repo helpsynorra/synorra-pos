@@ -79,6 +79,56 @@ export async function getOwnerAccounts(): Promise<StaffUser[]> {
   }));
 }
 
+/** Permanently remove an Owner and all records that belong to that store. */
+export async function deleteOwnerAccountAndData(ownerId: string): Promise<void> {
+  const db = supabaseAdmin();
+  const ownerTables = [
+    "recipe_costing_menu_items",
+    "recipe_costing_ingredients",
+    "recipe_costings",
+    "usage_logs",
+    "restocks",
+    "void_requests",
+    "off_requests",
+    "login_activity",
+    "order_items",
+    "orders",
+    "recipes",
+    "inventory_items",
+    "menu_items",
+    "menu_categories",
+    "pos_state",
+    "login_links",
+    "ticket_counters",
+    "admin_ledger_entries",
+  ];
+
+  for (const table of ownerTables) {
+    const { error } = await db.from(table).delete().eq("owner_id", ownerId);
+    if (error && !(table === "admin_ledger_entries" && error.code === "PGRST205")) {
+      throw new Error(`Unable to delete Owner data from ${table}: ${error.message}`);
+    }
+  }
+
+  const { error: staffError } = await db
+    .from("staff_users")
+    .delete()
+    .eq("owner_id", ownerId);
+  if (staffError) {
+    throw new Error(`Unable to delete Owner staff accounts: ${staffError.message}`);
+  }
+  const { error: ownerError } = await db
+    .from("staff_users")
+    .delete()
+    .eq("id", ownerId)
+    .eq("role", "cashier");
+  if (ownerError) {
+    throw new Error(`Unable to delete the Owner account: ${ownerError.message}`);
+  }
+
+  invalidateStoreCache();
+}
+
 function cacheStore(ownerId: string | null, store: StoreData, readAt = Date.now()) {
   tenantStoreCache.set(ownerId ?? GLOBAL_STORE_KEY, { store, readAt });
   memoryStore = store;

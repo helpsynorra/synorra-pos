@@ -27,7 +27,7 @@ const display = Bebas_Neue({
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#15201a",
+  themeColor: "#101d37",
 };
 
 export const metadata: Metadata = {

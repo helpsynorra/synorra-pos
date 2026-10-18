@@ -8,6 +8,7 @@ import { createPosApiToken, readPosApiToken } from "@/lib/pos-api-auth";
 import {
   createOrderAtomic,
   createRestockAtomic,
+  deleteOwnerAccountAndData,
   deleteInventoryItemRecord,
   deleteRestockAtomic,
   editRestockAtomic,
@@ -16,6 +17,7 @@ import {
   insertVoidRequestRecord,
   legacyOwnerId,
   ownerIdForStaff,
+  supabaseAdmin,
   upsertStaffUserRecord,
   updateStore,
   voidOrderAtomic,
@@ -387,6 +389,52 @@ export async function POST(req: NextRequest) {
         { status: 401, headers: corsHeaders },
       );
     }
+
+    if (action === "delete_owner_account") {
+      if (claims.role !== "cashier") {
+        return NextResponse.json(
+          { ok: false, error: "Only the Owner can delete this account." },
+          { status: 403, headers: corsHeaders },
+        );
+      }
+      const password = String(body.password ?? "");
+      if (body.confirmation !== "DELETE MY ACCOUNT" || !password) {
+        return NextResponse.json(
+          { ok: false, error: "Confirm the deletion phrase and enter your current password." },
+          { status: 400, headers: corsHeaders },
+        );
+      }
+
+      const { data: owner, error: ownerLookupError } = await supabaseAdmin()
+        .from("staff_users")
+        .select("id, owner_id, role, password")
+        .eq("id", claims.userId)
+        .maybeSingle();
+      if (ownerLookupError || !owner || owner.role !== "cashier" || (owner.owner_id && owner.owner_id !== claims.userId)) {
+        return NextResponse.json(
+          { ok: false, error: "Owner account could not be verified." },
+          { status: 404, headers: corsHeaders },
+        );
+      }
+      const passwordMatches = owner.password
+        ? owner.password.startsWith("$2")
+          ? await bcrypt.compare(password, owner.password)
+          : owner.password === password || owner.password.trim() === password.trim()
+        : false;
+      if (!passwordMatches) {
+        return NextResponse.json(
+          { ok: false, error: "Your current password is incorrect." },
+          { status: 401, headers: corsHeaders },
+        );
+      }
+
+      await deleteOwnerAccountAndData(claims.userId);
+      return NextResponse.json(
+        { ok: true, message: "Owner account and store data were permanently deleted." },
+        { headers: corsHeaders },
+      );
+    }
+
     const tenantId = claims.role === "cashier"
       ? claims.userId
       : claims.role === "barista"

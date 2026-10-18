@@ -58,270 +58,326 @@ class PosNavigationDrawer extends StatelessWidget {
     required this.onLogout,
   });
 
+  static const _navy = Color(0xFF111C30);
+  static const _ink = Color(0xFF18263E);
+  static const _muted = Color(0xFF71819B);
+  static const _line = Color(0xFFE7ECF3);
+  static const _active = Color(0xFFF0F4FA);
+
   @override
   Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    final drawerWidth = (width * .76).clamp(290.0, 420.0).toDouble();
+    final isOnline = syncStatus.toLowerCase().contains('online');
+
     return Drawer(
+      width: drawerWidth,
       backgroundColor: Colors.white,
+      surfaceTintColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.horizontal(right: Radius.circular(28)),
+      ),
       child: SafeArea(
-        top: false,
+        top: true,
+        bottom: false,
         child: Column(
           children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(20, 48, 20, 20),
-              color: Colors.black,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'synorra',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          'Owner: $cashierName',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  TextButton.icon(
-                    onPressed: canLogout ? onLogout : null,
-                    icon: const Icon(Icons.logout, size: 18),
-                    label: const Text('Logout'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      disabledForegroundColor: Colors.white54,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            _header(context),
             Expanded(
               child: ListView(
-                padding: EdgeInsets.zero,
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
                 children: [
-                  _destination(
-                    context,
-                    section: PosSection.terminal,
+                  _sectionLabel('MAIN'),
+                  _row(
                     icon: Icons.point_of_sale_outlined,
-                    label: 'POS Terminal',
-                    onTap: onOpenTerminal,
+                    title: 'POS Terminal',
+                    selected: selectedSection == PosSection.terminal,
+                    onTap: () => _select(context, PosSection.terminal, onOpenTerminal),
                   ),
-                  if (inventoryFeaturesEnabled && (stockInventoryEnabled || restockInventoryEnabled)) const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 16, 16, 6),
-                    child: Text(
-                      'INVENTORY',
-                      style: TextStyle(
-                        color: Color(0xFF6B7280),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.2,
+                  if (inventoryFeaturesEnabled && (stockInventoryEnabled || restockInventoryEnabled)) ...[
+                    const SizedBox(height: 20),
+                    _sectionLabel('INVENTORY'),
+                    if (stockInventoryEnabled)
+                      _row(
+                        icon: Icons.inventory_2_outlined,
+                        title: 'Stock inventory',
+                        selected: selectedSection == PosSection.stock,
+                        onTap: () => _select(context, PosSection.stock, onOpenStock),
                       ),
-                    ),
-                  ),
-                  if (inventoryFeaturesEnabled && stockInventoryEnabled) _destination(
-                    context,
-                    section: PosSection.stock,
-                    icon: Icons.inventory_2_outlined,
-                    label: 'Stock inventory',
-                    onTap: onOpenStock,
-                  ),
-                  if (inventoryFeaturesEnabled && restockInventoryEnabled) _destination(
-                    context,
-                    section: PosSection.restock,
-                    icon: Icons.add_shopping_cart_outlined,
-                    label: 'Restock inventory',
-                    onTap: onOpenRestock,
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 16, 16, 6),
-                    child: Text(
-                      'BARISTA SHIFT',
-                      style: TextStyle(
-                        color: Color(0xFF6B7280),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.2,
+                    if (restockInventoryEnabled)
+                      _row(
+                        icon: Icons.add_shopping_cart_outlined,
+                        title: 'Restock inventory',
+                        selected: selectedSection == PosSection.restock,
+                        onTap: () => _select(context, PosSection.restock, onOpenRestock),
                       ),
-                    ),
-                  ),
-                  ListTile(
-                    leading:
-                        const Icon(Icons.badge_outlined, color: Colors.black87),
-                    title: const Text('Baristas on shift'),
+                  ],
+                  const SizedBox(height: 20),
+                  _sectionLabel('STAFF & SHIFT'),
+                  _row(
+                    icon: Icons.groups_outlined,
+                    title: 'Staff on Shift / Team',
                     onTap: () => _closeThen(context, onOpenBaristas),
                   ),
-                   const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 16, 16, 6),
-                    child: Text(
-                      'Sales & Admin',
-                      style: TextStyle(
-                        color: Color(0xFF6B7280),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.open_in_new, color: Colors.black87),
-                    title: const Text('Back office'),
+                  const SizedBox(height: 20),
+                  _sectionLabel('SALES & ADMIN'),
+                  _row(
+                    icon: Icons.apartment_outlined,
+                    title: 'Back Office',
+                    subtitle: 'Inventory, Reports, Analytics',
                     onTap: () => _closeThen(context, onOpenBackOffice),
                   ),
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 16, 16, 6),
-                    child: Text(
-                      'SUPPORT',
-                      style: TextStyle(
-                        color: Color(0xFF6B7280),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.help_outline, color: Colors.black87),
-                    title: const Text('Help Center'),
+                  const SizedBox(height: 20),
+                  _sectionLabel('SUPPORT'),
+                  _row(
+                    icon: Icons.contact_support_outlined,
+                    title: 'Help Center',
                     onTap: () => _closeThen(context, onOpenHelpCenter),
                   ),
-                  if (canDeleteOwnerAccount) const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 16, 16, 6),
-                    child: Text(
-                      'ACCOUNT',
-                      style: TextStyle(
-                        color: Color(0xFF6B7280),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.2,
+                  if (connectLabelsEnabled || connectReceiptEnabled) ...[
+                    if (connectLabelsEnabled)
+                      _row(
+                        icon: Icons.local_cafe_outlined,
+                        title: 'Connect labels',
+                        subtitle: labelsConnection,
+                        onTap: () => _closeThen(context, onConnectLabels),
                       ),
-                    ),
-                  ),
-                  if (canDeleteOwnerAccount) ListTile(
-                    leading: const Icon(Icons.delete_forever_outlined, color: Colors.redAccent),
-                    title: const Text('Delete account', style: TextStyle(color: Colors.redAccent)),
-                    onTap: () => _closeThen(context, onOpenDeleteAccount),
-                  ),
-                  if (connectLabelsEnabled || connectReceiptEnabled) const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 16, 16, 6),
-                    child: Text(
-                      'PRINTERS',
-                      style: TextStyle(
-                        color: Color(0xFF6B7280),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.2,
+                    if (connectReceiptEnabled)
+                      _row(
+                        icon: Icons.receipt_long_outlined,
+                        title: 'Connect receipt',
+                        subtitle: receiptConnection,
+                        onTap: () => _closeThen(context, onConnectReceipt),
                       ),
+                  ],
+                  if (canDeleteOwnerAccount) ...[
+                    const SizedBox(height: 20),
+                    _sectionLabel('ACCOUNT & SECURITY'),
+                    _row(
+                      icon: Icons.delete_outline_rounded,
+                      title: 'Delete account',
+                      destructive: true,
+                      onTap: () => _closeThen(context, onOpenDeleteAccount),
                     ),
-                  ),
-                  if (connectLabelsEnabled) ListTile(
-                    leading: const Icon(Icons.local_cafe_outlined,
-                        color: Colors.black87),
-                    title: const Text('Connect labels'),
-                    subtitle: Text(labelsConnection),
-                    onTap: () => _closeThen(context, onConnectLabels),
-                  ),
-                  if (connectReceiptEnabled) ListTile(
-                    leading: const Icon(Icons.receipt_long_outlined,
-                        color: Colors.black87),
-                    title: const Text('Connect receipt'),
-                    subtitle: Text(receiptConnection),
-                    onTap: () => _closeThen(context, onConnectReceipt),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 16, 16, 6),
-                    child: Text(
-                      'SYNC STATUS',
-                      style: TextStyle(
-                        color: Color(0xFF6B7280),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.sync, color: Colors.black87),
-                    title: const Text('Sync'),
-                    subtitle: Text(syncStatus),
+                  ],
+                  const SizedBox(height: 20),
+                  _sectionLabel('SYSTEM STATUS'),
+                  _row(
+                    icon: Icons.sync_rounded,
+                    title: syncStatus.toLowerCase().contains('online')
+                        ? 'Sync Online'
+                        : 'Sync Offline',
+                    leadingDot: isOnline ? const Color(0xFF32C66A) : const Color(0xFFF0A33A),
                     onTap: () => _closeThen(context, onSync),
                   ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    child: Column(
-                      children: [
-                        Text(
-                          'Powered by Synorra',
-                          style: TextStyle(
-                            color: Color(0xFF6B7280),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w400,
-                          ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          'Version 1.0',
-                          style: TextStyle(
-                            color: Color(0xFF6B7280),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w400,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  const SizedBox(height: 14),
                 ],
               ),
             ),
-            const Divider(height: 1),
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: Text(
-                'Synorra POS',
-                style: TextStyle(color: Color(0xFF667085), fontSize: 12),
-              ),
-            ),
+            _footer(),
           ],
         ),
       ),
     );
   }
 
-  Widget _destination(
-    BuildContext context, {
-    required PosSection section,
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    final isSelected = section == selectedSection;
-    return ListTile(
-      leading: Icon(icon,
-          color: isSelected ? Colors.black : const Color(0xFF4B5563)),
-      title: Text(label, style: const TextStyle(fontSize: 14)),
-      selected: isSelected,
-      selectedTileColor: const Color(0xFFF3F4F6),
-      onTap: () {
-        if (isSelected) {
-          Navigator.pop(context);
-        } else {
-          _closeThen(context, onTap);
-        }
-      },
+  Widget _header(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    final logoWidth = (width * .38).clamp(132.0, 190.0).toDouble();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(22, 20, 18, 22),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF101827), Color(0xFF202D43)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(26)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  width: logoWidth,
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                  child: Image.asset(
+                    'lib/src/images/logo_wordmark.png',
+                    width: logoWidth,
+                    height: 36,
+                    fit: BoxFit.contain,
+                    semanticLabel: 'Synorra',
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Tooltip(
+                message: canLogout ? 'Logout' : logoutDisabledMessage,
+                child: Material(
+                  color: Colors.white.withOpacity(.12),
+                  borderRadius: BorderRadius.circular(30),
+                  child: InkWell(
+                    onTap: canLogout ? () => _closeThen(context, onLogout) : null,
+                    borderRadius: BorderRadius.circular(30),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.logout_rounded, size: 18,
+                              color: canLogout ? Colors.white : Colors.white54),
+                          const SizedBox(width: 7),
+                          Text('Logout', style: TextStyle(
+                            color: canLogout ? Colors.white : Colors.white54,
+                            fontSize: 13, fontWeight: FontWeight.w600,
+                          )),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Owner: $cashierName',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Color(0xFFD0DBEA),
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+              letterSpacing: .2,
+            ),
+          ),
+        ],
+      ),
     );
+  }
+
+  Widget _sectionLabel(String label) => Padding(
+        padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: _muted,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.35,
+          ),
+        ),
+      );
+
+  Widget _row({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    VoidCallback? onTap,
+    bool selected = false,
+    bool destructive = false,
+    Color? leadingDot,
+  }) {
+    final color = destructive ? const Color(0xFFEC3547) : _ink;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Material(
+        color: destructive
+            ? const Color(0xFFFFEFF1)
+            : selected
+                ? _active
+                : Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            child: Row(
+              children: [
+                Icon(icon, size: 25, color: color),
+                if (leadingDot != null) ...[
+                  const SizedBox(width: 12),
+                  Container(
+                    width: 9,
+                    height: 9,
+                    decoration: BoxDecoration(color: leadingDot, shape: BoxShape.circle),
+                  ),
+                ],
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: TextStyle(
+                        color: color,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                      )),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 3),
+                        Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: destructive ? color : _muted, fontSize: 11.5)),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(Icons.chevron_right_rounded, size: 23,
+                    color: destructive ? color : const Color(0xFF687993)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _footer() => Container(
+        width: double.infinity,
+        margin: const EdgeInsets.fromLTRB(22, 0, 22, 12),
+        padding: const EdgeInsets.only(top: 12, bottom: 8),
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: _line)),
+        ),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Image.asset(
+                'lib/src/images/logo_wordmark.png',
+                width: 84,
+                height: 22,
+                fit: BoxFit.contain,
+                semanticLabel: 'Synorra',
+              ),
+            ),
+            const SizedBox(height: 5),
+            const Text(
+              'Powered by Synorra  ·  Version 1.0',
+              style: TextStyle(color: _muted, fontSize: 11.5),
+            ),
+          ],
+        ),
+      );
+
+  void _select(BuildContext context, PosSection section, VoidCallback action) {
+    if (section == selectedSection) {
+      Navigator.pop(context);
+    } else {
+      _closeThen(context, action);
+    }
   }
 
   void _closeThen(BuildContext context, VoidCallback action) {

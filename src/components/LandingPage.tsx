@@ -59,7 +59,7 @@ function PhotoCard({
   title,
 }: (typeof stories)[number]) {
   return (
-    <article className="group relative flex min-h-[280px] items-end overflow-hidden rounded-2xl bg-[#202723] sm:min-h-[360px]">
+    <article className="group relative flex min-h-[280px] items-end overflow-hidden rounded-2xl bg-[#17243b] sm:min-h-[360px]">
       <div
         role="img"
         aria-label={alt}
@@ -74,7 +74,7 @@ function PhotoCard({
 
 function DashboardPreview() {
   return (
-    <div className="relative mx-auto w-full max-w-[570px] rounded-[26px] border border-white/10 bg-[#151a18] p-3 shadow-[0_32px_100px_rgba(0,0,0,0.42)] sm:p-5">
+    <div className="relative mx-auto w-full max-w-[570px] rounded-[26px] border border-white/10 bg-[#101d37] p-3 shadow-[0_32px_100px_rgba(0,0,0,0.42)] sm:p-5">
       <div className="flex items-center justify-between border-b border-white/10 px-2 pb-4">
         <div className="flex items-center gap-2.5">
           <Image
@@ -87,13 +87,13 @@ function DashboardPreview() {
           />
         </div>
         <div className="flex items-center gap-2 text-[10px] text-white/45">
-          <span className="h-2 w-2 rounded-full bg-[#b8f36b]" />
+          <span className="h-2 w-2 rounded-full bg-[#91b9e8]" />
           STORE OVERVIEW
         </div>
       </div>
 
       <div className="grid gap-3 pt-4 sm:grid-cols-[1.3fr_0.7fr]">
-        <div className="rounded-2xl bg-[#202723] p-4 sm:p-5">
+        <div className="rounded-2xl bg-[#1b2c50] p-4 sm:p-5">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-[10px] tracking-[0.16em] text-white/45 uppercase">Sales overview</p>
@@ -103,34 +103,34 @@ function DashboardPreview() {
           </div>
           <div className="mt-7 flex h-24 items-end gap-2 sm:h-32">
             {[34, 52, 43, 76, 58, 91, 69, 100, 75, 85, 62, 95].map((height, index) => (
-              <div key={index} className="flex-1 rounded-t-sm bg-[#b8f36b]" style={{ height: `${height}%`, opacity: 0.38 + index * 0.05 }} />
+              <div key={index} className="flex-1 rounded-t-sm bg-[#91b9e8]" style={{ height: `${height}%`, opacity: 0.38 + index * 0.05 }} />
             ))}
           </div>
           <div className="mt-2 flex justify-between text-[9px] text-white/35"><span>MON</span><span>WED</span><span>FRI</span><span>SUN</span></div>
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-1">
-          <div className="rounded-2xl bg-[#202723] p-4">
+          <div className="rounded-2xl bg-[#1b2c50] p-4">
             <p className="text-[9px] tracking-[0.12em] text-white/45 uppercase">Sales</p>
-            <div className="mt-3 h-1.5 rounded-full bg-white/10"><div className="h-full w-3/4 rounded-full bg-[#b8f36b]" /></div>
+            <div className="mt-3 h-1.5 rounded-full bg-white/10"><div className="h-full w-3/4 rounded-full bg-[#91b9e8]" /></div>
             <p className="mt-2 text-[10px] text-white/40">Track your progress</p>
           </div>
-          <div className="rounded-2xl bg-[#202723] p-4">
+          <div className="rounded-2xl bg-[#1b2c50] p-4">
             <p className="text-[9px] tracking-[0.12em] text-white/45 uppercase">Inventory</p>
             <div className="mt-3 flex items-center gap-2">
-              <span className="h-7 w-7 rounded-lg bg-[#b8f36b]/15 text-center text-sm leading-7 text-[#b8f36b]">✓</span>
+              <span className="h-7 w-7 rounded-lg bg-[#83b8ff]/15 text-center text-sm leading-7 text-[#83b8ff]">✓</span>
               <span className="text-[10px] text-white/65">Stock organized</span>
             </div>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-white/5 bg-[#1b211e] p-4 sm:col-span-2">
+        <div className="rounded-2xl border border-white/5 bg-[#172541] p-4 sm:col-span-2">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[9px] tracking-[0.12em] text-white/45 uppercase">Built around your workflow</p>
               <p className="mt-1 text-sm font-medium">Orders · Team · Recipes</p>
             </div>
-            <span className="rounded-full bg-[#b8f36b] px-3 py-1.5 text-[9px] font-bold tracking-wide text-[#111711]">SYNORRA POS</span>
+            <span className="rounded-full bg-[#91b9e8] px-3 py-1.5 text-[9px] font-bold tracking-wide text-[#101d37]">SYNORRA POS</span>
           </div>
         </div>
       </div>
@@ -141,7 +141,7 @@ function DashboardPreview() {
 
 export function LandingPage() {
   return (
-    <main className="overflow-hidden bg-[#f6f7f2] text-[#15201a]">
+    <main className="overflow-hidden bg-[#f5f8fd] text-[#17243e]">
       <header className="mx-auto flex max-w-7xl items-center justify-between px-5 py-5 sm:px-8 sm:py-6">
         <Link href="/" aria-label="Synorra home" className="flex items-center gap-2.5">
           <Image
@@ -154,47 +154,48 @@ export function LandingPage() {
             className="h-12 w-[132px] object-cover"
           />
         </Link>
-        <nav className="hidden items-center gap-8 text-sm text-[#536057] md:flex">
-          <a href="#features" className="transition hover:text-[#15201a]">Features</a>
-          <a href="#platform" className="transition hover:text-[#15201a]">Platform</a>
+        <nav className="hidden items-center gap-8 text-sm text-[#6e89a6] md:flex">
+          <a href="#features" className="transition hover:text-[#17243e]">Features</a>
+          <a href="#platform" className="transition hover:text-[#17243e]">Platform</a>
         </nav>
-        <Link href="/back-office" className="rounded-full bg-[#15201a] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#2d3b32] sm:px-5 sm:text-sm">
+        <Link href="/back-office" className="rounded-full bg-[#101d37] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#1b2c50] sm:px-5 sm:text-sm">
           Log in
         </Link>
       </header>
 
       <section className="relative px-5 pb-20 pt-12 sm:px-8 sm:pb-28 sm:pt-20">
-        <div className="pointer-events-none absolute -right-40 -top-24 h-[520px] w-[520px] rounded-full bg-[#b8f36b]/30 blur-[100px]" />
+        <div className="pointer-events-none absolute -left-44 -top-40 h-[520px] w-[520px] rounded-full bg-[#dceeff]/85 blur-[100px]" />
+        <div className="pointer-events-none absolute -right-40 -top-24 h-[520px] w-[520px] rounded-full bg-[#dfe3ff]/75 blur-[100px]" />
         <div className="relative mx-auto grid max-w-7xl items-center gap-12 lg:grid-cols-[0.95fr_1.05fr] lg:gap-8">
           <div className="max-w-xl">
-            <p className="inline-flex items-center gap-2 rounded-full border border-[#dce3d5] bg-white/70 px-3 py-1.5 text-[10px] font-semibold tracking-[0.14em] text-[#536057] uppercase">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#73b532]" />
+            <p className="inline-flex items-center gap-2 rounded-full border border-[#dce5f0] bg-white/70 px-3 py-1.5 text-[10px] font-semibold tracking-[0.14em] text-[#6e89a6] uppercase">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#748eac]" />
               Point of sale, made simple
             </p>
             <h1 className="mt-6 text-[3.25rem] leading-[0.98] font-semibold tracking-[-0.065em] sm:text-7xl lg:text-[5.3rem]">
               Run your store.
               <br />
-              <span className="text-[#6a9e38]">Know your business.</span>
+              <span className="text-[#536f91]">Know your business.</span>
             </h1>
-            <p className="mt-6 max-w-lg text-base leading-7 text-[#657168] sm:text-lg sm:leading-8">
+            <p className="mt-6 max-w-lg text-base leading-7 text-[#7892af] sm:text-lg sm:leading-8">
               Synorra brings checkout, sales, inventory, recipes, and team
               permissions into one workspace designed for café operations.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
-              <Link href="/back-office" className="rounded-full bg-[#15201a] px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-[#15201a]/10 transition hover:-translate-y-0.5 hover:bg-[#2d3b32]">
+              <Link href="/back-office" className="rounded-full bg-[#101d37] px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-[#101d37]/10 transition hover:-translate-y-0.5 hover:bg-[#1b2c50]">
                 Open Synorra POS <span aria-hidden="true" className="ml-2">↗</span>
               </Link>
-              <a href="#features" className="rounded-full px-5 py-3.5 text-sm font-semibold text-[#536057] transition hover:bg-white">Explore features</a>
+              <a href="#features" className="rounded-full px-5 py-3.5 text-sm font-semibold text-[#536f91] transition hover:bg-white">Explore features</a>
             </div>
-            <div className="mt-9 flex flex-wrap gap-x-6 gap-y-2 text-[11px] text-[#78837a]">
+            <div className="mt-9 flex flex-wrap gap-x-6 gap-y-2 text-[11px] text-[#7f9bb9]">
               <span>✓ Sales and reports</span>
               <span>✓ Inventory and restocks</span>
               <span>✓ Staff permissions</span>
             </div>
           </div>
           <div className="relative px-0 sm:px-4 lg:pl-8">
-            <div className="absolute -left-4 top-8 hidden rounded-2xl border border-[#e5e9e1] bg-white px-4 py-3 shadow-xl shadow-[#15201a]/5 sm:block">
-              <p className="text-[9px] tracking-[0.12em] text-[#78837a] uppercase">One workspace</p>
+            <div className="absolute -left-4 top-8 hidden rounded-2xl border border-[#dce5f0] bg-white px-4 py-3 shadow-xl shadow-[#101d37]/5 sm:block">
+              <p className="text-[9px] tracking-[0.12em] text-[#7f9bb9] uppercase">One workspace</p>
               <p className="mt-1 text-xs font-semibold">Sales · Stock · Team</p>
             </div>
             <DashboardPreview />
@@ -206,27 +207,27 @@ export function LandingPage() {
         <div className="mx-auto grid max-w-7xl gap-4 sm:grid-cols-3">
           {stories.map((story) => <PhotoCard key={story.title} {...story} />)}
         </div>
-        <p className="mx-auto mt-3 max-w-7xl text-right text-[10px] text-[#929c93]">
+        <p className="mx-auto mt-3 max-w-7xl text-right text-[10px] text-[#8b99ad]">
           Photos: Unsplash
         </p>
       </section>
 
-      <section id="features" className="border-y border-[#e6e9e2] bg-white px-5 py-16 sm:px-8 sm:py-24">
+      <section id="features" className="border-y border-[#dce5f0] bg-white px-5 py-16 sm:px-8 sm:py-24">
         <div className="mx-auto max-w-7xl">
           <div className="max-w-2xl">
-            <p className="text-[10px] font-semibold tracking-[0.2em] text-[#6a9e38] uppercase">Everything in sync</p>
+            <p className="text-[10px] font-semibold tracking-[0.2em] text-[#6e89a6] uppercase">Everything in sync</p>
             <h2 className="mt-4 text-3xl leading-tight font-semibold tracking-[-0.045em] sm:text-5xl">The tools you need, all in one place.</h2>
-            <p className="mt-4 text-sm leading-6 text-[#657168] sm:text-base">From the first order of the day to the last stock check, keep your operation moving with a system that works together.</p>
+            <p className="mt-4 text-sm leading-6 text-[#7892af] sm:text-base">From the first order of the day to the last stock check, keep your operation moving with a system that works together.</p>
           </div>
-          <div className="mt-10 grid gap-px overflow-hidden rounded-3xl border border-[#e6e9e2] bg-[#e6e9e2] sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-10 grid gap-px overflow-hidden rounded-3xl border border-[#dce5f0] bg-[#dce5f0] sm:grid-cols-2 lg:grid-cols-4">
             {features.map((feature) => (
               <article key={feature.number} className="bg-white p-6 sm:p-7">
                 <div className="flex items-center justify-between">
-                  <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#eef6e7] text-xl text-[#5f8e35]">{feature.icon}</span>
-                  <span className="text-[10px] tracking-[0.12em] text-[#9aa39b]">{feature.number}</span>
+                  <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#eff4fa] text-xl text-[#536f91]">{feature.icon}</span>
+                  <span className="text-[10px] tracking-[0.12em] text-[#8b99ad]">{feature.number}</span>
                 </div>
                 <h3 className="mt-8 text-base font-semibold tracking-tight">{feature.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-[#718076]">{feature.description}</p>
+                <p className="mt-2 text-sm leading-6 text-[#7892af]">{feature.description}</p>
               </article>
             ))}
           </div>
@@ -234,25 +235,25 @@ export function LandingPage() {
       </section>
 
       <section id="how-it-works" className="px-5 py-16 sm:px-8 sm:py-24">
-        <div className="mx-auto grid max-w-7xl items-center gap-10 rounded-[28px] bg-[#15201a] px-6 py-10 text-white sm:px-12 sm:py-14 lg:grid-cols-[1fr_auto]">
+        <div className="mx-auto grid max-w-7xl items-center gap-10 rounded-[28px] bg-[#101d37] px-6 py-10 text-white sm:px-12 sm:py-14 lg:grid-cols-[1fr_auto]">
           <div className="max-w-2xl">
-            <p className="text-[10px] font-semibold tracking-[0.2em] text-[#b8f36b] uppercase">Ready when you are</p>
+            <p className="text-[10px] font-semibold tracking-[0.2em] text-[#91b9e8] uppercase">Ready when you are</p>
             <h2 className="mt-4 text-3xl leading-tight font-semibold tracking-[-0.045em] sm:text-5xl">A clearer way to run your day.</h2>
             <p className="mt-4 max-w-xl text-sm leading-6 text-white/60 sm:text-base">Sign in to your Synorra workspace and pick up right where your business needs you.</p>
           </div>
-          <Link href="/back-office" className="inline-flex items-center justify-center rounded-full bg-[#b8f36b] px-6 py-3.5 text-sm font-bold text-[#15201a] transition hover:bg-[#c9fa8e]">
+          <Link href="/back-office" className="inline-flex items-center justify-center rounded-full bg-[#dceeff] px-6 py-3.5 text-sm font-bold text-[#101d37] transition hover:bg-white">
             Log in to Synorra <span aria-hidden="true" className="ml-2">↗</span>
           </Link>
         </div>
       </section>
 
-      <section id="platform" className="border-t border-[#e6e9e2] bg-white px-5 py-16 sm:px-8 sm:py-20">
+      <section id="platform" className="border-t border-[#dce5f0] bg-white px-5 py-16 sm:px-8 sm:py-20">
         <div className="mx-auto grid max-w-7xl gap-8 md:grid-cols-[0.8fr_1.2fr] md:items-end">
           <div>
-            <p className="text-[10px] font-semibold tracking-[0.2em] text-[#6a9e38] uppercase">One workspace for your operation</p>
+            <p className="text-[10px] font-semibold tracking-[0.2em] text-[#6e89a6] uppercase">One workspace for your operation</p>
             <h2 className="mt-4 text-3xl leading-tight font-semibold tracking-[-0.045em] sm:text-4xl">Your counter and back office, connected.</h2>
           </div>
-          <p className="max-w-2xl text-sm leading-7 text-[#657168] sm:text-base">
+          <p className="max-w-2xl text-sm leading-7 text-[#7892af] sm:text-base">
             Take orders at the POS, review sales, manage stock and restocks,
             configure recipe costing, and control staff access from one system.
             Each Owner account has its own operational workspace for its menu,
@@ -261,7 +262,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      <footer className="bg-[#15201a] px-5 py-12 text-white sm:px-8 sm:py-16">
+      <footer className="bg-[#101d37] px-5 py-12 text-white sm:px-8 sm:py-16">
         <div className="mx-auto grid max-w-7xl gap-10 sm:grid-cols-2 lg:grid-cols-[1.2fr_1fr_1fr_1fr]">
           <div>
             <Link href="/" className="inline-flex items-center gap-2.5 font-bold tracking-tight">
