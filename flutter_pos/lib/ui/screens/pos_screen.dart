@@ -57,7 +57,7 @@ class _PosScreenState extends State<PosScreen> {
   }
 
   Future<void> _contactSupport() async {
-    final uri = Uri(scheme: 'mailto', path: 'hello@synorra.com');
+    final uri = Uri(scheme: 'mailto', path: 'help.synorra@gmail.com');
     try {
       final launched = await launchUrl(uri);
       if (!launched && mounted) {

@@ -101,11 +101,14 @@ export async function requestOwnerPasswordReset(
   </table>
 </body></html>`,
         });
+        console.info("Owner password recovery email accepted by Gmail SMTP.");
       } catch (sendError) {
         await supabase.from("staff_password_resets").delete().eq("token_hash", tokenHash);
         console.error("Gmail could not send the Owner password recovery email.", sendError);
         return { error: "We couldn't send the reset instructions right now. Please try again later." };
       }
+    } else {
+      console.info("Owner password recovery request did not match an eligible Owner account.");
     }
 
     // Keep the response identical for an unknown email and a known Owner email.
