@@ -51,7 +51,7 @@ export function ResetOwnerPasswordForm({ token }: { token: string }) {
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold tracking-tight">Reset password</h1>
         <p className="text-sm leading-6 text-slate-500">
-          Enter a new password for your Owner account.
+          Enter a new password for your account.
         </p>
       </div>
       <label className="block text-sm">

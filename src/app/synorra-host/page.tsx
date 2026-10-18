@@ -4,7 +4,7 @@ import { logout } from "@/actions/auth";
 import { BrandLogo } from "@/components/BrandLogo";
 import { UserManager } from "@/components/UserManager";
 import { getSession } from "@/lib/auth";
-import { getStore } from "@/lib/store";
+import { getOwnerAccounts, getStore } from "@/lib/store";
 import { publicUser } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
@@ -13,13 +13,9 @@ export default async function SynorraHostPage() {
   const session = await getSession();
   if (!session || session.role !== "admin") redirect("/");
 
-  const store = await getStore();
-  const staff = store.users
-    .filter((user) =>
-      ![user.username, user.title, user.name, user.role].some((value) =>
-        /^manager$/i.test(value.trim()),
-      ) && user.role === "cashier",
-    )
+  const [store, owners] = await Promise.all([getStore(), getOwnerAccounts()]);
+  const staff = owners
+    .filter((user) => ![user.username, user.title, user.name, user.role].some((value) => /^manager$/i.test(value.trim())))
     .map(publicUser);
 
   return (

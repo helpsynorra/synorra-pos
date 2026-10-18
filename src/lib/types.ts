@@ -84,6 +84,7 @@ export type PaymentMethod = "cash" | "gcash" | "maya";
 
 export type Order = {
   id: string;
+  ownerId?: string;
   createdAt: string;
   baristaName: string;
   baristaUserId?: string;
@@ -139,6 +140,7 @@ export type PosState = {
 
 export type StaffUser = {
   id: string;
+  ownerId?: string;
   username: string;
   email?: string;
   password: string;
@@ -151,6 +153,7 @@ export type StaffUser = {
 
 export type InventoryItem = {
   id: string;
+  ownerId?: string;
   name: string;
   unit: string;
   cost: number;
@@ -171,6 +174,7 @@ export type RecipeIngredient = {
 
 export type RecipeCosting = {
   id: string;
+  ownerId?: string;
   name: string;
   menuItems: string[];
   ingredients: RecipeIngredient[];
@@ -181,6 +185,7 @@ export type RecipeCosting = {
 
 export type UsageLog = {
   id: string;
+  ownerId?: string;
   orderId: string;
   orderItemId: string;
   inventoryItemId?: string;
@@ -193,6 +198,7 @@ export type UsageLog = {
 
 export type RestockRecord = {
   id: string;
+  ownerId?: string;
   inventoryItemId?: string;
   itemName: string;
   quantityAdded: number;
@@ -206,6 +212,7 @@ export type RestockRecord = {
 
 export type LoginActivity = {
   id: string;
+  ownerId?: string;
   userId: string;
   username: string;
   name: string;
@@ -216,6 +223,7 @@ export type LoginActivity = {
 
 export type OffRequest = {
   id: string;
+  ownerId?: string;
   userId: string;
   name: string;
   date: string;
@@ -226,6 +234,7 @@ export type OffRequest = {
 
 export type VoidRequest = {
   id: string;
+  ownerId?: string;
   requestedAt: string;
   requestedById: string;
   requestedByName: string;

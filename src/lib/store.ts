@@ -1,4 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { getSession } from "@/lib/auth";
 import { nextTicketNo } from "@/lib/escpos";
 import type {
   InventoryItem,
@@ -30,6 +32,58 @@ const POS_STATE_ID = "commune-coffee";
 let queue: Promise<unknown> = Promise.resolve();
 let memoryStore: StoreData | null = null;
 let memoryStoreReadAt = 0;
+const tenantContext = new AsyncLocalStorage<string | null>();
+const tenantStoreCache = new Map<string, { store: StoreData; readAt: number }>();
+const GLOBAL_STORE_KEY = "__all_owners__";
+
+async function activeOwnerId(): Promise<string | null> {
+  const scopedOwnerId = tenantContext.getStore();
+  if (scopedOwnerId !== undefined) return scopedOwnerId;
+  const session = await getSession();
+  if (session?.role === "cashier") return session.userId;
+  if (session?.role === "barista" && isRealSupabaseConfigured()) {
+    const { data } = await supabaseAdmin().from("staff_users").select("owner_id").eq("id", session.userId).maybeSingle();
+    if (data?.owner_id) return data.owner_id;
+  }
+  if (session?.role === "admin" && isRealSupabaseConfigured()) {
+    const { data } = await supabaseAdmin().from("staff_users").select("id").eq("role", "cashier").order("created_at", { ascending: true, nullsFirst: true }).limit(1).maybeSingle();
+    return data?.id ?? "cashier-1";
+  }
+  return null;
+}
+
+export function withStoreTenant<T>(ownerId: string | null, run: () => Promise<T>): Promise<T> {
+  return tenantContext.run(ownerId, run);
+}
+
+export async function ownerIdForStaff(userId: string): Promise<string | null> {
+  if (!isRealSupabaseConfigured()) return null;
+  const { data } = await supabaseAdmin().from("staff_users").select("owner_id, role").eq("id", userId).maybeSingle();
+  return data?.role === "cashier" ? userId : data?.owner_id ?? null;
+}
+
+export async function legacyOwnerId(): Promise<string | null> {
+  if (!isRealSupabaseConfigured()) return null;
+  const { data } = await supabaseAdmin().from("staff_users").select("id").eq("role", "cashier").order("created_at", { ascending: true, nullsFirst: true }).limit(1).maybeSingle();
+  return data?.id ?? null;
+}
+
+export async function getOwnerAccounts(): Promise<StaffUser[]> {
+  if (!isRealSupabaseConfigured()) return (await getStore()).users.filter((user) => user.role === "cashier");
+  const { data, error } = await supabaseAdmin().from("staff_users").select("id,owner_id,username,email,password,password_changed,name,role,title,permissions").eq("role", "cashier").order("created_at");
+  if (error) throw new Error(`Unable to read Owner accounts: ${error.message}`);
+  return (data ?? []).map((row) => ({
+    id: row.id, ownerId: row.owner_id ?? row.id, username: row.username, email: row.email ?? "",
+    password: row.password ?? "", passwordChanged: Boolean(row.password_changed), name: row.name,
+    role: "cashier", title: "Owner", permissions: row.permissions ?? undefined,
+  }));
+}
+
+function cacheStore(ownerId: string | null, store: StoreData, readAt = Date.now()) {
+  tenantStoreCache.set(ownerId ?? GLOBAL_STORE_KEY, { store, readAt });
+  memoryStore = store;
+  memoryStoreReadAt = readAt;
+}
 
 // memoryStore is a short-lived per-process read cache, not the source of
 // truth - Supabase is. A row written by another instance (another serverless
@@ -43,6 +97,7 @@ export const STORE_CACHE_TTL_MS = 5_000;
 function invalidateStoreCache() {
   memoryStore = null;
   memoryStoreReadAt = 0;
+  tenantStoreCache.clear();
 }
 
 
@@ -410,43 +465,53 @@ export async function uploadPublicMenuPhoto(
   return `data:${contentType};base64,${bytes.toString("base64")}`;
 }
 
-async function readStore(options?: { fresh?: boolean }): Promise<StoreData> {
-  if (
-    !options?.fresh &&
-    memoryStore &&
-    Date.now() - memoryStoreReadAt < STORE_CACHE_TTL_MS
-  ) {
-    return memoryStore;
+async function readStore(options?: { fresh?: boolean; ownerId?: string | null }): Promise<StoreData> {
+  const ownerId = options && Object.prototype.hasOwnProperty.call(options, "ownerId")
+    ? options.ownerId ?? null
+    : await activeOwnerId();
+  const cacheKey = ownerId ?? GLOBAL_STORE_KEY;
+  const cached = tenantStoreCache.get(cacheKey);
+  if (!options?.fresh && cached && Date.now() - cached.readAt < STORE_CACHE_TTL_MS) {
+    memoryStore = cached.store;
+    memoryStoreReadAt = cached.readAt;
+    return cached.store;
   }
-  const previousStore = memoryStore;
+  const previousStore = cached?.store ?? null;
   if (!isRealSupabaseConfigured()) {
-    if (!memoryStore) {
-      memoryStore = normalizeStore(emptyStore());
+    if (!cached) {
+      cacheStore(ownerId, normalizeStore(emptyStore()));
+    } else {
+      memoryStore = cached.store;
     }
-    memoryStoreReadAt = Date.now();
-    return memoryStore;
+    return memoryStore!;
   }
   const supabase = supabaseAdmin();
 
   try {
+    const tenantQuery = <T,>(query: T): T =>
+      ownerId ? (query as any).eq("owner_id", ownerId) as T : query;
     const [pos, users, categories, menu, inventory, orders, orderItems, usageLogs, restocks, recipes, recipeCostings, recipeCostingMenuItems, recipeCostingIngredients, loginActivity, offRequests, voidRequests, loginGates] = await Promise.all([
-      supabase.from("pos_state").select("*").eq("id", POS_STATE_ID).maybeSingle(),
-      supabase.from("staff_users").select("*").order("created_at"),
-      supabase.from("menu_categories").select("*").order("name"),
-      supabase.from("menu_items").select("*").order("created_at"),
-      supabase.from("inventory_items").select("*").order("created_at"),
-      supabase.from("orders").select("*").is("deleted_at", null).order("created_at", { ascending: false }),
-      supabase.from("order_items").select("*").order("created_at"),
-      supabase.from("usage_logs").select("*").order("created_at"),
-      supabase.from("restocks").select("*").order("created_at"),
-      supabase.from("recipes").select("*").order("created_at"),
-      supabase.from("recipe_costings").select("*").order("created_at"),
-      supabase.from("recipe_costing_menu_items").select("*").order("created_at"),
-      supabase.from("recipe_costing_ingredients").select("*").order("created_at"),
-      supabase.from("login_activity").select("*").order("at"),
-      supabase.from("off_requests").select("*").order("created_at"),
-      supabase.from("void_requests").select("*").order("requested_at", { ascending: false }),
-      supabase.from("login_links").select("*").eq("id", POS_STATE_ID).maybeSingle(),
+      ownerId
+        ? supabase.from("pos_state").select("*").eq("owner_id", ownerId).maybeSingle()
+        : supabase.from("pos_state").select("*").eq("id", POS_STATE_ID).maybeSingle(),
+      tenantQuery(supabase.from("staff_users").select("*")).order("created_at"),
+      tenantQuery(supabase.from("menu_categories").select("*")).order("name"),
+      tenantQuery(supabase.from("menu_items").select("*")).order("created_at"),
+      tenantQuery(supabase.from("inventory_items").select("*")).order("created_at"),
+      tenantQuery(supabase.from("orders").select("*")).is("deleted_at", null).order("created_at", { ascending: false }),
+      tenantQuery(supabase.from("order_items").select("*")).order("created_at"),
+      tenantQuery(supabase.from("usage_logs").select("*")).order("created_at"),
+      tenantQuery(supabase.from("restocks").select("*")).order("created_at"),
+      tenantQuery(supabase.from("recipes").select("*")).order("created_at"),
+      tenantQuery(supabase.from("recipe_costings").select("*")).order("created_at"),
+      tenantQuery(supabase.from("recipe_costing_menu_items").select("*")).order("created_at"),
+      tenantQuery(supabase.from("recipe_costing_ingredients").select("*")).order("created_at"),
+      tenantQuery(supabase.from("login_activity").select("*")).order("at"),
+      tenantQuery(supabase.from("off_requests").select("*")).order("created_at"),
+      tenantQuery(supabase.from("void_requests").select("*")).order("requested_at", { ascending: false }),
+      ownerId
+        ? supabase.from("login_links").select("*").eq("owner_id", ownerId).maybeSingle()
+        : supabase.from("login_links").select("*").eq("id", POS_STATE_ID).maybeSingle(),
     ]);
     const failedRead = (
       [
@@ -480,9 +545,9 @@ async function readStore(options?: { fresh?: boolean }): Promise<StoreData> {
       (users.data ?? []).length === 0 &&
       (orders.data ?? []).length === 0 &&
       (inventory.data ?? []).length === 0;
-    if (virgin) {
+    if (virgin && !ownerId) {
       await seedInitialStore(supabase);
-      return readStore({ ...options, fresh: true });
+      return readStore({ ...options, fresh: true, ownerId });
     }
 
     const base = emptyStore();
@@ -498,6 +563,7 @@ async function readStore(options?: { fresh?: boolean }): Promise<StoreData> {
             row.id,
             {
               id: row.id,
+              ownerId: row.owner_id ?? undefined,
               username: row.username,
               email: row.email ?? "",
               password: row.password,
@@ -544,6 +610,7 @@ async function readStore(options?: { fresh?: boolean }): Promise<StoreData> {
       }),
       inventory: (inventory.data ?? []).map((row) => ({
         id: row.id,
+        ownerId: row.owner_id ?? undefined,
         name: row.name,
         unit: row.unit,
         cost: Number(row.cost),
@@ -556,6 +623,7 @@ async function readStore(options?: { fresh?: boolean }): Promise<StoreData> {
       })),
       orders: rows.map((row) => ({
         id: row.id,
+        ownerId: row.owner_id ?? undefined,
         createdAt: row.created_at,
         baristaName: row.barista_name,
         baristaUserId: row.barista_user_id ?? undefined,
@@ -585,11 +653,12 @@ async function readStore(options?: { fresh?: boolean }): Promise<StoreData> {
         voidedByName: row.voided_by_name ?? undefined,
         voidReason: row.void_reason ?? undefined,
       })),
-      usageLogs: (usageLogs.data ?? []).filter((row) => !row.order_id || activeOrderIds.has(row.order_id)).map((row) => ({ id: row.id, orderId: row.order_id ?? "", orderItemId: row.order_item_id ?? "", inventoryItemId: row.inventory_item_id ?? undefined, date: row.created_at, itemName: row.item_name_snapshot, usedAmount: Number(row.used_amount), unit: row.unit })),
-      restocks: (restocks.data ?? []).map((row) => ({ id: row.id, inventoryItemId: row.inventory_item_id ?? undefined, itemName: row.item_name_snapshot, quantityAdded: Number(row.quantity_added), purchaseQty: row.purchase_qty == null ? undefined : Number(row.purchase_qty), purchaseUnit: row.purchase_unit ?? undefined, date: row.created_at })),
+      usageLogs: (usageLogs.data ?? []).filter((row) => !row.order_id || activeOrderIds.has(row.order_id)).map((row) => ({ id: row.id, ownerId: row.owner_id ?? undefined, orderId: row.order_id ?? "", orderItemId: row.order_item_id ?? "", inventoryItemId: row.inventory_item_id ?? undefined, date: row.created_at, itemName: row.item_name_snapshot, usedAmount: Number(row.used_amount), unit: row.unit })),
+      restocks: (restocks.data ?? []).map((row) => ({ id: row.id, ownerId: row.owner_id ?? undefined, inventoryItemId: row.inventory_item_id ?? undefined, itemName: row.item_name_snapshot, quantityAdded: Number(row.quantity_added), purchaseQty: row.purchase_qty == null ? undefined : Number(row.purchase_qty), purchaseUnit: row.purchase_unit ?? undefined, date: row.created_at })),
       recipes: Object.fromEntries((recipes.data ?? []).reduce((entries, row) => { const list = entries.get(row.menu_item_id) ?? []; list.push({ inventoryItemId: row.inventory_item_id, name: "", amount: Number(row.amount), unit: row.unit }); entries.set(row.menu_item_id, list); return entries; }, new Map<string, RecipeIngredient[]>())) ,
       recipeCostings: (recipeCostings.data ?? []).map((row) => ({
         id: row.id,
+        ownerId: row.owner_id ?? undefined,
         name: row.name,
         menuItems: (recipeCostingMenuItems.data ?? [])
           .filter((item) => item.recipe_costing_id === row.id)
@@ -608,6 +677,7 @@ async function readStore(options?: { fresh?: boolean }): Promise<StoreData> {
       })),
       loginActivity: (loginActivity.data ?? []).map((row) => ({
         id: row.id,
+        ownerId: row.owner_id ?? undefined,
         userId: row.user_id ?? row.id,
         username: row.username,
         name: row.name,
@@ -617,6 +687,7 @@ async function readStore(options?: { fresh?: boolean }): Promise<StoreData> {
       })),
       offRequests: (offRequests.data ?? []).map((row) => ({
         id: row.id,
+        ownerId: row.owner_id ?? undefined,
         userId: row.user_id ?? row.id,
         name: row.name,
         date: row.date,
@@ -632,8 +703,7 @@ async function readStore(options?: { fresh?: boolean }): Promise<StoreData> {
     if (previousStore) {
       store.printJobs = previousStore.printJobs;
     }
-    memoryStore = store;
-    memoryStoreReadAt = Date.now();
+    cacheStore(ownerId, store);
     return store;
   } catch (error) {
     throw new Error(
@@ -643,9 +713,10 @@ async function readStore(options?: { fresh?: boolean }): Promise<StoreData> {
 }
 
 async function writeStore(store: StoreData): Promise<void> {
+  const ownerId = await activeOwnerId();
+  const posStateId = ownerId ?? POS_STATE_ID;
   if (Array.isArray(store.printJobs) && store.printJobs.length > 300) store.printJobs = store.printJobs.slice(-300);
-  memoryStore = store;
-  memoryStoreReadAt = Date.now();
+  cacheStore(ownerId, store);
   if (!isRealSupabaseConfigured()) return;
   const supabase = supabaseAdmin();
   // Orders, staff accounts, and usage logs have dedicated transactional
@@ -653,6 +724,7 @@ async function writeStore(store: StoreData): Promise<void> {
   // or resurrect rows that were intentionally deleted.
   const inventoryRows = store.inventory.map((item) => ({
     id: item.id,
+    owner_id: ownerId ?? item.ownerId ?? POS_STATE_ID,
     name: item.name,
     unit: item.unit,
     cost: item.cost,
@@ -665,6 +737,7 @@ async function writeStore(store: StoreData): Promise<void> {
   }));
   const restockRows = store.restocks.map((record) => ({
     id: record.id,
+    owner_id: ownerId ?? record.ownerId ?? POS_STATE_ID,
     item_name_snapshot: record.itemName,
     quantity_added: record.quantityAdded,
     inventory_item_id: record.inventoryItemId ?? null,
@@ -673,9 +746,10 @@ async function writeStore(store: StoreData): Promise<void> {
   }));
 
   const operations = await Promise.all([
-    supabase.from("pos_state").upsert({ id: POS_STATE_ID, is_open: store.pos.isOpen, opened_at: store.pos.openedAt, opened_by_name: store.pos.openedBy, inventory_features_enabled: store.pos.inventoryFeaturesEnabled, print_button_hidden: store.pos.printButtonHidden, updated_at: new Date().toISOString() }),
+    supabase.from("pos_state").upsert({ id: posStateId, owner_id: ownerId ?? POS_STATE_ID, is_open: store.pos.isOpen, opened_at: store.pos.openedAt, opened_by_name: store.pos.openedBy, inventory_features_enabled: store.pos.inventoryFeaturesEnabled, print_button_hidden: store.pos.printButtonHidden, updated_at: new Date().toISOString() }),
     supabase.from("login_links").upsert({
-      id: POS_STATE_ID,
+      id: posStateId,
+      owner_id: ownerId ?? POS_STATE_ID,
       admin_path: store.loginGates.admin,
       updated_at: new Date().toISOString(),
     }, { onConflict: "id" }),
@@ -688,8 +762,7 @@ async function writeStore(store: StoreData): Promise<void> {
   ]);
   const error = operations.find((result) => result.error)?.error;
   if (error) throw new Error(`Unable to save store data: ${error.message}`);
-  memoryStore = store;
-  memoryStoreReadAt = Date.now();
+  cacheStore(ownerId, store);
 }
 
 // Bootstrap defaults directly - no StoreData snapshot is involved, so
@@ -699,8 +772,10 @@ async function writeStore(store: StoreData): Promise<void> {
 async function seedInitialStore(
   supabase: ReturnType<typeof supabaseAdmin>,
 ): Promise<void> {
+  const ownerId = await legacyOwnerId() ?? "cashier-1";
   const categoryRows = MENU_CATEGORIES.map((name) => ({
-    id: name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "other",
+    id: `${ownerId}--${name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "other"}`,
+    owner_id: ownerId,
     name,
     type: inferMenuCategoryType(name),
   }));
@@ -712,6 +787,7 @@ async function seedInitialStore(
     supabase.from("staff_users").upsert(
       DEFAULT_USERS.map((user) => ({
         id: user.id,
+        owner_id: user.role === "admin" ? null : ownerId,
         username: user.username.trim().toLowerCase(),
         password: user.password,
         name: user.name,
@@ -721,7 +797,8 @@ async function seedInitialStore(
       { onConflict: "id", ignoreDuplicates: true },
     ),
     supabase.from("pos_state").upsert({
-      id: POS_STATE_ID,
+      id: ownerId,
+      owner_id: ownerId,
       is_open: false,
       opened_at: null,
       opened_by_name: null,
@@ -734,10 +811,11 @@ async function seedInitialStore(
   }
   const { error: menuError } = await supabase.from("menu_items").upsert(
     DEFAULT_MENU.map((item) => ({
-      id: item.id,
+      id: `${ownerId}--${item.id}`,
+      owner_id: ownerId,
       name: item.name,
       price: Math.round(item.price),
-      category_id: categoryId.get(item.category.toLowerCase()) ?? "other",
+      category_id: categoryId.get(item.category.toLowerCase()) ?? categoryRows[0]?.id,
       image: stripMenuImage(item.image),
       available: item.available,
       types: normalizeMenuTypes(item),
@@ -751,9 +829,42 @@ async function seedInitialStore(
   }
 }
 
+/** Create a new Owner's blank operational store with an independent default menu. */
+export async function initializeOwnerStore(ownerId: string): Promise<void> {
+  const supabase = supabaseAdmin();
+  const categoryRows = MENU_CATEGORIES.map((name) => ({
+    id: `${ownerId}--${name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "other"}`,
+    owner_id: ownerId,
+    name,
+    type: inferMenuCategoryType(name),
+  }));
+  const categoryId = new Map(categoryRows.map((row) => [row.name.toLowerCase(), row.id]));
+  const menuRows = DEFAULT_MENU.map((item) => ({
+    id: `${ownerId}--${item.id}`,
+    owner_id: ownerId,
+    name: item.name,
+    price: Math.round(item.price),
+    category_id: categoryId.get(item.category.toLowerCase()) ?? categoryRows[0]?.id,
+    image: stripMenuImage(item.image),
+    available: item.available,
+    types: normalizeMenuTypes(item),
+    styles: normalizeMenuStyles(item),
+    addons: normalizeMenuAddons(item).map(({ inventoryItemId: _inventoryItemId, usageAmount: _usageAmount, usageUnit: _usageUnit, ...addon }) => addon),
+  }));
+  const [categories, menu, pos, links] = await Promise.all([
+    supabase.from("menu_categories").upsert(categoryRows, { onConflict: "id" }),
+    supabase.from("menu_items").upsert(menuRows, { onConflict: "id" }),
+    supabase.from("pos_state").upsert({ id: ownerId, owner_id: ownerId, is_open: false, opened_at: null, opened_by_name: null, inventory_features_enabled: true, print_button_hidden: false, updated_at: new Date().toISOString() }, { onConflict: "id" }),
+    supabase.from("login_links").upsert({ id: ownerId, owner_id: ownerId, admin_path: "back-office", updated_at: new Date().toISOString() }, { onConflict: "id" }),
+  ]);
+  for (const result of [categories, menu, pos, links]) {
+    if (result.error) throw new Error(`Unable to initialize Owner store: ${result.error.message}`);
+  }
+}
+
 function withStore<T>(
   fn: (store: StoreData) => Promise<T> | T,
-  options?: { fresh?: boolean },
+  options?: { fresh?: boolean; ownerId?: string | null },
 ): Promise<T> {
   const run = queue.then(async () => {
     const store = await readStore(options);
@@ -766,14 +877,14 @@ function withStore<T>(
   return run;
 }
 
-export function getStore(): Promise<StoreData> {
-  return withStore((store) => store);
+export function getStore(options?: { ownerId?: string | null }): Promise<StoreData> {
+  return withStore((store) => store, options);
 }
 
 // Validation that must not run against a stale snapshot (e.g. checking
 // whether an order is already voided before inserting a related row).
-export function getFreshStore(): Promise<StoreData> {
-  return withStore((store) => store, { fresh: true });
+export function getFreshStore(options?: { ownerId?: string | null }): Promise<StoreData> {
+  return withStore((store) => store, { ...options, fresh: true });
 }
 
 function adminLedgerEntryFromRow(row: {
@@ -899,9 +1010,11 @@ export async function saveUsageLogRecords(records: UsageLog[]): Promise<void> {
   await enqueue(async () => {
     if (isRealSupabaseConfigured() && records.length > 0) {
       const supabase = supabaseAdmin();
+      const ownerId = await activeOwnerId() ?? POS_STATE_ID;
       const { error } = await supabase.from("usage_logs").upsert(
         records.map((record) => ({
           id: record.id,
+          owner_id: ownerId,
           order_id: record.orderId || null,
           order_item_id: record.orderItemId || null,
           item_name_snapshot: record.itemName,
@@ -936,7 +1049,18 @@ export function updateStore(
 }
 
 function enqueue<T>(fn: () => Promise<T>): Promise<T> {
-  const run = queue.then(fn);
+  const ownerIdPromise = activeOwnerId();
+  const run = queue.then(async () => {
+    const ownerId = await ownerIdPromise;
+    const cached = tenantStoreCache.get(ownerId ?? GLOBAL_STORE_KEY);
+    if (cached) {
+      memoryStore = cached.store;
+      memoryStoreReadAt = cached.readAt;
+    } else {
+      await readStore({ ownerId, fresh: true });
+    }
+    return fn();
+  });
   queue = run.then(
     () => undefined,
     () => undefined,
@@ -1041,6 +1165,7 @@ export async function createOrderAtomic(input: {
     }
     const supabase = supabaseAdmin();
     const { order, deductions } = input;
+    const ownerId = await activeOwnerId() ?? POS_STATE_ID;
     const rpcArgs = {
       p_order_id: order.id,
       p_created_at: order.createdAt,
@@ -1063,12 +1188,13 @@ export async function createOrderAtomic(input: {
       p_void_reason: order.voidReason ?? null,
       p_voided_by: input.voidedBy ?? null,
     };
-    let { data, error } = await supabase.rpc("create_order_atomic", rpcArgs);
+    let { data, error } = await supabase.rpc("create_order_for_owner_atomic", { p_owner_id: ownerId, ...rpcArgs });
     if (
       error?.code === "23503" &&
       error.message.includes("orders_barista_user_id_fkey")
     ) {
-      ({ data, error } = await supabase.rpc("create_order_atomic", {
+      ({ data, error } = await supabase.rpc("create_order_for_owner_atomic", {
+        p_owner_id: ownerId,
         ...rpcArgs,
         p_barista_user_id: null,
       }));
@@ -1135,7 +1261,9 @@ export async function voidOrderAtomic(
       return { ok: true };
     }
     const supabase = supabaseAdmin();
-    const { data, error } = await supabase.rpc("void_order_atomic", {
+    const ownerId = await activeOwnerId() ?? POS_STATE_ID;
+    const { data, error } = await supabase.rpc("void_order_for_owner_atomic", {
+      p_owner_id: ownerId,
       p_order_id: orderId,
       p_reason: reason,
       p_voided_by: voidedBy,
@@ -1186,7 +1314,8 @@ export async function deleteOrderAtomic(orderId: string): Promise<void> {
       return;
     }
     const supabase = supabaseAdmin();
-    const { data, error } = await supabase.rpc("delete_order_atomic", { p_order_id: orderId });
+    const ownerId = await activeOwnerId() ?? POS_STATE_ID;
+    const { data, error } = await supabase.rpc("delete_order_for_owner_atomic", { p_owner_id: ownerId, p_order_id: orderId });
     if (error) throw new Error(`Unable to delete order: ${error.message}`);
     if (!data?.ok) {
       throw new Error(
@@ -1227,7 +1356,9 @@ export async function createRestockAtomic(input: {
       return;
     }
     const supabase = supabaseAdmin();
-    const { error } = await supabase.rpc("create_restock_atomic", {
+    const ownerId = await activeOwnerId() ?? POS_STATE_ID;
+    const { error } = await supabase.rpc("create_restock_for_owner_atomic", {
+      p_owner_id: ownerId,
       p_id: input.id,
       p_inventory_item_id: input.inventoryItemId,
       p_item_name_snapshot: input.itemNameSnapshot,
@@ -1275,7 +1406,9 @@ export async function editRestockAtomic(input: {
       return;
     }
     const supabase = supabaseAdmin();
-    const { error } = await supabase.rpc("edit_restock_atomic", {
+    const ownerId = await activeOwnerId() ?? POS_STATE_ID;
+    const { error } = await supabase.rpc("edit_restock_for_owner_atomic", {
+      p_owner_id: ownerId,
       p_id: input.id,
       p_old_inventory_item_id: input.oldInventoryItemId,
       p_old_quantity: input.oldQuantity,
@@ -1305,9 +1438,11 @@ export async function deleteRestockAtomic(input: { id: string }): Promise<void> 
       return;
     }
     const supabase = supabaseAdmin();
+    const ownerId = await activeOwnerId() ?? POS_STATE_ID;
     // The persisted restocks row is authoritative for the reversal - the RPC
     // ignores these caller params; nulls are sent only for signature compat.
-    const { error } = await supabase.rpc("delete_restock_atomic", {
+    const { error } = await supabase.rpc("delete_restock_for_owner_atomic", {
+      p_owner_id: ownerId,
       p_id: input.id,
       p_inventory_item_id: null,
       p_quantity_added: null,
@@ -1396,6 +1531,7 @@ export async function deleteInventoryItemRecord(
       return { ok: true };
     }
     const supabase = supabaseAdmin();
+    const ownerId = await activeOwnerId() ?? POS_STATE_ID;
     // recipes.inventory_item_id -> inventory_items.id is ON DELETE CASCADE
     // in the live schema, but we don't rely on that: guard explicitly so a
     // referenced item is never silently dropped out of a recipe.
@@ -1404,8 +1540,8 @@ export async function deleteInventoryItemRecord(
     // therefore its stock deduction on order) would silently disappear -
     // guard that too rather than let a recipe costing quietly degrade.
     const [legacyRecipeRefs, recipeCostingIngredientRefs] = await Promise.all([
-      supabase.from("recipes").select("id").eq("inventory_item_id", id).limit(1),
-      supabase.from("recipe_costing_ingredients").select("id").eq("inventory_item_id", id).limit(1),
+      supabase.from("recipes").select("id").eq("inventory_item_id", id).eq("owner_id", ownerId).limit(1),
+      supabase.from("recipe_costing_ingredients").select("id").eq("inventory_item_id", id).eq("owner_id", ownerId).limit(1),
     ]);
     if (legacyRecipeRefs.error) {
       throw new Error(`Unable to check inventory references: ${legacyRecipeRefs.error.message}`);
@@ -1417,7 +1553,7 @@ export async function deleteInventoryItemRecord(
       return { error: "This item is used in a recipe. Remove it from the recipe before deleting it." };
     }
 
-    const { error } = await supabase.from("inventory_items").delete().eq("id", id);
+    const { error } = await supabase.from("inventory_items").delete().eq("id", id).eq("owner_id", ownerId);
     if (error) {
       if (/foreign key/i.test(error.message)) {
         return { error: "This item is used in a recipe costing and cannot be deleted." };
@@ -1440,16 +1576,18 @@ export async function deleteMenuItemRecord(id: string): Promise<void> {
       return;
     }
     const supabase = supabaseAdmin();
+    const ownerId = await activeOwnerId() ?? POS_STATE_ID;
     // Detach historical order rows first. Their name/price/product snapshots
     // remain intact, and this also works if the deployed FK still uses RESTRICT.
     const { error: detachError } = await supabase
       .from("order_items")
       .update({ menu_item_id: null })
-      .eq("menu_item_id", id);
+      .eq("menu_item_id", id)
+      .eq("owner_id", ownerId);
     if (detachError) {
       throw new Error(`Unable to unlink menu item from past orders: ${detachError.message}`);
     }
-    const { error } = await supabase.from("menu_items").delete().eq("id", id);
+    const { error } = await supabase.from("menu_items").delete().eq("id", id).eq("owner_id", ownerId);
     if (error) throw new Error(`Unable to delete menu item: ${error.message}`);
     if (memoryStore) {
       memoryStore.menu = memoryStore.menu.filter((item) => item.id !== id);
@@ -1468,10 +1606,11 @@ export async function deleteMenuCategoryRecord(name: string): Promise<void> {
       return;
     }
     const supabase = supabaseAdmin();
+    const ownerId = await activeOwnerId() ?? POS_STATE_ID;
     // menu_items.category_id -> menu_categories.id is ON DELETE RESTRICT.
     // The caller already checks for in-use categories before calling this;
     // this is a defensive backstop against a concurrent add.
-    const { error } = await supabase.from("menu_categories").delete().ilike("name", name);
+    const { error } = await supabase.from("menu_categories").delete().ilike("name", name).eq("owner_id", ownerId);
     if (error) throw new Error(`Unable to delete menu category: ${error.message}`);
     if (memoryStore) {
       memoryStore.categories = memoryStore.categories.filter(
@@ -1490,9 +1629,11 @@ async function ensureMenuCategoryId(
   type: MenuCategoryType = "other",
 ): Promise<string> {
   const trimmed = name.trim();
+  const ownerId = await activeOwnerId() ?? POS_STATE_ID;
   const { data: existing, error: lookupError } = await supabase
     .from("menu_categories")
-    .select("id, name, type");
+    .select("id, name, type")
+    .eq("owner_id", ownerId);
   if (lookupError) {
     throw new Error(`Unable to read menu categories: ${lookupError.message}`);
   }
@@ -1501,15 +1642,16 @@ async function ensureMenuCategoryId(
   );
   if (found) return found.id;
 
-  const id = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "other";
+  const id = `${ownerId}--${trimmed.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "other"}`;
   const { error } = await supabase
     .from("menu_categories")
-    .insert({ id, name: trimmed, type: normalizeMenuCategoryType(type) });
+    .insert({ id, owner_id: ownerId, name: trimmed, type: normalizeMenuCategoryType(type) });
   if (error) {
     // Another instance may have created it between the lookup and insert.
     const { data: retry } = await supabase
       .from("menu_categories")
-      .select("id, name");
+      .select("id, name")
+      .eq("owner_id", ownerId);
     const retryFound = (retry ?? []).find(
       (row) => row.name.trim().toLowerCase() === trimmed.toLowerCase(),
     );
@@ -1551,6 +1693,7 @@ export async function upsertMenuItemRecord(item: MenuItem): Promise<void> {
     const { error } = await supabase.from("menu_items").upsert(
       {
         id: item.id,
+        owner_id: await activeOwnerId() ?? POS_STATE_ID,
         name: item.name,
         price: Math.round(item.price),
         category_id: categoryId,
@@ -1592,7 +1735,8 @@ export async function insertMenuCategoryRecord(
     const trimmed = name.trim();
     const { data: existing, error: lookupError } = await supabase
       .from("menu_categories")
-      .select("id, name");
+      .select("id, name")
+      .eq("owner_id", await activeOwnerId() ?? POS_STATE_ID);
     if (lookupError) {
       throw new Error(`Unable to read menu categories: ${lookupError.message}`);
     }
@@ -1601,10 +1745,11 @@ export async function insertMenuCategoryRecord(
     );
     if (found) return { ok: false, error: "That category is already on the board." };
 
-    const id = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "other";
+    const ownerId = await activeOwnerId() ?? POS_STATE_ID;
+    const id = `${ownerId}--${trimmed.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "other"}`;
     const { error } = await supabase
       .from("menu_categories")
-      .insert({ id, name: trimmed, type: normalizeMenuCategoryType(type) });
+      .insert({ id, owner_id: ownerId, name: trimmed, type: normalizeMenuCategoryType(type) });
     if (error) {
       throw new Error(`Unable to create menu category: ${error.message}`);
     }
@@ -1639,7 +1784,8 @@ export async function setMenuItemAvailableRecord(
     const { error } = await supabase
       .from("menu_items")
       .update({ available })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("owner_id", await activeOwnerId() ?? POS_STATE_ID);
     if (error) throw new Error(`Unable to update menu item: ${error.message}`);
     if (memoryStore) {
       const item = memoryStore.menu.find((entry) => entry.id === id);
@@ -1650,8 +1796,10 @@ export async function setMenuItemAvailableRecord(
 
 export async function upsertStaffUserRecord(user: StaffUser): Promise<void> {
   await enqueue(async () => {
+    const activeOwner = await activeOwnerId();
     const normalized: StaffUser = {
       ...user,
+      ownerId: user.role === "cashier" ? user.id : user.role === "admin" ? undefined : activeOwner ?? user.ownerId ?? POS_STATE_ID,
       username: user.username.trim().toLowerCase(),
       name: user.name.trim() || user.username.trim(),
       title: formatDbStaffTitle(user),
@@ -1667,6 +1815,7 @@ export async function upsertStaffUserRecord(user: StaffUser): Promise<void> {
     const { error } = await supabase.from("staff_users").upsert(
       {
         id: normalized.id,
+        owner_id: normalized.role === "admin" ? null : normalized.ownerId ?? POS_STATE_ID,
         username: normalized.username,
         email: normalized.email ?? null,
         password: normalized.password,
@@ -1763,7 +1912,9 @@ export async function saveRecipeCostingRecord(costing: RecipeCosting): Promise<v
       return;
     }
     const supabase = supabaseAdmin();
-    const { error } = await supabase.rpc("save_recipe_costing", {
+    const ownerId = await activeOwnerId() ?? POS_STATE_ID;
+    const { error } = await supabase.rpc("save_recipe_costing_for_owner", {
+      p_owner_id: ownerId,
       p_id: costing.id,
       p_name: costing.name,
       p_hot_cup_inventory_item_id: costing.hotCupInventoryItemId ?? null,
@@ -1794,7 +1945,7 @@ export async function deleteRecipeCostingRecord(id: string): Promise<void> {
     // recipe_costing_ingredients.recipe_costing_id are both
     // ON DELETE CASCADE on recipe_costings.id, so deleting the parent row
     // alone removes both children, atomically, in one statement.
-    const { error } = await supabase.from("recipe_costings").delete().eq("id", id);
+    const { error } = await supabase.from("recipe_costings").delete().eq("id", id).eq("owner_id", await activeOwnerId() ?? POS_STATE_ID);
     if (error) throw new Error(`Unable to delete recipe costing: ${error.message}`);
     if (memoryStore) {
       memoryStore.recipeCostings = memoryStore.recipeCostings.filter((entry) => entry.id !== id);
@@ -1822,8 +1973,10 @@ export async function insertLoginActivityRecord(entry: LoginActivity): Promise<v
       return;
     }
     const supabase = supabaseAdmin();
+    const ownerId = await activeOwnerId() ?? POS_STATE_ID;
     const activityRow = {
       id: entry.id,
+      owner_id: ownerId,
       user_id: entry.userId || null,
       username: entry.username,
       name: entry.name,
@@ -1868,7 +2021,7 @@ export async function updateLoginActivityTimeRecord(id: string, at: string): Pro
       return;
     }
     const supabase = supabaseAdmin();
-    const { error } = await supabase.from("login_activity").update({ at }).eq("id", id);
+    const { error } = await supabase.from("login_activity").update({ at }).eq("id", id).eq("owner_id", await activeOwnerId() ?? POS_STATE_ID);
     if (error) throw new Error(`Unable to update login activity: ${error.message}`);
     if (memoryStore) {
       const entry = memoryStore.loginActivity.find((item) => item.id === id);
@@ -1888,7 +2041,7 @@ export async function deleteLoginActivityRecords(ids: string[]): Promise<void> {
       return;
     }
     const supabase = supabaseAdmin();
-    const { error } = await supabase.from("login_activity").delete().in("id", ids);
+    const { error } = await supabase.from("login_activity").delete().in("id", ids).eq("owner_id", await activeOwnerId() ?? POS_STATE_ID);
     if (error) throw new Error(`Unable to delete login activity: ${error.message}`);
     if (memoryStore) {
       const idSet = new Set(ids);
@@ -1913,8 +2066,10 @@ export async function insertOffRequestRecord(entry: OffRequest): Promise<void> {
       return;
     }
     const supabase = supabaseAdmin();
+    const ownerId = await activeOwnerId() ?? POS_STATE_ID;
     const { error } = await supabase.from("off_requests").insert({
       id: entry.id,
+      owner_id: ownerId,
       user_id: entry.userId,
       name: entry.name,
       date: entry.date,
@@ -1942,7 +2097,7 @@ export async function updateOffRequestStatusRecord(id: string, status: OffReques
       return;
     }
     const supabase = supabaseAdmin();
-    const { error } = await supabase.from("off_requests").update({ status }).eq("id", id);
+    const { error } = await supabase.from("off_requests").update({ status }).eq("id", id).eq("owner_id", await activeOwnerId() ?? POS_STATE_ID);
     if (error) throw new Error(`Unable to update off request: ${error.message}`);
     if (memoryStore) {
       const entry = memoryStore.offRequests.find((item) => item.id === id);
@@ -1960,7 +2115,7 @@ export async function deleteOffRequestRecord(id: string): Promise<void> {
       return;
     }
     const supabase = supabaseAdmin();
-    const { error } = await supabase.from("off_requests").delete().eq("id", id);
+    const { error } = await supabase.from("off_requests").delete().eq("id", id).eq("owner_id", await activeOwnerId() ?? POS_STATE_ID);
     if (error) throw new Error(`Unable to delete off request: ${error.message}`);
     if (memoryStore) {
       memoryStore.offRequests = memoryStore.offRequests.filter((item) => item.id !== id);
@@ -2009,8 +2164,10 @@ export async function insertVoidRequestRecord(entry: VoidRequest): Promise<void>
       return;
     }
     const supabase = supabaseAdmin();
+    const ownerId = await activeOwnerId() ?? POS_STATE_ID;
     const requestRow = {
       id: entry.id,
+      owner_id: ownerId,
       requested_at: entry.requestedAt,
       requested_by_id: entry.requestedById || null,
       requested_by_name: entry.requestedByName,
@@ -2059,6 +2216,7 @@ export async function getVoidRequestRecord(id: string): Promise<VoidRequest | nu
       .from("void_requests")
       .select("*")
       .eq("id", id)
+      .eq("owner_id", await activeOwnerId() ?? POS_STATE_ID)
       .maybeSingle();
     if (error) throw new Error(`Unable to read void request: ${error.message}`);
     return data ? voidRequestFromRow(data) : null;
@@ -2124,7 +2282,9 @@ export async function approveVoidRequestAtomic(input: {
       return { ok: true, processedOrderId: processedOrderId! };
     }
     const supabase = supabaseAdmin();
-    const { data, error } = await supabase.rpc("approve_void_request_atomic", {
+    const ownerId = await activeOwnerId() ?? POS_STATE_ID;
+    const { data, error } = await supabase.rpc("approve_void_request_for_owner_atomic", {
+      p_owner_id: ownerId,
       p_request_id: input.requestId,
       p_approved_by_id: input.approvedById,
       p_approved_by_name: input.approvedByName,
@@ -2160,7 +2320,7 @@ export async function deleteVoidRequestRecord(id: string): Promise<void> {
       return;
     }
     const supabase = supabaseAdmin();
-    const { error } = await supabase.from("void_requests").delete().eq("id", id);
+    const { error } = await supabase.from("void_requests").delete().eq("id", id).eq("owner_id", await activeOwnerId() ?? POS_STATE_ID);
     if (error) throw new Error(`Unable to delete void request: ${error.message}`);
     if (memoryStore) {
       memoryStore.voidRequests = memoryStore.voidRequests.filter((item) => item.id !== id);

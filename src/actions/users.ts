@@ -14,7 +14,9 @@ import {
   deleteOffRequestRecord,
   deleteStaffUserRecord,
   getFreshStore,
+  getOwnerAccounts,
   getStore,
+  initializeOwnerStore,
   insertLoginActivityRecord,
   insertOffRequestRecord,
   updateLoginActivityTimeRecord,
@@ -165,7 +167,9 @@ export async function createStaffUser(input: {
     return { error: "Owners can only create Barista accounts." };
   }
 
-  const store = await getFreshStore();
+  const store = session.role === "admin" && parsed.role === "cashier"
+    ? { users: await getOwnerAccounts() }
+    : await getFreshStore();
   const taken = (store.users ?? []).some(
     (user) => user.username.trim().toLowerCase() === parsed.username.toLowerCase(),
   );
@@ -177,8 +181,13 @@ export async function createStaffUser(input: {
   }
 
   try {
+    const id = parsed.role === "cashier"
+      ? staffUserId(parsed.username)
+      : session.role === "cashier"
+        ? `${session.userId}--${staffUserId(parsed.username)}`
+        : staffUserId(parsed.username);
     await upsertStaffUserRecord({
-      id: staffUserId(parsed.username),
+      id,
       name: parsed.name,
       username: parsed.username,
       email: parsed.email,
@@ -186,7 +195,11 @@ export async function createStaffUser(input: {
       role: parsed.role,
       password: parsed.password ?? "",
       passwordChanged: false,
+      ownerId: parsed.role === "cashier" ? id : session.role === "cashier" ? session.userId : undefined,
     });
+    if (parsed.role === "cashier") {
+      await initializeOwnerStore(id);
+    }
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Could not create staff account." };
   }
@@ -208,7 +221,7 @@ export async function updateStaffUser(input: {
   const parsed = parseStaff({ ...input, requirePassword: false });
   if ("error" in parsed) return parsed;
 
-  const store = await getFreshStore();
+  const store = await getFreshStore({ ownerId: null });
   const user = (store.users ?? []).find((entry) => entry.id === input.id);
   if (!user) {
     return { error: "Staff account not found." };
@@ -259,7 +272,7 @@ export async function updateStaffUser(input: {
 
 export async function updateOwnerPermissions(userId: string, permissions: StaffPermissions) {
   await requireAdmin();
-  const store = await getFreshStore();
+  const store = await getFreshStore({ ownerId: userId });
   const user = store.users.find((entry) => entry.id === userId);
   if (!user || user.role !== "cashier") return { error: "Owner account not found." };
 

@@ -14,9 +14,12 @@ import {
   getFreshStore,
   insertLoginActivityRecord,
   insertVoidRequestRecord,
+  legacyOwnerId,
+  ownerIdForStaff,
   upsertStaffUserRecord,
   updateStore,
   voidOrderAtomic,
+  withStoreTenant,
 } from "@/lib/store";
 import type { InventoryItem, Order, OrderItem, VoidRequest } from "@/lib/types";
 import { parseRole } from "@/lib/users";
@@ -84,7 +87,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const store = await getFreshStore();
+    const store = await getFreshStore({ ownerId: claims.role === "cashier" ? claims.userId : await legacyOwnerId() });
     if (claims.role === "cashier") {
       const cashier = store.users.find((user) => user.id === claims.userId);
       if (!cashier?.passwordChanged) {
@@ -178,7 +181,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const store = await getFreshStore();
+      const store = await getFreshStore({ ownerId: null });
       const user = store.users.find(
         (entry) =>
           entry.role === "cashier" &&
@@ -241,7 +244,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const store = await getFreshStore();
+      const store = await getFreshStore({ ownerId: null });
       const user = store.users.find(
         (entry) => entry.role === "cashier" && entry.username.trim().toLowerCase() === username,
       );
@@ -274,7 +277,9 @@ export async function POST(req: NextRequest) {
       }
 
       const updatedUser = user.email?.trim() ? user : { ...user, email };
-      if (!user.email?.trim()) await upsertStaffUserRecord(updatedUser);
+      if (!user.email?.trim()) {
+        await withStoreTenant(user.id, () => upsertStaffUserRecord({ ...updatedUser, ownerId: user.id }));
+      }
       if (!updatedUser.passwordChanged) {
         return NextResponse.json(
           { ok: true, requiresPasswordChange: true },
@@ -316,7 +321,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const store = await getFreshStore();
+      const store = await getFreshStore({ ownerId: null });
       const identifier = username || email;
       const user = store.users.find(
         (u) =>
@@ -382,6 +387,15 @@ export async function POST(req: NextRequest) {
         { status: 401, headers: corsHeaders },
       );
     }
+    const tenantId = claims.role === "cashier"
+      ? claims.userId
+      : claims.role === "barista"
+        ? await ownerIdForStaff(claims.userId)
+        : await legacyOwnerId();
+    if (!tenantId) {
+      return NextResponse.json({ ok: false, error: "This account is not assigned to an Owner store." }, { status: 403, headers: corsHeaders });
+    }
+    return await withStoreTenant(tenantId, async () => {
     if (claims.role === "barista" && action !== "barista_shift_activity") {
       return NextResponse.json(
         { ok: false, error: "This account cannot perform POS actions." },
@@ -807,6 +821,7 @@ export async function POST(req: NextRequest) {
       { ok: false, error: `Unknown sync action: ${action}` },
       { status: 400, headers: corsHeaders },
     );
+    });
   } catch (error) {
     return NextResponse.json(
       {
