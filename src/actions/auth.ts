@@ -39,7 +39,7 @@ export async function requestOwnerPasswordReset(
   }
 
   const gmailAppPassword = process.env.GMAIL_APP_PASSWORD?.replace(/\s/g, "");
-  const sender = "help.syoorra@gmail.com";
+  const sender = "help.synorra@gmail.com";
   if (!gmailAppPassword || !isRealSupabaseConfigured()) {
     console.error("Owner password recovery is missing Gmail SMTP or Supabase server configuration.");
     return { error: "Password recovery is not available right now. Please try again later." };
