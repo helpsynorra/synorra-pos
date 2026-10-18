@@ -242,7 +242,7 @@ export async function login(
     return { error: "Only Owner accounts can log in to the back-office." };
   }
   if (selectedRole === "cashier" && !user.passwordChanged) {
-    return { error: "First log in to the POS with your email, username, and temporary password to set your new password." };
+    return { error: "First log in to the POS with your email and temporary password to set your new password." };
   }
 
   const session = toSession({ ...user, role: effectiveRole });
@@ -272,16 +272,16 @@ export async function changeCashierPassword(
     return { error: "This password change request is no longer valid. Sign in again." };
   }
 
-  const username = String(formData.get("username") ?? "").trim().toLowerCase();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
   const newPassword = String(formData.get("newPassword") ?? "");
-  if (username !== session.username.toLowerCase() || !password || newPassword.length < 8) {
-    return { error: "Enter your username, current password, and a new password with at least 8 characters." };
+  if (!email || !password || newPassword.length < 8) {
+    return { error: "Enter your email, current password, and a new password with at least 8 characters." };
   }
 
   const store = await getFreshStore();
   const user = store.users.find((entry) => entry.id === session.userId && entry.role === "cashier");
-  if (!user || user.username.toLowerCase() !== username || !user.password) {
+  if (!user || user.email?.trim().toLowerCase() !== email || !user.password) {
     return { error: "Those credentials do not match this Owner account." };
   }
   const passwordMatches = user.password.startsWith("$2")

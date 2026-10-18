@@ -387,6 +387,7 @@ function makeSeriesItems(
       name,
       price: sizes[0]?.price ?? 0,
       category,
+      image: MENU_IMAGES[0].src,
       available: true,
       addons: sizes.map((size) => ({
         id: `size:${size.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,

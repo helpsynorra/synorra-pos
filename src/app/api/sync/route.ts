@@ -121,6 +121,17 @@ export async function GET(request: NextRequest) {
             email: u.email,
             name: u.name,
             passwordChanged: Boolean(u.passwordChanged),
+            permissions: u.permissions ?? {
+              stockInventory: true,
+              restockInventory: true,
+              connectLabels: true,
+              connectReceipt: true,
+              printButton: true,
+              customerReceipt: true,
+              cupLabels: true,
+              dineIn: true,
+              takeOut: true,
+            },
             role: resolvedRole,
             title:
               u.title ||
@@ -157,20 +168,19 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "change_cashier_password") {
-      const username = String(body.username ?? "").trim().toLowerCase();
       const email = String(body.email ?? "").trim().toLowerCase();
       const password = String(body.password ?? "");
       const newPassword = String(body.newPassword ?? "");
-      if (!username || !email || !password || newPassword.length < 8) {
+      if (!email || !password || newPassword.length < 8) {
         return NextResponse.json(
-          { ok: false, error: "Enter email, username, current password, and a new password with at least 8 characters." },
+          { ok: false, error: "Enter email, current password, and a new password with at least 8 characters." },
           { status: 400, headers: corsHeaders },
         );
       }
 
       const store = await getFreshStore();
       const user = store.users.find(
-        (entry) => entry.username.toLowerCase() === username && entry.role === "cashier",
+        (entry) => entry.email?.trim().toLowerCase() === email && entry.role === "cashier",
       );
       const currentPasswordMatches = user?.password
         ? user.password.startsWith("$2")
@@ -222,19 +232,23 @@ export async function POST(req: NextRequest) {
       const username = String(body.username ?? "").trim().toLowerCase();
       const email = String(body.email ?? "").trim().toLowerCase();
       const password = String(body.password ?? "");
-      if (!username || !password) {
+      if ((!username && !email) || !password) {
         return NextResponse.json(
-          { ok: false, error: "Enter username and password." },
+          { ok: false, error: "Enter your Owner email and current password." },
           { status: 400, headers: corsHeaders },
         );
       }
 
       const store = await getFreshStore();
-      const user = store.users.find(
-        (u) =>
-          u.username.trim().toLowerCase() === username ||
-          u.name.trim().toLowerCase() === username,
-      );
+      const user = username
+        ? store.users.find(
+            (u) =>
+              u.username.trim().toLowerCase() === username ||
+              u.name.trim().toLowerCase() === username,
+          )
+        : store.users.find(
+            (u) => u.role === "cashier" && u.email?.trim().toLowerCase() === email,
+          );
       if (!user || !user.password) {
         console.warn("POS staff authentication rejected: staff account unavailable.");
         return NextResponse.json(

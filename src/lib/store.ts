@@ -154,11 +154,11 @@ function uniqueCategories(values: string[]): string[] {
 
 function normalizeStore(store: StoreData): StoreData {
   store.pos = {
-    isOpen: false,
-    openedAt: null,
-    openedBy: null,
-    inventoryFeaturesEnabled: true,
     ...(store.pos ?? {}),
+    isOpen: store.pos?.isOpen ?? false,
+    openedAt: store.pos?.openedAt ?? null,
+    openedBy: store.pos?.openedBy ?? null,
+    inventoryFeaturesEnabled: store.pos?.inventoryFeaturesEnabled ?? true,
     printButtonHidden: store.pos?.printButtonHidden === true,
   };
   const categoryByProduct = new Map(

@@ -37,7 +37,7 @@ export function LoginForm({ role }: { role: "admin" | "cashier" }) {
             Welcome back
           </h1>
           <p className="mt-2 text-sm leading-6 text-slate-500">
-            Sign in with your Owner email and password.
+            Sign in with your Email and Password.
           </p>
         </div>
       ) : null}
@@ -45,7 +45,7 @@ export function LoginForm({ role }: { role: "admin" | "cashier" }) {
       {isCashier ? (
         <label className="block text-left text-sm">
           <span className={`mb-2 block tracking-wide uppercase ${labelColor}`}>
-            Owner email
+            Email
           </span>
           <input
             name="email"
@@ -74,7 +74,7 @@ export function LoginForm({ role }: { role: "admin" | "cashier" }) {
 
       <label className="block text-left text-sm">
         <span className={`mb-2 block tracking-wide uppercase ${labelColor}`}>
-          Password
+            {isCashier ? "Password" : "Password"}
         </span>
         <input
           name="password"
@@ -155,7 +155,7 @@ function PasswordResetRequest({ onBack }: { onBack: () => void }) {
           autoComplete="email"
           autoFocus
           required
-          className={field}
+          className={lightField}
         />
       </label>
       {state.error ? <p className="text-sm text-red-600">{state.error}</p> : null}
