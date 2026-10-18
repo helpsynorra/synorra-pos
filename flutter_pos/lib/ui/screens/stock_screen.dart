@@ -240,6 +240,8 @@ class _StockScreenState extends State<StockScreen> {
         syncDotColor: widget.controller.syncService.isOnline
             ? const Color(0xFF22C55E)
             : const Color(0xFF9CA3AF),
+        showPrintButton: !widget.controller.syncService.printButtonHidden &&
+            widget.controller.syncService.hasPermission('printButton'),
         onPrint: widget.onPrint,
         onSync: () => widget.controller.syncService.syncAll(),
       ),

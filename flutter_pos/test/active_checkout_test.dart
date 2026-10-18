@@ -73,6 +73,7 @@ class _RefreshingSessionSupabaseService
     String password, {
     String email = '',
     bool persistSessionToken = true,
+    Duration timeout = const Duration(seconds: 12),
   }) async {
     authCalls++;
     if (!authStarted.isCompleted) authStarted.complete();

@@ -81,7 +81,7 @@ function CustomerSlip({ ticket }: { ticket: ReceiptTicket }) {
     <>
       <div className="flex justify-center">
         <Image
-          src="/images/logo.jpg"
+          src="/images/logo.png"
           alt={CAFE.name}
           width={64}
           height={64}

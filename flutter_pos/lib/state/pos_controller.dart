@@ -184,10 +184,8 @@ class PosController extends ChangeNotifier {
     _refreshFromLocalStorage();
     _restoreActiveStaff();
 
-    // Immediately sync with centralized Admin database
-    await syncService.syncAll();
-    _refreshFromLocalStorage();
-    _restoreActiveStaff();
+    // Load cached POS data immediately, then refresh it without blocking login.
+    unawaited(syncService.syncAll());
   }
 
   void _restoreActiveCheckout() {

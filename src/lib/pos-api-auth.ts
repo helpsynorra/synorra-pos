@@ -15,7 +15,10 @@ function signingKey() {
   const key = configured && configured.length >= 32
     ? configured
     : process.env.SUPABASE_SECRET_KEY?.trim() ||
-      process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+      process.env.commume_coffee_SUPABASE_SECRET_KEY?.trim() ||
+      process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
+      process.env.commume_coffee_SUPABASE_SERVICE_ROLE_KEY?.trim() ||
+      process.env.SUPABASE_SERVICE_ROLE_KEY_2?.trim();
   if (!key || key.length < 32) {
     throw new Error("A server-only signing key is required for the POS API.");
   }

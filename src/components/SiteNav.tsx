@@ -50,7 +50,7 @@ export function SiteNav() {
             className="flex shrink-0 items-center gap-2 px-3 py-1.5 text-sm font-bold tracking-tight lowercase text-white"
           >
             <Image
-              src="/images/logo.jpg"
+              src="/images/logo.png"
               alt=""
               width={28}
               height={28}
@@ -74,7 +74,7 @@ export function SiteNav() {
             className="flex items-center gap-2 px-1.5 text-[15px] font-bold tracking-tight lowercase"
           >
             <Image
-              src="/images/logo.jpg"
+              src="/images/logo.png"
               alt=""
               width={28}
               height={28}

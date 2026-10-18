@@ -245,6 +245,13 @@ export async function login(
     return { error: "First log in to the POS with your email and temporary password to set your new password." };
   }
 
+  if (!user.password.startsWith("$2")) {
+    await upsertStaffUserRecord({
+      ...user,
+      password: await bcrypt.hash(user.password, 12),
+    });
+  }
+
   const session = toSession({ ...user, role: effectiveRole });
   await recordAuthActivity({
     userId: user.id,

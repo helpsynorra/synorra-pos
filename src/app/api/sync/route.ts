@@ -239,9 +239,14 @@ export async function POST(req: NextRequest) {
       const email = String(body.email ?? "").trim().toLowerCase();
       const username = String(body.username ?? "").trim().toLowerCase();
       const password = String(body.password ?? "");
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !username || !password) {
+      if (
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+        !username ||
+        !password ||
+        body.legalAccepted !== true
+      ) {
         return NextResponse.json(
-          { ok: false, error: "Enter a valid email, the issued Owner username, and password." },
+          { ok: false, error: "Enter valid Owner details and accept the Terms of Use and Privacy Policy." },
           { status: 400, headers: corsHeaders },
         );
       }

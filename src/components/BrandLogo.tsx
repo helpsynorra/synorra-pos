@@ -29,7 +29,7 @@ export function BrandLogo({
       className={`inline-flex flex-col ${align === "center" ? "items-center" : "items-start"}`}
     >
       <Image
-        src="/images/logo.jpg"
+        src="/images/logo.png"
         alt={CAFE.name}
         width={320}
         height={320}

@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -419,6 +421,7 @@ class _PosScreenState extends State<PosScreen> {
 
   void _navigateToRestock() {
     if (!widget.controller.syncService.hasPermission('restockInventory'))
+      // ignore: curly_braces_in_flow_control_structures
       return;
     _navigateToPos();
     Navigator.of(context).push(

@@ -290,8 +290,19 @@ export function LandingPage() {
             <p className="mt-4 text-sm leading-6 text-white/75">Staff accounts<br />Owner-managed permissions</p>
           </div>
         </div>
-        <div className="mx-auto mt-10 flex max-w-7xl flex-col gap-3 border-t border-white/10 pt-5 text-[10px] tracking-[0.12em] text-white/35 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mx-auto mt-10 flex max-w-7xl flex-col gap-4 border-t border-white/10 pt-5 text-[10px] tracking-[0.12em] text-white/35 sm:flex-row sm:items-center sm:justify-between">
           <p>© {new Date().getFullYear()} Synorra POS</p>
+          <nav aria-label="Legal" className="flex flex-wrap gap-x-5 gap-y-2">
+            <Link href="/terms" className="transition hover:text-white">
+              Terms of Use
+            </Link>
+            <Link href="/privacy" className="transition hover:text-white">
+              Privacy Policy
+            </Link>
+            <Link href="/cookies" className="transition hover:text-white">
+              Cookie Policy
+            </Link>
+          </nav>
           <p>Sales · Inventory · Team</p>
         </div>
       </footer>

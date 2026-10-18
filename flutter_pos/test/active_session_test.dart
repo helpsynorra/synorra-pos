@@ -410,6 +410,7 @@ class _StubSupabaseService extends SupabaseService {
     String password, {
     String email = '',
     bool persistSessionToken = true,
+    Duration timeout = const Duration(seconds: 12),
   }) async =>
       authResponse;
 

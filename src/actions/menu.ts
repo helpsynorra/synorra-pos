@@ -232,7 +232,7 @@ export async function createMenuItem(formData: FormData) {
   );
 
   const id = menuItemId(name);
-  let image = "/images/logo.jpg";
+  let image = "/images/logo.png";
   if (photo) {
     const saved = await saveMenuPhoto(photo, id);
     if ("error" in saved && saved.error) return { error: saved.error };
@@ -304,7 +304,7 @@ export async function updateMenuItem(formData: FormData) {
     styles: stylesFromForm(formData, category, categoryType, existing),
     addons,
     types: typesFromForm(formData),
-    image: uploaded ?? (isSafeImage(existing.image) ? existing.image : "/images/logo.jpg"),
+    image: uploaded ?? (isSafeImage(existing.image) ? existing.image : "/images/logo.png"),
   });
   refresh();
   return { ok: true };

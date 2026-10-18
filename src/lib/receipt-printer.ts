@@ -18,7 +18,7 @@ async function receiptLogo(): Promise<Uint8Array | undefined> {
       const image = new window.Image();
       image.onload = () => resolve(image);
       image.onerror = () => reject(new Error("Could not load receipt logo."));
-      image.src = "/images/logo.jpg";
+      image.src = "/images/logo.png";
     });
     const size = 144;
     const canvas = document.createElement("canvas");

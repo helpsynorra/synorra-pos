@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../config/supabase_config.dart';
@@ -68,6 +69,7 @@ class SupabaseService {
   Future<Map<String, dynamic>> _postPosApi(
     Map<String, dynamic> payload, {
     bool authenticated = true,
+    Duration timeout = const Duration(seconds: 12),
   }) async {
     final response = await http
         .post(
@@ -75,7 +77,7 @@ class SupabaseService {
           headers: _posApiHeaders(authenticated: authenticated),
           body: jsonEncode(payload),
         )
-        .timeout(const Duration(seconds: 12));
+        .timeout(timeout);
     final decoded = response.body.isEmpty
         ? <String, dynamic>{}
         : Map<String, dynamic>.from(jsonDecode(response.body) as Map);
@@ -124,11 +126,15 @@ class SupabaseService {
     String password, {
     String email = '',
     bool persistSessionToken = true,
+    Duration timeout = const Duration(seconds: 12),
   }) async {
     final cleanUsername = username.trim().toLowerCase();
 
     if ((cleanUsername.isEmpty && email.trim().isEmpty) || password.isEmpty) {
-      return {'ok': false, 'error': 'Please enter your email and current password'};
+      return {
+        'ok': false,
+        'error': 'Please enter your email and current password'
+      };
     }
 
     try {
@@ -140,6 +146,7 @@ class SupabaseService {
           'password': password,
         },
         authenticated: false,
+        timeout: timeout,
       );
       if (result['ok'] == true && result['requiresPasswordChange'] == true) {
         return {'ok': true, 'requiresPasswordChange': true};
@@ -182,9 +189,27 @@ class SupabaseService {
         'error': 'Unable to verify credentials while offline',
         'offline': true,
       };
+    } on SocketException catch (e) {
+      debugPrint('POS API auth network error (API: $_posApiUri): $e');
+      return {
+        'ok': false,
+        'error': 'Unable to verify credentials while offline',
+        'offline': true,
+      };
+    } on HandshakeException catch (e) {
+      debugPrint('POS API auth network error (API: $_posApiUri): $e');
+      return {
+        'ok': false,
+        'error': 'Unable to verify credentials while offline',
+        'offline': true,
+      };
     } catch (e) {
       debugPrint('POS API auth error (API: $_posApiUri): $e');
-      return {'ok': false, 'error': 'Unable to verify credentials'};
+      final error = e.toString().replaceFirst('Exception: ', '').trim();
+      return {
+        'ok': false,
+        'error': error.isEmpty ? 'Unable to verify credentials' : error,
+      };
     }
   }
 
@@ -194,12 +219,16 @@ class SupabaseService {
     required String email,
     required String username,
     required String password,
+    required bool legalAccepted,
     bool persistSessionToken = true,
   }) async {
-    if (email.trim().isEmpty || username.trim().isEmpty || password.isEmpty) {
+    if (email.trim().isEmpty ||
+        username.trim().isEmpty ||
+        password.isEmpty ||
+        !legalAccepted) {
       return {
         'ok': false,
-        'error': 'Please enter your Owner email, username, and password',
+        'error': 'Complete the required registration fields and legal consent.',
       };
     }
 
@@ -210,6 +239,7 @@ class SupabaseService {
           'email': email.trim().toLowerCase(),
           'username': username.trim().toLowerCase(),
           'password': password,
+          'legalAccepted': legalAccepted,
         },
         authenticated: false,
       );
@@ -224,7 +254,10 @@ class SupabaseService {
       }
       final token = result['token']?.toString() ?? '';
       if (token.isEmpty) {
-        return {'ok': false, 'error': 'The POS API did not return a session token.'};
+        return {
+          'ok': false,
+          'error': 'The POS API did not return a session token.'
+        };
       }
       if (persistSessionToken) _posApiToken = token;
       return {
@@ -236,10 +269,18 @@ class SupabaseService {
       };
     } on TimeoutException catch (e) {
       debugPrint('New Owner login network error (API: $_posApiUri): $e');
-      return {'ok': false, 'error': 'Internet is required for New Login.', 'offline': true};
+      return {
+        'ok': false,
+        'error': 'Internet is required for New Login.',
+        'offline': true
+      };
     } on http.ClientException catch (e) {
       debugPrint('New Owner login network error (API: $_posApiUri): $e');
-      return {'ok': false, 'error': 'Internet is required for New Login.', 'offline': true};
+      return {
+        'ok': false,
+        'error': 'Internet is required for New Login.',
+        'offline': true
+      };
     } catch (e) {
       debugPrint('New Owner login error (API: $_posApiUri): $e');
       return {'ok': false, 'error': 'Unable to verify Owner credentials'};
@@ -262,20 +303,35 @@ class SupabaseService {
         authenticated: false,
       );
       if (result['ok'] != true || result['user'] is! Map) {
-        return {'ok': false, 'error': result['error'] ?? 'Could not change password.'};
+        return {
+          'ok': false,
+          'error': result['error'] ?? 'Could not change password.'
+        };
       }
       final token = result['token']?.toString() ?? '';
-      if (token.isEmpty) return {'ok': false, 'error': 'The POS API did not return a session token.'};
+      if (token.isEmpty) {
+        return {
+          'ok': false,
+          'error': 'The POS API did not return a session token.'
+        };
+      }
       _posApiToken = token;
       return {
         'ok': true,
-        'user': StaffUser.fromJson(Map<String, dynamic>.from(result['user'] as Map)),
+        'user': StaffUser.fromJson(
+            Map<String, dynamic>.from(result['user'] as Map)),
         'token': token,
       };
     } on TimeoutException {
-      return {'ok': false, 'error': 'Connect to the internet to set your new password.'};
+      return {
+        'ok': false,
+        'error': 'Connect to the internet to set your new password.'
+      };
     } on http.ClientException {
-      return {'ok': false, 'error': 'Connect to the internet to set your new password.'};
+      return {
+        'ok': false,
+        'error': 'Connect to the internet to set your new password.'
+      };
     } catch (e) {
       return {'ok': false, 'error': 'Could not change password: $e'};
     }
@@ -288,7 +344,8 @@ class SupabaseService {
       'confirmation': 'DELETE MY ACCOUNT',
     });
     if (result['ok'] != true) {
-      throw Exception(result['error']?.toString() ?? 'Unable to delete account.');
+      throw Exception(
+          result['error']?.toString() ?? 'Unable to delete account.');
     }
   }
 

@@ -1,7 +1,7 @@
 import type { DrinkStyle, MenuAddon, MenuCategoryType, MenuItem, OrderAddon, OrderItem } from "@/lib/types";
 
 export const MENU_IMAGES = [
-  { label: "Logo", src: "/images/logo.jpg" },
+  { label: "Logo", src: "/images/logo.png" },
 ] as const;
 
 export const MENU_CATEGORIES = [
@@ -146,7 +146,7 @@ const MENU_IMAGE_OPTIONS_MARK = "#cc-opt=";
 export function stripMenuImage(image: string) {
   const value = String(image ?? "");
   const index = value.indexOf(MENU_IMAGE_OPTIONS_MARK);
-  return (index >= 0 ? value.slice(0, index) : value) || "/images/logo.jpg";
+  return (index >= 0 ? value.slice(0, index) : value) || "/images/logo.png";
 }
 
 // Read-side fallback for legacy "#cc-opt=<base64url JSON>" marker rows that

@@ -1,3 +1,6 @@
+// ignore_for_file: prefer_const_constructors
+
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -6,6 +9,7 @@ import 'package:flutter/services.dart';
 import '../../models/staff_user.dart';
 import '../../state/pos_controller.dart';
 import 'pos_screen.dart';
+import 'support_account_screens.dart';
 
 class LoginScreen extends StatefulWidget {
   final PosController controller;
@@ -28,6 +32,7 @@ class _LoginScreenState extends State<LoginScreen>
   bool _isTransitioning = false;
   bool _mustChangePassword = false;
   bool _isNewLogin = false;
+  bool _acceptedLegal = false;
   bool _obscurePassword = true;
   bool _obscureNewPassword = true;
   late final AnimationController _launchController;
@@ -96,6 +101,11 @@ class _LoginScreenState extends State<LoginScreen>
           : 'Please enter your Owner email and password');
       return;
     }
+    if (_isNewLogin && !_acceptedLegal) {
+      setState(() => _errorMessage =
+          'Please agree to the Terms of Use and acknowledge the Privacy Policy.');
+      return;
+    }
     if (_mustChangePassword && newPassword.length < 8) {
       setState(() =>
           _errorMessage = 'Your new password must be at least 8 characters');
@@ -112,6 +122,11 @@ class _LoginScreenState extends State<LoginScreen>
     final cachedStaffProfile =
         widget.controller.localStorage.getActiveStaffProfile();
     final cachedPosApiToken = widget.controller.localStorage.getPosApiToken();
+    final hasCachedStaffAccount = widget.controller.localStorage.getStaff().any(
+        (staff) =>
+            staff.role == 'cashier' &&
+            (staff.email.trim().toLowerCase() == email ||
+                staff.username.trim().toLowerCase() == email));
     widget.controller.supabaseService.setPosApiToken(null);
 
     StaffUser? authenticatedStaff;
@@ -128,6 +143,7 @@ class _LoginScreenState extends State<LoginScreen>
                 email: email,
                 username: username,
                 password: password,
+                legalAccepted: _acceptedLegal,
                 persistSessionToken: false,
               )
             : await widget.controller.supabaseService.authenticateStaff(
@@ -135,6 +151,7 @@ class _LoginScreenState extends State<LoginScreen>
                 password,
                 email: email,
                 persistSessionToken: false,
+                timeout: Duration(seconds: hasCachedStaffAccount ? 5 : 12),
               );
     if (authRes['requiresPasswordChange'] == true) {
       setState(() {
@@ -172,7 +189,8 @@ class _LoginScreenState extends State<LoginScreen>
       return;
     }
 
-    if (!authenticatedStaff.canLoginToPos) {
+    final authenticatedUser = authenticatedStaff;
+    if (!authenticatedUser.canLoginToPos) {
       setState(() {
         _isLoading = false;
         _errorMessage = 'This account cannot log in to the POS app.';
@@ -182,11 +200,11 @@ class _LoginScreenState extends State<LoginScreen>
 
     if (authRes['ok'] == true) {
       await widget.controller.localStorage.saveOfflineStaffCredential(
-          authenticatedStaff.id, _mustChangePassword ? newPassword : password);
+          authenticatedUser.id, _mustChangePassword ? newPassword : password);
     }
 
     final authenticatedToken = authRes['token']?.toString();
-    final canReuseCachedToken = cachedStaffProfile?.id == authenticatedStaff.id;
+    final canReuseCachedToken = cachedStaffProfile?.id == authenticatedUser.id;
     final posApiToken =
         authenticatedToken != null && authenticatedToken.isNotEmpty
             ? authenticatedToken
@@ -196,24 +214,34 @@ class _LoginScreenState extends State<LoginScreen>
 
     await widget.controller.localStorage.clearActiveStaffId();
     await widget.controller.localStorage.saveActiveStaffSession(
-      authenticatedStaff,
+      authenticatedUser,
       posApiToken: posApiToken,
     );
+    if (authRes['ok'] == true) {
+      final cachedStaff = widget.controller.localStorage.getStaff()
+        ..removeWhere((staff) => staff.id == authenticatedUser.id);
+      cachedStaff.insert(0, authenticatedUser);
+      await widget.controller.localStorage.saveStaff(cachedStaff);
+    }
     widget.controller.supabaseService.setPosApiToken(posApiToken);
     if (authenticatedToken != null && authenticatedToken.isNotEmpty) {
-      await widget.controller.syncService.syncAll();
-      await widget.controller.init();
+      unawaited(widget.controller.syncService.syncAll());
     }
-    widget.controller.currentUser = authenticatedStaff;
+    widget.controller.currentUser = authenticatedUser;
     widget.controller.isPosOpen = true;
-    await widget.controller
-        .recordStaffSessionEvent(authenticatedStaff, 'login');
+    unawaited(widget.controller
+        .recordStaffSessionEvent(authenticatedUser, 'login')
+        .catchError((_) {}));
 
     await authAnimation;
     if (mounted) {
       setState(() {
         _isTransitioning = true;
         _mustChangePassword = false;
+        _emailController.clear();
+        _usernameController.clear();
+        _passwordController.clear();
+        _newPasswordController.clear();
       });
       FocusManager.instance.primaryFocus?.unfocus();
       await _successController.forward(from: 0);
@@ -248,10 +276,17 @@ class _LoginScreenState extends State<LoginScreen>
       _usernameController.clear();
       _passwordController.clear();
       _errorMessage = null;
+      _acceptedLegal = false;
     });
     if (isNewLogin) {
       await widget.controller.clearActiveSession();
     }
+  }
+
+  void _openLegalDocument(String title) {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => LegalDocumentScreen(title: title),
+    ));
   }
 
   @override
@@ -323,8 +358,7 @@ class _LoginScreenState extends State<LoginScreen>
                 IgnorePointer(
                   ignoring: reveal < 1 || _isLoading || _isTransitioning,
                   child: Opacity(
-                    opacity: reveal *
-                        (_isLoading || _isTransitioning ? 0 : 1),
+                    opacity: reveal * (_isLoading || _isTransitioning ? 0 : 1),
                     child: ImageFiltered(
                       imageFilter:
                           ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
@@ -612,6 +646,73 @@ class _LoginScreenState extends State<LoginScreen>
                                           onSubmitted: (_) => _handleLogin(),
                                         ),
                                       ],
+                                      if (_isNewLogin && !_mustChangePassword)
+                                        Padding(
+                                          padding:
+                                              const EdgeInsets.only(top: 8),
+                                          child: Row(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              SizedBox(
+                                                width: 28,
+                                                height: 30,
+                                                child: Checkbox(
+                                                  value: _acceptedLegal,
+                                                  activeColor: navy,
+                                                  materialTapTargetSize:
+                                                      MaterialTapTargetSize
+                                                          .shrinkWrap,
+                                                  visualDensity:
+                                                      VisualDensity.compact,
+                                                  onChanged: _isLoading
+                                                      ? null
+                                                      : (value) => setState(() {
+                                                            _acceptedLegal =
+                                                                value ?? false;
+                                                            _errorMessage =
+                                                                null;
+                                                          }),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 10),
+                                              Expanded(
+                                                child: Padding(
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                          top: 3),
+                                                  child: Wrap(
+                                                    spacing: 4,
+                                                    runSpacing: 2,
+                                                    crossAxisAlignment:
+                                                        WrapCrossAlignment
+                                                            .center,
+                                                    children: [
+                                                      const Text(
+                                                        'I agree to Synorra',
+                                                        style: TextStyle(
+                                                            color: Color(
+                                                                0xFF53627F),
+                                                            fontSize: 13),
+                                                      ),
+                                                      _legalLink(
+                                                          'Terms of Use'),
+                                                      const Text(
+                                                        'and have read and acknowledged',
+                                                        style: TextStyle(
+                                                            color: Color(
+                                                                0xFF53627F),
+                                                            fontSize: 13),
+                                                      ),
+                                                      _legalLink(
+                                                          'Privacy Policy'),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
                                       if (_errorMessage != null) ...[
                                         const SizedBox(height: 14),
                                         Text(
@@ -784,6 +885,18 @@ class _LoginScreenState extends State<LoginScreen>
         ),
       );
 
+  Widget _legalLink(String title) => InkWell(
+        onTap: () => _openLegalDocument(title),
+        child: Text(
+          title,
+          style: const TextStyle(
+            color: Color(0xFF1677FF),
+            fontSize: 13,
+            decoration: TextDecoration.underline,
+          ),
+        ),
+      );
+
   InputDecoration _inputDecoration({
     required String hint,
     required IconData icon,
@@ -905,13 +1018,12 @@ class _SignInTransitionOverlay extends StatelessWidget {
         child: RepaintBoundary(
           child: DecoratedBox(
             decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+              gradient: RadialGradient(
+                center: Alignment(0, -0.08),
+                radius: 1.05,
                 colors: [
-                  Color(0xFF111A2D),
-                  Color(0xFF1B294A),
-                  Color(0xFF263B65),
+                  Colors.white,
+                  Color(0xFFF4F6FA),
                 ],
               ),
             ),
@@ -919,45 +1031,132 @@ class _SignInTransitionOverlay extends StatelessWidget {
               animation: Listenable.merge([animation, splitAnimation]),
               builder: (context, _) {
                 final split = splitAnimation.value;
+                final screenWidth = MediaQuery.sizeOf(context).width;
+                final compact = MediaQuery.sizeOf(context).height < 780;
+                final logoSize =
+                    (screenWidth * 0.28).clamp(112.0, 156.0).toDouble();
                 return Center(
-                  child: Opacity(
-                    opacity: 1 - split,
-                    child: Transform.translate(
-                      offset: Offset(0, -split * 220),
-                      child: Transform.scale(
-                        scale: 0.96 +
-                            Curves.easeOutBack.transform(
-                                  animation.value
-                                      .clamp(0.0, 1.0)
-                                      .toDouble(),
-                                ) *
-                                0.04,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _SplitBrandCard(progress: split),
-                            const SizedBox(height: 34),
-                            SizedBox(
-                              width: 58,
-                              height: 58,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 3,
-                                color: const Color(0xFFE06A73),
-                                backgroundColor: const Color(0x29FFFFFF),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 560),
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 28),
+                      padding: EdgeInsets.all(screenWidth < 420 ? 24 : 36),
+                      decoration: BoxDecoration(
+                        color: const Color.fromRGBO(255, 255, 255, 0.92),
+                        borderRadius: BorderRadius.circular(32),
+                        border: Border.all(color: const Color(0xFFDCE5F0)),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x1A263B65),
+                            blurRadius: 42,
+                            offset: Offset(0, 20),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: logoSize,
+                            height: logoSize,
+                            padding: EdgeInsets.all(logoSize * 0.13),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(42),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x1A263B65),
+                                  blurRadius: 36,
+                                  offset: Offset(0, 18),
+                                ),
+                              ],
+                            ),
+                            child: Image.asset(
+                              'lib/src/images/logo_wordmark.png',
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                          SizedBox(height: compact ? 12 : 16),
+                          const Text(
+                            'SYNORRA - POS',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Color(0xFF1B294A),
+                              fontSize: 20,
+                              fontWeight: FontWeight.w500,
+                              letterSpacing: 1.4,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Build Smarter. Grow Together.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Color(0xFF9AA6BF),
+                              fontSize: 15,
+                              letterSpacing: 0.4,
+                            ),
+                          ),
+                          SizedBox(height: compact ? 32 : 46),
+                          Opacity(
+                            opacity: 1 - split,
+                            child: Transform.translate(
+                              offset: Offset(0, -split * 48),
+                              child: Transform.scale(
+                                scale: 0.82 +
+                                    Curves.easeOutBack.transform(
+                                          animation.value
+                                              .clamp(0.0, 1.0)
+                                              .toDouble(),
+                                        ) *
+                                        0.18,
+                                child: Column(
+                                  children: [
+                                    Container(
+                                      width: 124,
+                                      height: 112,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF1B294A),
+                                        borderRadius: BorderRadius.circular(28),
+                                        boxShadow: const [
+                                          BoxShadow(
+                                            color: Color(0x33203255),
+                                            blurRadius: 26,
+                                            offset: Offset(0, 12),
+                                          ),
+                                        ],
+                                      ),
+                                      child: const Icon(
+                                        Icons.point_of_sale_rounded,
+                                        color: Colors.white,
+                                        size: 62,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 24),
+                                    const SizedBox(
+                                      width: 25,
+                                      height: 25,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.5,
+                                        color: Color(0xFFB6404B),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    const Text(
+                                      'Opening your POS terminal',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: Color(0xFF53627F),
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                            const SizedBox(height: 22),
-                            const Text(
-                              'Preparing your workspace',
-                              style: TextStyle(
-                                color: Color(0xFFE5EAF3),
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -967,73 +1166,6 @@ class _SignInTransitionOverlay extends StatelessWidget {
           ),
         ),
       );
-}
-
-class _SplitBrandCard extends StatelessWidget {
-  final double progress;
-
-  const _SplitBrandCard({required this.progress});
-
-  @override
-  Widget build(BuildContext context) {
-    Widget card() => Container(
-          width: 216,
-          height: 142,
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(32),
-            boxShadow: const [
-              BoxShadow(color: Color(0x1A263B65), blurRadius: 35, offset: Offset(0, 14)),
-            ],
-          ),
-          child: Image.asset('lib/src/images/logo_wordmark.png', fit: BoxFit.contain),
-        );
-
-    if (progress <= 0) return card();
-    return SizedBox(
-      width: 216,
-      height: 142,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          ClipPath(
-            clipper: const _LogoHalfClipper(topHalf: true),
-            child: Transform.translate(
-              offset: Offset(0, -progress * 150),
-              child: card(),
-            ),
-          ),
-          ClipPath(
-            clipper: const _LogoHalfClipper(topHalf: false),
-            child: Transform.translate(
-              offset: Offset(0, progress * 150),
-              child: card(),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LogoHalfClipper extends CustomClipper<Path> {
-  final bool topHalf;
-
-  const _LogoHalfClipper({required this.topHalf});
-
-  @override
-  Path getClip(Size size) => Path()
-    ..addRect(Rect.fromLTRB(
-      0,
-      topHalf ? 0 : size.height / 2,
-      size.width,
-      topHalf ? size.height / 2 : size.height,
-    ));
-
-  @override
-  bool shouldReclip(covariant _LogoHalfClipper oldClipper) =>
-      oldClipper.topHalf != topHalf;
 }
 
 class _LaunchBrandOverlay extends StatelessWidget {

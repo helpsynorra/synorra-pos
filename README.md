@@ -1,11 +1,10 @@
-<<<<<<< HEAD
-git status# Synorra POS
+# Synorra POS
 
 Next.js (App Router) + TypeScript project.
 
 ## Getting Started
 
-```bashs
+```bash
 npm run dev
 ```
 
@@ -31,6 +30,3 @@ and persisted print jobs.
 The initial adapters target ESC/POS over Web Serial. Actual USB, Bluetooth,
 network, or vendor-specific printer support may require another transport or
 protocol adapter; checkout and persisted job logic should not need to change.
-=======
-# synorra_pos
->>>>>>> 515e43b8116c8fe2182e339b1fdafa2bdca47801
