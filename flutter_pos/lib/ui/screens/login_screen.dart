@@ -236,38 +236,38 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 20),
                       ],
                       if (!_mustChangePassword) ...[
-                      const Text(
-                        'EMAIL',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
+                        const Text(
+                          'EMAIL',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _emailController,
-                        keyboardType: TextInputType.emailAddress,
-                        style: const TextStyle(color: Colors.white),
-                        cursorColor: Colors.white,
-                        decoration: _inputDecoration(),
-                      ),
-                      const SizedBox(height: 22),
-                      const Text(
-                        'USERNAME',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          style: const TextStyle(color: Colors.white),
+                          cursorColor: Colors.white,
+                          decoration: _inputDecoration(),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _usernameController,
-                        style: const TextStyle(color: Colors.white),
-                        cursorColor: Colors.white,
-                        decoration: _inputDecoration(),
-                      ),
+                        const SizedBox(height: 22),
+                        const Text(
+                          'USERNAME',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _usernameController,
+                          style: const TextStyle(color: Colors.white),
+                          cursorColor: Colors.white,
+                          decoration: _inputDecoration(),
+                        ),
                       ],
                       if (_mustChangePassword) ...[
                         const SizedBox(height: 22),
@@ -291,23 +291,23 @@ class _LoginScreenState extends State<LoginScreen> {
                       ],
                       const SizedBox(height: 28),
                       if (!_mustChangePassword) ...[
-                      const Text(
-                        'CURRENT PASSWORD',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
+                        const Text(
+                          'CURRENT PASSWORD',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _passwordController,
-                        obscureText: true,
-                        style: const TextStyle(color: Colors.white),
-                        cursorColor: Colors.white,
-                        decoration: _inputDecoration(),
-                        onSubmitted: (_) => _handleLogin(),
-                      ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _passwordController,
+                          obscureText: true,
+                          style: const TextStyle(color: Colors.white),
+                          cursorColor: Colors.white,
+                          decoration: _inputDecoration(),
+                          onSubmitted: (_) => _handleLogin(),
+                        ),
                       ],
                       if (_errorMessage != null) ...[
                         const SizedBox(height: 12),
