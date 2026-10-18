@@ -182,6 +182,10 @@ begin
     execute format('drop trigger if exists owner_scope_guard on public.%I', v_table);
     execute format('create trigger owner_scope_guard before insert or update or delete on public.%I for each row execute function public.apply_owner_scope()', v_table);
   end loop;
+  if to_regclass('public.admin_ledger_entries') is not null then
+    execute 'drop trigger if exists owner_scope_guard on public.admin_ledger_entries';
+    execute 'create trigger owner_scope_guard before insert or update or delete on public.admin_ledger_entries for each row execute function public.apply_owner_scope()';
+  end if;
 end $$;
 
 create or replace function public.next_ticket_no(p_at timestamptz default now())
@@ -190,6 +194,7 @@ declare
   v_owner text := current_setting('synorra.owner_id', true);
   v_day date := (p_at at time zone 'Asia/Manila')::date;
   v_n integer;
+  v_reusable integer;
 begin
   if v_owner is null or v_owner = '' then
     select id into v_owner from public.staff_users where role = 'cashier' order by created_at nulls first, id limit 1;
@@ -197,9 +202,22 @@ begin
   end if;
   insert into public.ticket_counters(owner_id, day, n) values(v_owner, v_day, 0)
     on conflict(owner_id, day) do nothing;
-  select coalesce(max(case when regexp_replace(ticket_no, '^#', '') ~ '^[0-9]+$' then regexp_replace(ticket_no, '^#', '')::integer else null end), 0) + 1
-    into v_n from public.orders
-   where owner_id = v_owner and (created_at at time zone 'Asia/Manila')::date = v_day;
+  select min(case when regexp_replace(o.ticket_no, '^#', '') ~ '^[0-9]+$' then regexp_replace(o.ticket_no, '^#', '')::integer else null end)
+    into v_reusable from public.orders o
+   where o.owner_id = v_owner and (o.created_at at time zone 'Asia/Manila')::date = v_day and o.voided
+     and not exists (
+       select 1 from public.orders a where a.owner_id = v_owner
+        and (a.created_at at time zone 'Asia/Manila')::date = v_day and not a.voided
+        and case when regexp_replace(a.ticket_no, '^#', '') ~ '^[0-9]+$' then regexp_replace(a.ticket_no, '^#', '')::integer else null end
+          = case when regexp_replace(o.ticket_no, '^#', '') ~ '^[0-9]+$' then regexp_replace(o.ticket_no, '^#', '')::integer else null end
+     );
+  if v_reusable is not null then
+    v_n := v_reusable;
+  else
+    select coalesce(max(case when regexp_replace(ticket_no, '^#', '') ~ '^[0-9]+$' then regexp_replace(ticket_no, '^#', '')::integer else null end), 0) + 1
+      into v_n from public.orders
+     where owner_id = v_owner and (created_at at time zone 'Asia/Manila')::date = v_day;
+  end if;
   update public.ticket_counters set n = v_n where owner_id = v_owner and day = v_day;
   return lpad(v_n::text, 3, '0');
 end $$;

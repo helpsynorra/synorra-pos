@@ -911,11 +911,13 @@ export async function getAdminLedgerEntries(): Promise<{
   error?: string;
 }> {
   const supabase = supabaseAdmin();
+  const ownerId = await activeOwnerId() ?? POS_STATE_ID;
   const entries: AdminLedgerEntry[] = [];
   for (let offset = 0; ; offset += 1000) {
     const { data, error } = await supabase
       .from("admin_ledger_entries")
       .select("id, kind, title, reason, amount, entry_date")
+      .eq("owner_id", ownerId)
       .order("entry_date", { ascending: false })
       .order("created_at", { ascending: false })
       .range(offset, offset + 999);
@@ -944,10 +946,12 @@ export async function insertAdminLedgerEntryRecord(
   entry: Omit<AdminLedgerEntry, "date">,
 ): Promise<AdminLedgerEntry> {
   const supabase = supabaseAdmin();
+  const ownerId = await activeOwnerId() ?? POS_STATE_ID;
   const { data, error } = await supabase
     .from("admin_ledger_entries")
     .insert({
       id: entry.id,
+      owner_id: ownerId,
       kind: entry.kind,
       title: entry.title,
       reason: entry.reason,
@@ -968,10 +972,12 @@ export async function importAdminLedgerEntries(
     throw new Error("Too many legacy ledger entries to import at once.");
   }
   const supabase = supabaseAdmin();
+  const ownerId = await activeOwnerId() ?? POS_STATE_ID;
   if (entries.length > 0) {
     const { error } = await supabase.from("admin_ledger_entries").upsert(
       entries.map((entry) => ({
         id: entry.id,
+        owner_id: ownerId,
         kind: entry.kind,
         title: entry.title,
         reason: entry.reason,
@@ -996,6 +1002,7 @@ export async function deleteAdminLedgerEntryRecord(
     .delete()
     .eq("id", id)
     .eq("kind", kind)
+    .eq("owner_id", await activeOwnerId() ?? POS_STATE_ID)
     .select("id")
     .maybeSingle();
   if (error) {
@@ -1828,10 +1835,13 @@ export async function upsertStaffUserRecord(user: StaffUser): Promise<void> {
       { onConflict: "id" },
     );
     if (error) throw new Error(`Unable to save staff user: ${error.message}`);
-    if (memoryStore) {
-      const idx = memoryStore.users.findIndex((u) => u.id === normalized.id);
-      if (idx >= 0) memoryStore.users[idx] = normalized;
-      else memoryStore.users.push(normalized);
+    const tenantOwnerId = normalized.role === "cashier" ? normalized.id : normalized.ownerId ?? activeOwner ?? POS_STATE_ID;
+    const tenantCache = tenantStoreCache.get(tenantOwnerId);
+    if (tenantCache) {
+      const idx = tenantCache.store.users.findIndex((u) => u.id === normalized.id);
+      if (idx >= 0) tenantCache.store.users[idx] = normalized;
+      else tenantCache.store.users.push(normalized);
+      cacheStore(tenantOwnerId, tenantCache.store);
     }
   });
 }
