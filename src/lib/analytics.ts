@@ -277,19 +277,33 @@ export function totalDiscount(orders: Order[]): number {
 
 export function paymentStats(orders: Order[]) {
   const buckets: Record<
-    PaymentMethod,
+    Exclude<PaymentMethod, `split:${string}`>,
     { method: PaymentMethod; label: string; count: number; sales: number }
   > = {
     cash: { method: "cash", label: paymentLabel("cash"), count: 0, sales: 0 },
     gcash: { method: "gcash", label: paymentLabel("gcash"), count: 0, sales: 0 },
     maya: { method: "maya", label: paymentLabel("maya"), count: 0, sales: 0 },
   };
+  const splitBucket = {
+    method: "split" as PaymentMethod,
+    label: "Split",
+    count: 0,
+    sales: 0,
+  };
   for (const order of liveOrders(orders)) {
     const method = parsePayment(order.paymentMethod);
-    buckets[method].count += 1;
-    buckets[method].sales += order.total;
+    if (method === "cash" || method === "gcash" || method === "maya") {
+      buckets[method].count += 1;
+      buckets[method].sales += order.total;
+    } else {
+      splitBucket.count += 1;
+      splitBucket.sales += order.total;
+    }
   }
-  return PAYMENT_METHODS.map((item) => buckets[item.id]);
+  return [
+    ...PAYMENT_METHODS.map((item) => buckets[item.id]),
+    ...(splitBucket.count ? [splitBucket] : []),
+  ];
 }
 
 export function promoStats(orders: Order[]) {

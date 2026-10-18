@@ -80,7 +80,7 @@ export type OrderItem = {
   serviceMode?: "dine-in" | "take-out";
 };
 
-export type PaymentMethod = "cash" | "gcash" | "maya";
+export type PaymentMethod = "cash" | "gcash" | "maya" | `split:${string}`;
 
 export type Order = {
   id: string;
