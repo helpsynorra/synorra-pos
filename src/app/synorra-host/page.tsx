@@ -18,7 +18,7 @@ export default async function SynorraHostPage() {
     .filter((user) =>
       ![user.username, user.title, user.name, user.role].some((value) =>
         /^manager$/i.test(value.trim()),
-      ) && user.role !== "barista",
+      ) && user.role === "cashier",
     )
     .map(publicUser);
 
@@ -52,7 +52,14 @@ export default async function SynorraHostPage() {
         loginActivity={store.loginActivity ?? []}
         offRequests={store.offRequests ?? []}
         showShiftTabs={false}
+        showAdminRole={false}
+        showOwnerRole={true}
         showBaristaRole={false}
+        showEditStaffButton={false}
+        showDeleteStaffButton={false}
+        printButtonHidden={store.pos.printButtonHidden}
+        inventoryFeaturesEnabled={store.pos.inventoryFeaturesEnabled}
+        showPrintButtonToggle={true}
       />
     </main>
   );

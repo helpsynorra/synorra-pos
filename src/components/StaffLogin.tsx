@@ -1,8 +1,18 @@
 import { BrandLogo } from "@/components/BrandLogo";
+import { BackOfficeAuthShell } from "@/components/BackOfficeAuthShell";
 import { LoginForm } from "@/components/LoginForm";
 
 export function StaffLogin({ role = "admin" }: { role?: "admin" | "cashier" }) {
   const isCashier = role === "cashier";
+
+  if (isCashier) {
+    return (
+      <BackOfficeAuthShell eyebrow="Owner back-office">
+        <LoginForm role={role} />
+      </BackOfficeAuthShell>
+    );
+  }
+
   return (
     <main className="relative flex min-h-svh items-center justify-center overflow-hidden px-4 py-12 sm:px-6 sm:py-16">
       <div

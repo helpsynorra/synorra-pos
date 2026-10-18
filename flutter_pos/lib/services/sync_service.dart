@@ -21,6 +21,7 @@ class SyncService extends ChangeNotifier {
   SyncStatus status = SyncStatus.idle;
   bool isOnline = true;
   bool inventoryFeaturesEnabled = true;
+  bool printButtonHidden = false;
   String? lastError;
   DateTime? lastSyncTime;
   int pendingCount = 0;
@@ -270,6 +271,7 @@ class SyncService extends ChangeNotifier {
         if (posState is Map) {
           inventoryFeaturesEnabled =
               posState['inventoryFeaturesEnabled'] != false;
+          printButtonHidden = posState['printButtonHidden'] == true;
         }
         if (fullStore['menu'] is List) {
           final freshMenu = (fullStore['menu'] as List)

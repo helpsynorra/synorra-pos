@@ -223,10 +223,21 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
               child: SingleChildScrollView(
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final isPhone = constraints.maxWidth < 600;
+                      final panelWidth = isPhone
+                          ? constraints.maxWidth
+                          : (constraints.maxWidth - 16) / 2;
+                      final slipWidth =
+                          (panelWidth - 28).clamp(180.0, 260.0).toDouble();
+
+                      return Wrap(
+                        spacing: 16,
+                        runSpacing: 16,
+                        children: [
+                      SizedBox(
+                        width: panelWidth,
                         child: Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
@@ -271,15 +282,15 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                                 child: _ThermalSlip(
                                   title: 'Customer copy',
                                   content: receiptText,
-                                  width: 260,
+                                  width: slipWidth,
                                 ),
                               ),
                             ],
                           ),
                         ),
                       ),
-                      const SizedBox(width: 16),
-                      Expanded(
+                      SizedBox(
+                        width: panelWidth,
                         child: Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
@@ -346,7 +357,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                                         selectedOrder,
                                         labelItemIndexes[labelIndex],
                                       ),
-                                      width: 260,
+                                      width: slipWidth,
                                     ),
                                   ),
                                 ],
@@ -354,7 +365,9 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                           ),
                         ),
                       ),
-                    ],
+                        ],
+                      );
+                    },
                   ),
                 ),
               ),

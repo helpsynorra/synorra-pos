@@ -14,7 +14,6 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
-  final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _newPasswordController = TextEditingController();
   String? _errorMessage;
@@ -38,7 +37,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
-    _usernameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _newPasswordController.dispose();
@@ -47,12 +45,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _handleLogin() async {
     final email = _emailController.text.trim().toLowerCase();
-    final username = _usernameController.text.trim().toLowerCase();
     final password = _passwordController.text;
     final newPassword = _newPasswordController.text;
 
-    if (email.isEmpty || username.isEmpty || password.isEmpty) {
-      setState(() => _errorMessage = 'Please enter email, username, and password');
+    if (email.isEmpty || password.isEmpty) {
+      setState(() => _errorMessage = 'Please enter your Owner email and current password');
       return;
     }
     if (_mustChangePassword && newPassword.length < 8) {
@@ -76,12 +73,11 @@ class _LoginScreenState extends State<LoginScreen> {
     final authRes = _mustChangePassword
         ? await widget.controller.supabaseService.changeCashierPassword(
             email: email,
-            username: username,
             password: password,
             newPassword: newPassword,
           )
         : await widget.controller.supabaseService.authenticateStaff(
-            username,
+            '',
             password,
             email: email,
             persistSessionToken: false,
@@ -98,7 +94,7 @@ class _LoginScreenState extends State<LoginScreen> {
       authenticatedStaff = authRes['user'] as StaffUser;
     } else if (authRes['offline'] == true) {
       authenticatedStaff = await widget.controller
-          .authenticateCachedStaffOffline(username, password);
+          .authenticateCachedStaffOffline(email: email, password: password);
       if (authenticatedStaff != null &&
           (authenticatedStaff.email != email || !authenticatedStaff.passwordChanged)) {
         authenticatedStaff = null;
@@ -253,21 +249,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           decoration: _inputDecoration(),
                         ),
                         const SizedBox(height: 22),
-                        const Text(
-                          'USERNAME',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _usernameController,
-                          style: const TextStyle(color: Colors.white),
-                          cursorColor: Colors.white,
-                          decoration: _inputDecoration(),
-                        ),
                       ],
                       if (_mustChangePassword) ...[
                         const SizedBox(height: 22),

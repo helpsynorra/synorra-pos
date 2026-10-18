@@ -127,8 +127,8 @@ class SupabaseService {
   }) async {
     final cleanUsername = username.trim().toLowerCase();
 
-    if (cleanUsername.isEmpty || password.isEmpty) {
-      return {'ok': false, 'error': 'Please enter username and password'};
+    if ((cleanUsername.isEmpty && email.trim().isEmpty) || password.isEmpty) {
+      return {'ok': false, 'error': 'Please enter your email and current password'};
     }
 
     try {
@@ -190,7 +190,6 @@ class SupabaseService {
 
   Future<Map<String, dynamic>> changeCashierPassword({
     required String email,
-    required String username,
     required String password,
     required String newPassword,
   }) async {
@@ -199,7 +198,6 @@ class SupabaseService {
         {
           'action': 'change_cashier_password',
           'email': email.trim().toLowerCase(),
-          'username': username.trim().toLowerCase(),
           'password': password,
           'newPassword': newPassword,
         },

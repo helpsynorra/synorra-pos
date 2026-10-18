@@ -10,12 +10,14 @@ import {
   setOffRequestStatus,
   updateStaffSessionTimes,
   deleteStaffSession,
+  updateOwnerPermissions,
   updateStaffUser,
 } from "@/actions/users";
 import type { PublicStaffUser } from "@/lib/users";
+import { DEFAULT_STAFF_PERMISSIONS } from "@/lib/users";
 import { phDateString, phDateTimeInputValue, phDateTimeLabel } from "@/lib/datetime";
 import { pairLoginSessions, type StaffSession } from "@/lib/staff-sessions";
-import type { LoginActivity, OffRequest, Session } from "@/lib/types";
+import type { LoginActivity, OffRequest, Session, StaffPermissions } from "@/lib/types";
 
 const field =
   "w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm text-neutral-900 outline-none transition-all focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900";
@@ -27,21 +29,46 @@ type UserManagerProps = {
   offRequests: OffRequest[];
   showShiftTabs?: boolean;
   showAdminRole?: boolean;
+  showOwnerRole?: boolean;
   showBaristaRole?: boolean;
+  showBaristasOnly?: boolean;
+  showEditStaffButton?: boolean;
+  showDeleteStaffButton?: boolean;
+  baristaOnlyStaffActions?: boolean;
+  printButtonHidden?: boolean;
+  inventoryFeaturesEnabled?: boolean;
+  showLoginLinksTab?: boolean;
+  showPrintButtonToggle?: boolean;
 };
 
-type SubTab = "staff" | "inout" | "off" | "gates";
+type SubTab = "staff" | "inout" | "off" | "gates" | "settings";
 type StaffRole = "Admin" | "Barista" | "Owner";
 
-export function UserManager({ users, session, loginActivity, offRequests, showShiftTabs = true, showAdminRole = true, showBaristaRole = true }: UserManagerProps) {
+const permissionOptions: { key: keyof StaffPermissions; label: string }[] = [
+  { key: "stockInventory", label: "Stock inventory" },
+  { key: "restockInventory", label: "Restock inventory" },
+  { key: "connectLabels", label: "Connect labels" },
+  { key: "connectReceipt", label: "Connect receipt" },
+  { key: "printButton", label: "Print button" },
+  { key: "customerReceipt", label: "Customer receipt" },
+  { key: "cupLabels", label: "Cup labels" },
+  { key: "dineIn", label: "Dine in" },
+  { key: "takeOut", label: "Take out" },
+];
+
+export function UserManager({ users, session, loginActivity, offRequests, showShiftTabs = true, showAdminRole = true, showOwnerRole = true, showBaristaRole = true, showBaristasOnly = false, showEditStaffButton = true, showDeleteStaffButton = true, baristaOnlyStaffActions = false, showLoginLinksTab = true, showPrintButtonToggle = true }: UserManagerProps) {
   const [tab, setTab] = useState<SubTab>("staff");
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<StaffRole>("Owner");
+  const [role, setRole] = useState<StaffRole>(showBaristasOnly ? "Barista" : "Owner");
   const [password, setPassword] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  const [permissionState, setPermissionState] = useState<Record<string, StaffPermissions>>(
+    () => Object.fromEntries(users.map((user) => [user.id, { ...DEFAULT_STAFF_PERMISSIONS, ...user.permissions }])),
+  );
+  const [selectedPermissionOwnerId, setSelectedPermissionOwnerId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [punchUserId, setPunchUserId] = useState("");
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
@@ -61,8 +88,14 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
     () => Array.from(new Map(users.map((user) => [user.id, user])).values()),
     [users],
   );
-  const editing = uniqueUsers.find((user) => user.id === editingId) ?? null;
-  const floorStaff = uniqueUsers.filter((user) => user.role !== "admin");
+  const visibleUsers = showBaristasOnly
+    ? uniqueUsers.filter((user) => user.role === "barista")
+    : uniqueUsers;
+  const ownerUsers = visibleUsers.filter((user) => user.role === "cashier");
+  const editing = visibleUsers.find((user) => user.id === editingId) ?? null;
+  const floorStaff = visibleUsers.filter((user) =>
+    baristaOnlyStaffActions ? user.role === "barista" : user.role !== "admin",
+  );
   const allSessions = useMemo(() => pairLoginSessions(loginActivity), [loginActivity]);
   const selectedStaffIsOnShift = allSessions.some(
     (shift) => shift.userId === punchUserId && !shift.logoutAt,
@@ -93,7 +126,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
     setName("");
     setUsername("");
     setEmail("");
-    setRole("Owner");
+    setRole(showBaristasOnly ? "Barista" : "Owner");
     setPassword("");
     setNotice(null);
     setTab("staff");
@@ -138,9 +171,10 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
               { id: "inout", label: "In / Out" },
               { id: "off", label: "Request off" },
               { id: "gates", label: "Login links" },
+              ...(showPrintButtonToggle ? [{ id: "settings" as const, label: "Settings" }] : []),
             ] as const
           )
-            .filter((entry) => showShiftTabs || (entry.id !== "inout" && entry.id !== "off"))
+            .filter((entry) => (showShiftTabs || (entry.id !== "inout" && entry.id !== "off")) && (showLoginLinksTab || entry.id !== "gates"))
             .map((entry) => (
             <button
               key={entry.id}
@@ -252,9 +286,9 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                 </div>
                 <div
                   className="grid gap-2"
-                  style={{ gridTemplateColumns: `repeat(${(showAdminRole ? 1 : 0) + 1 + (showBaristaRole ? 1 : 0)}, minmax(0, 1fr))` }}
+                  style={{ gridTemplateColumns: `repeat(${(showAdminRole ? 1 : 0) + (showOwnerRole ? 1 : 0) + (showBaristaRole ? 1 : 0)}, minmax(0, 1fr))` }}
                 >
-                  {([...(showAdminRole ? ["Admin" as const] : []), "Owner", ...(showBaristaRole ? ["Barista" as const] : [])] as const).map((id) => (
+                  {([...(showAdminRole ? ["Admin" as const] : []), ...(showOwnerRole ? ["Owner" as const] : []), ...(showBaristaRole ? ["Barista" as const] : [])] as const).map((id) => (
                     <button
                       key={id}
                       type="button"
@@ -278,7 +312,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
             ) : null}
 
             <div className="divide-y divide-neutral-100 overflow-hidden rounded-2xl border border-neutral-200 bg-white">
-              {uniqueUsers.map((user) => (
+              {visibleUsers.map((user) => (
                 <div key={user.id} className="flex items-center justify-between gap-3 px-4 py-4 sm:px-5">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -294,7 +328,19 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                     </p>
                   </div>
                   <div className="flex items-center gap-1">
-                    <button
+                    {user.role === "cashier" && showPrintButtonToggle ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedPermissionOwnerId(user.id);
+                          setTab("settings");
+                        }}
+                        className="rounded-full border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700 hover:border-black hover:text-black"
+                      >
+                        View Permissions
+                      </button>
+                    ) : null}
+                    {showEditStaffButton && (!baristaOnlyStaffActions || user.role === "barista") ? <button
                       type="button"
                       aria-label={`Edit ${user.name}`}
                       onClick={() => startEdit(user)}
@@ -304,8 +350,8 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                         <path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3Z" strokeWidth="1.7" strokeLinejoin="round" />
                         <path d="M13.5 6.5l3 3" strokeWidth="1.7" />
                       </svg>
-                    </button>
-                    <button
+                    </button> : null}
+                    {showDeleteStaffButton && (!baristaOnlyStaffActions || user.role === "barista") ? <button
                       type="button"
                       aria-label={`Delete ${user.name}`}
                       disabled={pending || user.id === session.userId}
@@ -325,7 +371,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                       <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor">
                         <path d="M5 7h14M10 7V5h4v2M8 7l1 12h6l1-12" strokeWidth="1.7" />
                       </svg>
-                    </button>
+                    </button> : null}
                   </div>
                 </div>
               ))}
@@ -685,11 +731,77 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
           </>
         ) : null}
 
+        {tab === "settings" ? (
+          <>
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight">{selectedPermissionOwnerId ? "Owner permissions" : "Settings"}</h1>
+              <p className="mt-1 text-sm text-neutral-500">
+                {selectedPermissionOwnerId ? "Choose which POS features this Owner account can use." : "Select an Owner to view their permissions."}
+              </p>
+            </div>
+            {!selectedPermissionOwnerId ? (
+              <div className="divide-y divide-neutral-100 overflow-hidden rounded-2xl border border-neutral-200 bg-white">
+                {ownerUsers.length === 0 ? (
+                  <p className="p-4 text-sm text-neutral-500">No Owner accounts found.</p>
+                ) : ownerUsers.map((owner) => (
+                  <div key={owner.id} className="flex items-center justify-between gap-3 px-4 py-4 sm:px-5">
+                    <p className="truncate text-sm font-medium">{owner.name}</p>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPermissionOwnerId(owner.id)}
+                      className="shrink-0 rounded-full border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700 hover:border-black hover:text-black"
+                    >
+                      View Permissions
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (() => {
+                const owner = ownerUsers.find((user) => user.id === selectedPermissionOwnerId);
+                if (!owner) return <p className="text-sm text-neutral-500">Owner account not found.</p>;
+                const permissions = permissionState[owner.id] ?? { ...DEFAULT_STAFF_PERMISSIONS, ...owner.permissions };
+                return (
+                  <section className="space-y-3 rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="font-semibold">{owner.name}</h2>
+                      <button type="button" onClick={() => setSelectedPermissionOwnerId(null)} className="text-xs font-medium text-neutral-600 hover:text-black">Back</button>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {permissionOptions.map(({ key, label }) => (
+                        <label key={key} className="flex cursor-pointer items-center gap-3 rounded-lg border border-neutral-200 px-3 py-2.5 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={permissions[key]}
+                            disabled={pending}
+                            onChange={(event) => {
+                              const next = { ...permissions, [key]: event.target.checked };
+                              setPermissionState((current) => ({ ...current, [owner.id]: next }));
+                              startTransition(async () => {
+                                const result = await updateOwnerPermissions(owner.id, next);
+                                if (result && "error" in result && result.error) {
+                                  setPermissionState((current) => ({ ...current, [owner.id]: permissions }));
+                                  setNotice(result.error);
+                                  return;
+                                }
+                                setNotice(null);
+                              });
+                            }}
+                            className="size-4 accent-black"
+                          />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                  </section>
+                );
+              })()}
+          </>
+        ) : null}
+
         {tab === "gates" ? (
           <>
             <h1 className="text-xl font-semibold tracking-tight">Login links</h1>
             <div className="space-y-3 rounded-2xl border border-neutral-200 bg-white p-4 text-sm sm:p-5">
-              <p><span className="font-medium">Synorra Host Admin:</span> /mouna1234</p>
               <p><span className="font-medium">Owner:</span> /back-office</p>
             </div>
           </>

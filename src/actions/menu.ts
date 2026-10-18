@@ -24,10 +24,10 @@ const PHOTO_TYPES: Record<string, string> = {
 };
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 
-async function requireAdmin() {
+async function requireMenuEditor() {
   const session = await getSession();
-  if (!session || session.role !== "admin") {
-    throw new Error("Only an admin can edit the menu.");
+  if (!session || (session.role !== "admin" && session.role !== "cashier")) {
+    throw new Error("Only an Owner or admin can edit the menu.");
   }
   return session;
 }
@@ -148,7 +148,7 @@ function typesFromForm(formData: FormData): string[] {
 }
 
 export async function addMenuCategory(name: string, type?: MenuCategoryType) {
-  await requireAdmin();
+  await requireMenuEditor();
   const category = name.trim();
   if (!category) {
     return { error: "Enter a category name." };
@@ -162,7 +162,7 @@ export async function addMenuCategory(name: string, type?: MenuCategoryType) {
 }
 
 export async function renameMenuCategory(from: string, to: string, type?: MenuCategoryType) {
-  await requireAdmin();
+  await requireMenuEditor();
   const prev = from.trim();
   const next = to.trim();
   if (!prev) return { error: "Category not found." };
@@ -185,7 +185,7 @@ export async function renameMenuCategory(from: string, to: string, type?: MenuCa
 }
 
 export async function deleteMenuCategory(name: string) {
-  await requireAdmin();
+  await requireMenuEditor();
   const category = name.trim();
   if (!category) return { error: "Category not found." };
 
@@ -207,10 +207,14 @@ export async function deleteMenuCategory(name: string) {
 }
 
 export async function createMenuItem(formData: FormData) {
-  await requireAdmin();
+  await requireMenuEditor();
   const name = readText(formData, "name");
   const category = readText(formData, "category");
-  const price = Number(readText(formData, "price"));
+  const addons = addonsFromForm(formData);
+  const sizes = addons.filter((addon) => addon.id.startsWith("size:"));
+  const price = sizes.length
+    ? Math.min(...sizes.map((size) => Number(size.price)))
+    : Number(readText(formData, "price"));
   const available = readText(formData, "available") !== "false";
   const photo = photoFromForm(formData);
 
@@ -218,7 +222,7 @@ export async function createMenuItem(formData: FormData) {
     return { error: "Name and category are required." };
   }
   if (!Number.isFinite(price) || price <= 0) {
-    return { error: "Enter a valid price." };
+    return { error: sizes.length ? "Enter a valid price for every size." : "Enter a valid price." };
   }
   const store = await getStore();
   const categoryType = normalizeMenuCategoryType(
@@ -244,7 +248,7 @@ export async function createMenuItem(formData: FormData) {
     image,
     available,
     styles: stylesFromForm(formData, category, categoryType),
-    addons: addonsFromForm(formData),
+    addons,
     types: typesFromForm(formData),
   });
   refresh();
@@ -252,11 +256,15 @@ export async function createMenuItem(formData: FormData) {
 }
 
 export async function updateMenuItem(formData: FormData) {
-  await requireAdmin();
+  await requireMenuEditor();
   const id = readText(formData, "id");
   const name = readText(formData, "name");
   const category = readText(formData, "category");
-  const price = Number(readText(formData, "price"));
+  const addons = addonsFromForm(formData);
+  const sizes = addons.filter((addon) => addon.id.startsWith("size:"));
+  const price = sizes.length
+    ? Math.min(...sizes.map((size) => Number(size.price)))
+    : Number(readText(formData, "price"));
   const available = readText(formData, "available") !== "false";
   const photo = photoFromForm(formData);
 
@@ -265,7 +273,7 @@ export async function updateMenuItem(formData: FormData) {
     return { error: "Name and category are required." };
   }
   if (!Number.isFinite(price) || price <= 0) {
-    return { error: "Enter a valid price." };
+    return { error: sizes.length ? "Enter a valid price for every size." : "Enter a valid price." };
   }
 
   let uploaded: string | undefined;
@@ -294,7 +302,7 @@ export async function updateMenuItem(formData: FormData) {
     categoryType,
     available,
     styles: stylesFromForm(formData, category, categoryType, existing),
-    addons: addonsFromForm(formData),
+    addons,
     types: typesFromForm(formData),
     image: uploaded ?? (isSafeImage(existing.image) ? existing.image : "/images/logo.jpg"),
   });
@@ -303,14 +311,14 @@ export async function updateMenuItem(formData: FormData) {
 }
 
 export async function setMenuItemAvailable(id: string, available: boolean) {
-  await requireAdmin();
+  await requireMenuEditor();
   await setMenuItemAvailableRecord(id, available);
   refresh();
   return { ok: true };
 }
 
 export async function deleteMenuItem(id: string) {
-  await requireAdmin();
+  await requireMenuEditor();
   await deleteMenuItemRecord(id);
   refresh();
   return { ok: true };

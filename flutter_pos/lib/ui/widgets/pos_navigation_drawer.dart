@@ -17,6 +17,7 @@ class PosNavigationDrawer extends StatelessWidget {
   final VoidCallback onOpenStock;
   final VoidCallback onOpenRestock;
   final VoidCallback onOpenBaristas;
+  final VoidCallback onOpenBackOffice;
   final VoidCallback onConnectLabels;
   final VoidCallback onConnectReceipt;
   final VoidCallback onSync;
@@ -37,6 +38,7 @@ class PosNavigationDrawer extends StatelessWidget {
     required this.onOpenStock,
     required this.onOpenRestock,
     required this.onOpenBaristas,
+    required this.onOpenBackOffice,
     required this.onConnectLabels,
     required this.onConnectReceipt,
     required this.onSync,
@@ -149,6 +151,11 @@ class PosNavigationDrawer extends StatelessWidget {
                         const Icon(Icons.badge_outlined, color: Colors.black87),
                     title: const Text('Baristas on shift'),
                     onTap: () => _closeThen(context, onOpenBaristas),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.open_in_new, color: Colors.black87),
+                    title: const Text('Back office'),
+                    onTap: () => _closeThen(context, onOpenBackOffice),
                   ),
                   const Padding(
                     padding: EdgeInsets.fromLTRB(16, 16, 16, 6),

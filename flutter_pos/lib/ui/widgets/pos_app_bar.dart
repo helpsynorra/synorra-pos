@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 class PosAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String? sectionTitle;
   final bool isVoidRequestPending;
+  final bool showPrintButton;
   final String syncStatus;
   final Color syncDotColor;
   final VoidCallback onPrint;
@@ -12,6 +13,7 @@ class PosAppBar extends StatelessWidget implements PreferredSizeWidget {
     super.key,
     this.sectionTitle,
     required this.isVoidRequestPending,
+    this.showPrintButton = true,
     required this.syncStatus,
     required this.syncDotColor,
     required this.onPrint,
@@ -70,19 +72,20 @@ class PosAppBar extends StatelessWidget implements PreferredSizeWidget {
         ],
       ),
       actions: [
-        TextButton(
-          onPressed: isVoidRequestPending ? null : onPrint,
-          style: TextButton.styleFrom(
-            foregroundColor: Colors.white,
-            disabledForegroundColor: Colors.white38,
-            side: const BorderSide(color: Colors.white54),
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            minimumSize: const Size(0, 32),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        if (showPrintButton)
+          TextButton(
+            onPressed: isVoidRequestPending ? null : onPrint,
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white,
+              disabledForegroundColor: Colors.white38,
+              side: const BorderSide(color: Colors.white54),
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              minimumSize: const Size(0, 32),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text('Print', style: TextStyle(fontSize: 12)),
           ),
-          child: const Text('Print', style: TextStyle(fontSize: 12)),
-        ),
-        const SizedBox(width: 6),
+        if (showPrintButton) const SizedBox(width: 6),
         InkWell(
           onTap: onSync,
           borderRadius: BorderRadius.circular(16),

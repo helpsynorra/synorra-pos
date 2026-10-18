@@ -456,6 +456,14 @@ export function PosClient({
     setMessage(null);
   }
 
+  function changeCartQuantity(key: string, delta: number) {
+    setCart((current) => current.flatMap((item) => {
+      if (cartLineKey(item) !== key) return [item];
+      const qty = Math.max(0, Math.min(99, item.qty + delta));
+      return qty === 0 ? [] : [{ ...item, qty }];
+    }));
+  }
+
   function confirmDrinkPick(pick: { item: MenuItem; style?: DrinkStyle; addons: Record<string, number> }) {
     addItem(
       pick.item.id,
@@ -1060,6 +1068,32 @@ export function PosClient({
                 </div>
               </div>
 
+              {normalizeMenuAddons(drinkPick.item).some((addon) => addon.id.startsWith("size:")) ? (
+                <div className="mt-5 space-y-2">
+                  <p className="text-sm text-neutral-500">Choose a size</p>
+                  {normalizeMenuAddons(drinkPick.item).filter((addon) => addon.id.startsWith("size:")).map((size) => {
+                    const on = (drinkPick.addons[size.id] ?? 0) > 0;
+                    return (
+                      <button
+                        key={size.id}
+                        type="button"
+                        onClick={() => setDrinkPick({
+                          ...drinkPick,
+                          addons: {
+                            ...Object.fromEntries(Object.entries(drinkPick.addons).filter(([id]) => !id.startsWith("size:"))),
+                            [size.id]: 1,
+                          },
+                        })}
+                        className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left ${on ? "border-black bg-neutral-50" : "border-neutral-200 bg-white"}`}
+                      >
+                        <span className="text-sm font-medium">{size.name}</span>
+                        <span className="text-sm text-neutral-500">₱{size.price}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+
               {normalizeMenuTypes(drinkPick.item).length > 0 ? (
                 <div className="mt-5 space-y-2">
                   <p className="text-sm text-neutral-500">Types (optional)</p>
@@ -1099,10 +1133,10 @@ export function PosClient({
                 </div>
               ) : null}
 
-              {normalizeMenuAddons(drinkPick.item).length > 0 ? (
+              {normalizeMenuAddons(drinkPick.item).some((addon) => !addon.id.startsWith("size:")) ? (
                 <div className="mt-5 space-y-2">
                   <p className="text-sm text-neutral-500">Add-ons</p>
-                  {normalizeMenuAddons(drinkPick.item).map((addon) => {
+                  {normalizeMenuAddons(drinkPick.item).filter((addon) => !addon.id.startsWith("size:")).map((addon) => {
                     const qty = drinkPick.addons[addon.id] ?? 0;
                     const on = qty > 0;
                     const canQty = addonAllowsQty(addon);
@@ -1184,7 +1218,9 @@ export function PosClient({
               <button
                 type="button"
                 disabled={
-                  normalizeMenuStyles(drinkPick.item).length > 1 && !drinkPick.style
+                  (normalizeMenuStyles(drinkPick.item).length > 1 && !drinkPick.style) ||
+                  (normalizeMenuAddons(drinkPick.item).some((addon) => addon.id.startsWith("size:")) &&
+                    !Object.entries(drinkPick.addons).some(([id, qty]) => id.startsWith("size:") && qty > 0))
                 }
                 onClick={() => {
                   const q = drinkPick.qty ?? 1;
@@ -1647,7 +1683,7 @@ export function PosClient({
                 cart.map((item) => (
                   <li
                     key={cartLineKey(item)}
-                    className="grid grid-cols-[1fr_auto_auto] items-start gap-x-3 border-b border-neutral-100 py-1.5 last:border-none"
+                    className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-2 border-b border-neutral-100 py-1.5 last:border-none"
                   >
                     <div className="min-w-0">
                       <p className="truncate text-xs">{drinkDisplayName(item)}</p>
@@ -1657,7 +1693,26 @@ export function PosClient({
                         </p>
                       ) : null}
                     </div>
-                    <span className="w-16 text-center text-xs">{item.qty}</span>
+                    <div className="flex w-[116px] items-center justify-center gap-1">
+                      <button
+                        type="button"
+                        aria-label={`Decrease ${item.name} quantity`}
+                        onClick={() => changeCartQuantity(cartLineKey(item), -1)}
+                        className="flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full border border-neutral-300 bg-white text-xl leading-none text-neutral-900 active:bg-neutral-100"
+                      >
+                        −
+                      </button>
+                      <span className="min-w-5 text-center text-sm font-semibold tabular-nums">{item.qty}</span>
+                      <button
+                        type="button"
+                        aria-label={`Increase ${item.name} quantity`}
+                        disabled={item.qty >= 99}
+                        onClick={() => changeCartQuantity(cartLineKey(item), 1)}
+                        className="flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full border border-neutral-300 bg-white text-xl leading-none text-neutral-900 active:bg-neutral-100 disabled:opacity-40"
+                      >
+                        +
+                      </button>
+                    </div>
                     <span className="w-16 text-right text-xs">
                       {formatMoney(cartLineUnitPrice(item) * item.qty)}
                     </span>

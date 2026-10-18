@@ -33,12 +33,20 @@ class _DrinkOptionsDialogState extends State<DrinkOptionsDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final addonsList = widget.item.addons;
+    final sizesList = widget.item.addons
+        .where((addon) => addon.id.startsWith('size:'))
+        .toList();
+    final addonsList = widget.item.addons
+        .where((addon) => !addon.id.startsWith('size:'))
+        .toList();
 
     double extraTotal = 0;
-    for (final addon in addonsList) {
-      final q = _addonQuantities[addon.name] ?? 0;
-      extraTotal += addon.price * q;
+    for (final addon in widget.item.addons) {
+      final q = _addonQuantities[addon.id] ?? 0;
+      final price = addon.id.startsWith('size:')
+          ? addon.price - widget.item.price
+          : addon.price;
+      extraTotal += price * q;
     }
     final unitPrice = widget.item.price + extraTotal;
     final totalPrice = unitPrice * _qty;
@@ -152,6 +160,44 @@ class _DrinkOptionsDialogState extends State<DrinkOptionsDialog> {
                 ],
 
                 // Dynamic Add-ons Section (Only shown when configured in Admin for this item)
+                if (sizesList.isNotEmpty) ...[
+                  const Text(
+                    'SIZE',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.8,
+                      color: SynorraTheme.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ...sizesList.map((size) {
+                    final selected = (_addonQuantities[size.id] ?? 0) > 0;
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(size.name),
+                      subtitle: Text('₱${size.price.toStringAsFixed(0)}'),
+                      trailing: Radio<String>(
+                        value: size.id,
+                        groupValue: sizesList.any((entry) => (_addonQuantities[entry.id] ?? 0) > 0)
+                            ? sizesList.firstWhere((entry) => (_addonQuantities[entry.id] ?? 0) > 0).id
+                            : null,
+                        onChanged: (value) {
+                          if (value == null) return;
+                          setState(() {
+                            for (final entry in sizesList) {
+                              _addonQuantities.remove(entry.id);
+                            }
+                            _addonQuantities[value] = 1;
+                          });
+                        },
+                      ),
+                      selected: selected,
+                    );
+                  }),
+                  const SizedBox(height: 12),
+                ],
+
                 if (addonsList.isNotEmpty) ...[
                   const Text(
                     'ADD-ONS & MODIFIERS',
@@ -171,7 +217,7 @@ class _DrinkOptionsDialogState extends State<DrinkOptionsDialog> {
                       separatorBuilder: (_, __) => const Divider(height: 8),
                       itemBuilder: (context, index) {
                         final addon = addonsList[index];
-                        final currentQty = _addonQuantities[addon.name] ?? 0;
+                        final currentQty = _addonQuantities[addon.id] ?? 0;
                         return Padding(
                           padding: const EdgeInsets.symmetric(vertical: 4),
                           child: Row(
@@ -206,10 +252,10 @@ class _DrinkOptionsDialogState extends State<DrinkOptionsDialog> {
                                       onPressed: () {
                                         setState(() {
                                           if (currentQty > 1) {
-                                            _addonQuantities[addon.name] =
+                                            _addonQuantities[addon.id] =
                                                 currentQty - 1;
                                           } else {
-                                            _addonQuantities.remove(addon.name);
+                                            _addonQuantities.remove(addon.id);
                                           }
                                         });
                                       },
@@ -236,7 +282,7 @@ class _DrinkOptionsDialogState extends State<DrinkOptionsDialog> {
                                         final maxAllowed =
                                             addon.qtyEnabled ? addon.maxQty : 9;
                                         if (currentQty < maxAllowed) {
-                                          _addonQuantities[addon.name] =
+                                          _addonQuantities[addon.id] =
                                               currentQty + 1;
                                         }
                                       });
@@ -262,7 +308,7 @@ class _DrinkOptionsDialogState extends State<DrinkOptionsDialog> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    if (addonsList.isNotEmpty)
+                    if (addonsList.isNotEmpty || sizesList.isNotEmpty)
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -298,27 +344,35 @@ class _DrinkOptionsDialogState extends State<DrinkOptionsDialog> {
                     const SizedBox(width: 12),
                     Flexible(
                       child: ElevatedButton(
-                        onPressed: () {
+                        onPressed: sizesList.isNotEmpty &&
+                                !sizesList.any((size) =>
+                                    (_addonQuantities[size.id] ?? 0) > 0)
+                            ? null
+                            : () {
                           final addons = <OrderAddonSelection>[];
-                          _addonQuantities.forEach((name, qty) {
+                          _addonQuantities.forEach((id, qty) {
                             final addonDef = addonsList
-                                .where((a) => a.name == name)
+                                .where((a) => a.id == id)
                                 .firstOrNull;
-                            if (addonDef != null && qty > 0) {
+                            final sizeDef = sizesList.where((a) => a.id == id).firstOrNull;
+                            final selectedDef = addonDef ?? sizeDef;
+                            if (selectedDef != null && qty > 0) {
                               addons.add(OrderAddonSelection(
-                                id: addonDef.id,
-                                name: addonDef.name,
+                                id: selectedDef.id,
+                                name: selectedDef.name,
                                 qty: qty,
-                                price: addonDef.price,
-                                inventoryItemId: addonDef.inventoryItemId,
-                                usageAmount: addonDef.usageAmount,
-                                usageUnit: addonDef.usageUnit,
+                                price: selectedDef.id.startsWith('size:')
+                                    ? selectedDef.price - widget.item.price
+                                    : selectedDef.price,
+                                inventoryItemId: selectedDef.inventoryItemId,
+                                usageAmount: selectedDef.usageAmount,
+                                usageUnit: selectedDef.usageUnit,
                               ));
                             }
                           });
                           widget.onConfirm(_selectedStyle, addons, _qty);
                           Navigator.pop(context);
-                        },
+                              },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: SynorraTheme.primary,
                           foregroundColor: Colors.white,

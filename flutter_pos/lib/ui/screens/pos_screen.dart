@@ -78,6 +78,27 @@ class _PosScreenState extends State<PosScreen> {
     }
   }
 
+  Future<void> _openBackOffice() async {
+    final uri = Uri.parse('https://synorra-pos.vercel.app/back-office');
+    try {
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open Back office.')),
+        );
+      }
+    } on PlatformException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open Back office.')),
+        );
+      }
+    }
+  }
+
   Future<void> _openPrinterPicker(PrinterRole role) async {
     await Future<void>.delayed(Duration.zero);
     if (!mounted) return;
@@ -240,7 +261,7 @@ class _PosScreenState extends State<PosScreen> {
     );
   }
 
-  Future<void> _handleProceedOrder() async {
+  Future<void> _handleProceedOrder({VoidCallback? closeMobileCheckout}) async {
     final controller = widget.controller;
     final stockShortfalls =
         controller.syncService.findStockShortfalls(controller.cart);
@@ -297,6 +318,7 @@ class _PosScreenState extends State<PosScreen> {
           ),
         );
       }
+      closeMobileCheckout?.call();
       _openReceiptDialog(order);
     } else if (mounted && !offline) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -335,10 +357,11 @@ class _PosScreenState extends State<PosScreen> {
                 controller: widget.controller,
                 isFullWidth: true,
                 isKeyboardOpen: keyboardOpen,
-                onProceedOrder: () async {
-                  Navigator.pop(ctx);
-                  await _handleProceedOrder();
-                },
+                onProceedOrder: () => _handleProceedOrder(
+                  closeMobileCheckout: () {
+                    if (ctx.mounted) Navigator.of(ctx).pop();
+                  },
+                ),
               ),
             ),
           ],
@@ -401,6 +424,7 @@ class _PosScreenState extends State<PosScreen> {
       onOpenStock: _navigateToStock,
       onOpenRestock: _navigateToRestock,
       onOpenBaristas: _openBaristaShiftDialog,
+      onOpenBackOffice: _openBackOffice,
       onConnectLabels: () => _openPrinterPicker(PrinterRole.labels),
       onConnectReceipt: () => _openPrinterPicker(PrinterRole.receipt),
       onSync: () => controller.syncService.syncAll(),
@@ -446,6 +470,7 @@ class _PosScreenState extends State<PosScreen> {
       resizeToAvoidBottomInset: false,
       appBar: PosAppBar(
         isVoidRequestPending: controller.isVoidRequestPending,
+        showPrintButton: !sync.printButtonHidden,
         syncStatus: syncStatusLabel,
         syncDotColor: syncDotColor,
         onPrint: _openReceiptDialog,

@@ -26,12 +26,13 @@ import { phDateString, phIsoFromDateTimeInput } from "@/lib/datetime";
 import { openBaristaShifts, pairLoginSessions } from "@/lib/staff-sessions";
 import {
   canUsePos,
+  DEFAULT_STAFF_PERMISSIONS,
   parseRole,
   staffUserId,
   toSession,
 } from "@/lib/users";
 import { sanitizeLoginGate } from "@/lib/staff-gates";
-import type { LoginActivity, OffRequest, Role, StaffUser, StoreData } from "@/lib/types";
+import type { LoginActivity, OffRequest, Role, StaffPermissions, StaffUser, StoreData } from "@/lib/types";
 
 async function requireAdmin() {
   const session = await getSession();
@@ -154,9 +155,15 @@ export async function createStaffUser(input: {
   role: string;
   password: string;
 }) {
-  await requireAdmin();
+  const session = await getSession();
+  if (!session || (session.role !== "admin" && session.role !== "cashier")) {
+    throw new Error("Only an Owner or admin can manage staff.");
+  }
   const parsed = parseStaff({ ...input, requirePassword: true });
   if ("error" in parsed) return parsed;
+  if (session.role === "cashier" && parsed.role !== "barista") {
+    return { error: "Owners can only create Barista accounts." };
+  }
 
   const store = await getFreshStore();
   const taken = (store.users ?? []).some(
@@ -250,8 +257,33 @@ export async function updateStaffUser(input: {
   return { ok: true };
 }
 
+export async function updateOwnerPermissions(userId: string, permissions: StaffPermissions) {
+  await requireAdmin();
+  const store = await getFreshStore();
+  const user = store.users.find((entry) => entry.id === userId);
+  if (!user || user.role !== "cashier") return { error: "Owner account not found." };
+
+  const normalized = Object.fromEntries(
+    Object.keys(DEFAULT_STAFF_PERMISSIONS).map((key) => [
+      key,
+      permissions[key as keyof StaffPermissions] === true,
+    ]),
+  ) as StaffPermissions;
+
+  try {
+    await upsertStaffUserRecord({ ...user, permissions: normalized });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Could not save Owner permissions." };
+  }
+  refresh();
+  return { ok: true };
+}
+
 export async function deleteStaffUser(id: string) {
-  const session = await requireAdmin();
+  const session = await getSession();
+  if (!session || (session.role !== "admin" && session.role !== "cashier")) {
+    throw new Error("Only an Owner or admin can manage staff.");
+  }
   if (session.userId === id) {
     return { error: "You cannot delete the account you are using." };
   }
@@ -260,6 +292,9 @@ export async function deleteStaffUser(id: string) {
   const user = store.users.find((entry) => entry.id === id);
   if (!user) {
     return { error: "Staff account not found." };
+  }
+  if (session.role === "cashier" && user.role !== "barista") {
+    return { error: "Owners can only delete Barista accounts." };
   }
   const admins = store.users.filter((entry) => entry.role === "admin");
   if (user.role === "admin" && admins.length < 2) {

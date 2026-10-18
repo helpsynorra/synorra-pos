@@ -2,6 +2,18 @@ import type { Role, Session, StaffUser } from "@/lib/types";
 
 export type PublicStaffUser = Omit<StaffUser, "password">;
 
+export const DEFAULT_STAFF_PERMISSIONS = {
+  stockInventory: true,
+  restockInventory: true,
+  connectLabels: true,
+  connectReceipt: true,
+  printButton: true,
+  customerReceipt: true,
+  cupLabels: true,
+  dineIn: true,
+  takeOut: true,
+} as const;
+
 export const DEFAULT_USERS: StaffUser[] = [
   {
     id: "admin-1",
@@ -44,6 +56,7 @@ export function toSession(user: StaffUser): Session {
     name: user.name,
     role: user.role,
     mustChangePassword: user.role === "cashier" && !user.passwordChanged,
+    permissions: user.permissions ?? DEFAULT_STAFF_PERMISSIONS,
   };
 }
 
@@ -56,6 +69,7 @@ export function publicUser(user: StaffUser): PublicStaffUser {
     name: user.name,
     role: user.role,
     title: user.title,
+    permissions: user.permissions ?? DEFAULT_STAFF_PERMISSIONS,
   };
 }
 

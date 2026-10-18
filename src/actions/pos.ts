@@ -77,16 +77,10 @@ async function requireAdmin() {
   return session;
 }
 
-async function requireInventoryAccess(hasAdminOnlyData: boolean) {
+async function requireInventoryAccess() {
   const session = await getSession();
-  if (
-    !session ||
-    session.mustChangePassword ||
-    (session.role === "cashier" && await cashierMustChangePassword(session.userId)) ||
-    (session.role !== "admin" && !canUsePos(session.role)) ||
-    (session.role !== "admin" && hasAdminOnlyData)
-  ) {
-    throw new Error("You do not have permission to change these store records.");
+  if (!session || (session.role !== "admin" && session.role !== "cashier")) {
+    throw new Error("Only an Owner or admin can change these store records.");
   }
   return session;
 }
@@ -158,7 +152,9 @@ export async function saveAdminData(data: {
   recipeCostings?: StoreData["recipeCostings"];
   usageLogs?: StoreData["usageLogs"];
 }) {
-  await requireInventoryAccess(data.recipeCostings !== undefined);
+  // Owners can manage the complete inventory setup, including recipes and
+  // recipe costings. POS-only cashier checks remain in requireCashier().
+  await requireInventoryAccess();
 
   if (data.usageLogs) {
     await saveUsageLogRecords(data.usageLogs);
@@ -193,7 +189,7 @@ export async function saveAdminData(data: {
 }
 
 export async function setPosInventoryFeaturesEnabled(enabled: boolean) {
-  await requireAdmin();
+  await requireInventoryAccess();
   await updateStore((store) => {
     store.pos.inventoryFeaturesEnabled = enabled;
   });
@@ -202,11 +198,24 @@ export async function setPosInventoryFeaturesEnabled(enabled: boolean) {
   return { ok: true };
 }
 
+export async function setPosPrintButtonHidden(hidden: boolean) {
+  const session = await getSession();
+  if (!session || (session.role !== "admin" && session.role !== "cashier")) {
+    throw new Error("Only an Owner or admin can change POS print settings.");
+  }
+  await updateStore((store) => {
+    store.pos.printButtonHidden = hidden;
+  });
+  revalidatePath("/pos");
+  revalidatePath("/owner");
+  return { ok: true };
+}
+
 export async function deleteAdminRecord(kind: "order" | "inventory" | "restock" | "usage", id: string) {
-  await requireInventoryAccess(kind === "order" || kind === "usage");
+  await requireInventoryAccess();
 
   if (kind === "order") {
-    // Admin deletion is soft: the row and its audit children remain stored.
+    // Order deletion is soft: the row and its audit children remain stored.
     // Inventory is restored atomically unless the order was already voided.
     await deleteOrderAtomic(id);
   } else if (kind === "restock") {
@@ -236,7 +245,7 @@ export async function createRestock(input: {
   purchaseQty?: number | null;
   purchaseUnit?: string | null;
 }) {
-  await requireInventoryAccess(false);
+  await requireInventoryAccess();
   await createRestockAtomic(input);
   revalidatePath("/pos");
   revalidatePath("/owner");
@@ -254,7 +263,7 @@ export async function editRestock(input: {
   newPurchaseQty?: number | null;
   newPurchaseUnit?: string | null;
 }) {
-  await requireInventoryAccess(false);
+  await requireInventoryAccess();
   await editRestockAtomic(input);
   revalidatePath("/pos");
   revalidatePath("/owner");
@@ -262,7 +271,7 @@ export async function editRestock(input: {
 }
 
 export async function deleteRestock(input: { id: string }) {
-  await requireInventoryAccess(false);
+  await requireInventoryAccess();
   await deleteRestockAtomic(input);
   revalidatePath("/pos");
   revalidatePath("/owner");

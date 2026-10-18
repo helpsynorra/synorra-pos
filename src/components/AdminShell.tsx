@@ -6,7 +6,6 @@ import { StaffHeader, type AdminPanel } from "@/components/StaffHeader";
 import { UserManager } from "@/components/UserManager";
 import { SalePurchaseTransactions } from "@/components/SalePurchaseTransactions";
 import { MenuCatalog } from "@/components/MenuCatalog";
-import { PosSettings } from "@/components/PosSettings";
 import type { PublicStaffUser } from "@/lib/users";
 import type { Session, StoreData } from "@/lib/types";
 
@@ -24,7 +23,6 @@ function readSavedPanel(): AdminPanel {
   if (savedPanel === "menu" || savedPanel === "transactions") {
     return savedPanel;
   }
-  if (savedPanel === "pos-settings") return savedPanel;
   return "sales";
 }
 
@@ -34,7 +32,7 @@ export function AdminShell({ session, users, store, children }: AdminShellProps)
   const router = useRouter();
 
   useEffect(() => {
-    if (panel !== "transactions" && panel !== "sales" && panel !== "staff" && panel !== "pos-settings") return;
+    if (panel !== "transactions" && panel !== "sales" && panel !== "staff") return;
     const refreshTimer = window.setInterval(() => router.refresh(), 5000);
     return () => window.clearInterval(refreshTimer);
   }, [panel, router]);
@@ -63,6 +61,14 @@ export function AdminShell({ session, users, store, children }: AdminShellProps)
           loginActivity={store.loginActivity ?? []}
           offRequests={store.offRequests ?? []}
           showAdminRole={false}
+          showOwnerRole={false}
+          showBaristaRole={true}
+          showBaristasOnly={false}
+          showEditStaffButton={false}
+          baristaOnlyStaffActions={true}
+          printButtonHidden={store.pos.printButtonHidden}
+          showLoginLinksTab={session.role !== "cashier"}
+          showPrintButtonToggle={session.role !== "cashier"}
         />
       ) : null}
       {current === "sales" ? children : null}
@@ -75,7 +81,6 @@ export function AdminShell({ session, users, store, children }: AdminShellProps)
         />
       ) : null}
       {current === "transactions" ? <SalePurchaseTransactions store={store} /> : null}
-      {current === "pos-settings" ? <PosSettings store={store} /> : null}
     </>
   );
 }

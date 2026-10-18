@@ -6,6 +6,19 @@ export type Session = {
   name: string;
   role: Role;
   mustChangePassword?: boolean;
+  permissions?: StaffPermissions;
+};
+
+export type StaffPermissions = {
+  stockInventory: boolean;
+  restockInventory: boolean;
+  connectLabels: boolean;
+  connectReceipt: boolean;
+  printButton: boolean;
+  customerReceipt: boolean;
+  cupLabels: boolean;
+  dineIn: boolean;
+  takeOut: boolean;
 };
 
 export type DrinkStyle = "iced" | "hot";
@@ -121,6 +134,7 @@ export type PosState = {
   openedAt: string | null;
   openedBy: string | null;
   inventoryFeaturesEnabled: boolean;
+  printButtonHidden: boolean;
 };
 
 export type StaffUser = {
@@ -132,6 +146,7 @@ export type StaffUser = {
   name: string;
   role: Role;
   title: string;
+  permissions?: StaffPermissions;
 };
 
 export type InventoryItem = {

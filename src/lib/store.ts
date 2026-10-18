@@ -118,7 +118,7 @@ function emptyStore(): StoreData {
   ) as Record<string, MenuCategoryType>;
 
   return {
-    pos: { isOpen: false, openedAt: null, openedBy: null, inventoryFeaturesEnabled: true },
+    pos: { isOpen: false, openedAt: null, openedBy: null, inventoryFeaturesEnabled: true, printButtonHidden: false },
     orders: [],
     printJobs: [],
     menu: DEFAULT_MENU.map((item) => ({ ...item })),
@@ -153,6 +153,14 @@ function uniqueCategories(values: string[]): string[] {
 }
 
 function normalizeStore(store: StoreData): StoreData {
+  store.pos = {
+    isOpen: false,
+    openedAt: null,
+    openedBy: null,
+    inventoryFeaturesEnabled: true,
+    ...(store.pos ?? {}),
+    printButtonHidden: store.pos?.printButtonHidden === true,
+  };
   const categoryByProduct = new Map(
     (Array.isArray(store.menu) ? store.menu : []).map((item) => [
       item.id,
@@ -483,7 +491,7 @@ async function readStore(options?: { fresh?: boolean }): Promise<StoreData> {
     const items = orderItems.data ?? [];
     const store = normalizeStore({
       ...base,
-      pos: pos.data ? { isOpen: Boolean(pos.data.is_open), openedAt: pos.data.opened_at, openedBy: pos.data.opened_by_name ?? pos.data.opened_by, inventoryFeaturesEnabled: pos.data.inventory_features_enabled !== false } : base.pos,
+      pos: pos.data ? { isOpen: Boolean(pos.data.is_open), openedAt: pos.data.opened_at, openedBy: pos.data.opened_by_name ?? pos.data.opened_by, inventoryFeaturesEnabled: pos.data.inventory_features_enabled !== false, printButtonHidden: pos.data.print_button_hidden === true } : base.pos,
       users: Array.from(
         new Map(
           (users.data ?? []).map((row) => [
@@ -494,6 +502,7 @@ async function readStore(options?: { fresh?: boolean }): Promise<StoreData> {
               email: row.email ?? "",
               password: row.password,
               passwordChanged: Boolean(row.password_changed),
+              permissions: row.permissions ?? undefined,
               name: row.name,
               role: parseRole(String(row.role ?? row.title ?? ""), String(row.title ?? row.username ?? "")),
               title: row.role === "admin" ? "Admin" : row.role === "cashier" ? "Owner" : row.title || "Barista",
@@ -664,7 +673,7 @@ async function writeStore(store: StoreData): Promise<void> {
   }));
 
   const operations = await Promise.all([
-    supabase.from("pos_state").upsert({ id: POS_STATE_ID, is_open: store.pos.isOpen, opened_at: store.pos.openedAt, opened_by_name: store.pos.openedBy, inventory_features_enabled: store.pos.inventoryFeaturesEnabled, updated_at: new Date().toISOString() }),
+    supabase.from("pos_state").upsert({ id: POS_STATE_ID, is_open: store.pos.isOpen, opened_at: store.pos.openedAt, opened_by_name: store.pos.openedBy, inventory_features_enabled: store.pos.inventoryFeaturesEnabled, print_button_hidden: store.pos.printButtonHidden, updated_at: new Date().toISOString() }),
     supabase.from("login_links").upsert({
       id: POS_STATE_ID,
       admin_path: store.loginGates.admin,
@@ -1431,9 +1440,15 @@ export async function deleteMenuItemRecord(id: string): Promise<void> {
       return;
     }
     const supabase = supabaseAdmin();
-    // order_items.menu_item_id -> menu_items.id is ON DELETE SET NULL, and
-    // order_items keeps its own name/price/qty snapshot columns, so past
-    // orders stay intact once this menu item is gone.
+    // Detach historical order rows first. Their name/price/product snapshots
+    // remain intact, and this also works if the deployed FK still uses RESTRICT.
+    const { error: detachError } = await supabase
+      .from("order_items")
+      .update({ menu_item_id: null })
+      .eq("menu_item_id", id);
+    if (detachError) {
+      throw new Error(`Unable to unlink menu item from past orders: ${detachError.message}`);
+    }
     const { error } = await supabase.from("menu_items").delete().eq("id", id);
     if (error) throw new Error(`Unable to delete menu item: ${error.message}`);
     if (memoryStore) {
@@ -1656,6 +1671,7 @@ export async function upsertStaffUserRecord(user: StaffUser): Promise<void> {
         email: normalized.email ?? null,
         password: normalized.password,
         password_changed: Boolean(normalized.passwordChanged),
+        permissions: normalized.permissions ?? {},
         name: normalized.name,
         role: normalized.role,
         title: normalized.title,

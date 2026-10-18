@@ -28,6 +28,8 @@ const field =
 const iconBtn =
   "flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 transition-all hover:bg-neutral-100 hover:text-neutral-900 disabled:opacity-30";
 
+const isSizeAddon = (addon: MenuAddon) => addon.id.startsWith("size:");
+
 function PencilIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor">
@@ -181,7 +183,11 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
     const data = new FormData();
     if (editingId && editingId !== "new") data.set("id", editingId);
     data.set("name", itemName);
-    data.set("price", itemPrice);
+    const sizes = itemAddons.filter(isSizeAddon);
+    const basePrice = sizes.length
+      ? Math.min(...sizes.map((size) => Number(size.price) || 0))
+      : Number(itemPrice) || 0;
+    data.set("price", String(basePrice));
     data.set("category", itemCategory);
     data.set("available", itemAvailable ? "true" : "false");
     data.set("stylesField", "1");
@@ -483,6 +489,15 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                 className="space-y-4 rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5"
                 onSubmit={(event) => {
                   event.preventDefault();
+                  if (itemAddons.some((addon) => isSizeAddon(addon) && !addon.name.trim())) {
+                    flash("Enter a name for every size before saving.");
+                    return;
+                  }
+                  const sizes = itemAddons.filter(isSizeAddon);
+                  if (sizes.some((size) => !Number.isFinite(Number(size.price)) || Number(size.price) <= 0)) {
+                    flash("Enter a valid price for every size.");
+                    return;
+                  }
                   startTransition(async () => {
                     const result =
                       editingId === "new" ? await createMenuItem(itemFormData()) : await updateMenuItem(itemFormData());
@@ -502,23 +517,25 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                     Cancel
                   </button>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className={`grid gap-3 ${itemAddons.some(isSizeAddon) ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
                   <label className="text-xs font-medium text-neutral-600">
                     <span className="mb-1.5 block">Name</span>
                     <input value={itemName} onChange={(event) => setItemName(event.target.value)} className={field} required />
                   </label>
-                  <label className="text-xs font-medium text-neutral-600">
-                    <span className="mb-1.5 block">Price</span>
-                    <input
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={itemPrice}
-                      onChange={(event) => setItemPrice(event.target.value)}
-                      className={field}
-                      required
-                    />
-                  </label>
+                  {!itemAddons.some(isSizeAddon) ? (
+                    <label className="text-xs font-medium text-neutral-600">
+                      <span className="mb-1.5 block">Price</span>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={itemPrice}
+                        onChange={(event) => setItemPrice(event.target.value)}
+                        className={field}
+                        required
+                      />
+                    </label>
+                  ) : null}
                   <label className="text-xs font-medium text-neutral-600">
                     <span className="mb-1.5 block">Category</span>
                     <select
@@ -568,6 +585,71 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                     </div>
                   </div>
                 ) : null}
+                <div>
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <p className="text-xs font-medium text-neutral-600">Sizes and prices</p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setItemAddons((current) => [
+                          ...current,
+                          {
+                            id: `size:${addonIdFromName("size", Date.now())}`,
+                            name: "",
+                            price: 0,
+                          },
+                        ])
+                      }
+                      className="text-xs font-medium text-neutral-600 hover:text-black"
+                    >
+                      Add size
+                    </button>
+                  </div>
+                  <p className="mb-2 text-xs text-neutral-400">
+                    Enter the full price for each size.
+                  </p>
+                  {itemAddons.filter(isSizeAddon).map((size) => {
+                    const index = itemAddons.findIndex((entry) => entry.id === size.id);
+                    return (
+                      <div key={size.id} className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_180px_auto]">
+                        <input
+                          value={size.name}
+                          onChange={(event) =>
+                            setItemAddons((current) => current.map((entry) =>
+                              entry.id === size.id ? { ...entry, name: event.target.value } : entry,
+                            ))
+                          }
+                          placeholder="e.g. 16 oz"
+                          aria-label="Size name"
+                          className={field}
+                        />
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={String(size.price)}
+                          onChange={(event) => {
+                            const fullPrice = Number(event.target.value);
+                            if (!Number.isFinite(fullPrice) || fullPrice < 0) return;
+                            setItemAddons((current) => current.map((entry) =>
+                              entry.id === size.id ? { ...entry, price: fullPrice } : entry,
+                            ));
+                          }}
+                          aria-label="Size price"
+                          className={field}
+                        />
+                        <button
+                          type="button"
+                          aria-label={`Remove size ${size.name}`}
+                          onClick={() => setItemAddons((current) => current.filter((entry) => entry.id !== size.id))}
+                          className="text-xs text-neutral-400 hover:text-black"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
                 <div>
                   <div className="mb-1.5 flex items-center justify-between gap-2">
                     <p className="text-xs font-medium text-neutral-600">Types</p>
@@ -635,7 +717,7 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                       Add option
                     </button>
                   </div>
-                  {itemAddons.length === 0 ? (
+                  {itemAddons.filter((addon) => !isSizeAddon(addon)).length === 0 ? (
                     <p className="text-xs text-neutral-400">
                       Example: Oat milk ₱30, Extra espresso ₱40. Set stock + amount so extras deduct inventory (20 ml milk → 100 ml recipe + 20 ml extra = 120 ml).
                     </p>
@@ -648,7 +730,8 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                         <span>Amount</span>
                         <span />
                       </div>
-                      {itemAddons.map((addon, index) => {
+                      {itemAddons.filter((addon) => !isSizeAddon(addon)).map((addon) => {
+                        const index = itemAddons.findIndex((entry) => entry.id === addon.id);
                         const stock = inventory.find((item) => item.id === addon.inventoryItemId);
                         return (
                           <div
@@ -797,9 +880,9 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                       <tr key={item.id} className="border-t border-neutral-100">
                         <td className="px-4 py-3 font-medium">
                           <p>{item.name}</p>
-                          {normalizeMenuAddons(item).length > 0 ? (
+                          {normalizeMenuAddons(item).some((addon) => !isSizeAddon(addon)) ? (
                             <p className="mt-0.5 text-[11px] text-neutral-400">
-                              {normalizeMenuAddons(item)
+                              {normalizeMenuAddons(item).filter((addon) => !isSizeAddon(addon))
                                 .map((addon) => {
                                   const stock = inventory.find((entry) => entry.id === addon.inventoryItemId);
                                   const extra = addon.price > 0 ? ` +₱${addon.price}` : "";
@@ -810,6 +893,11 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                                   return `${addon.name}${extra}${used}`;
                                 })
                                 .join(", ")}
+                            </p>
+                          ) : null}
+                          {normalizeMenuAddons(item).some(isSizeAddon) ? (
+                            <p className="mt-0.5 text-[11px] text-neutral-400">
+                              Sizes: {normalizeMenuAddons(item).filter(isSizeAddon).map((size) => `${size.name} ₱${size.price}`).join(" · ")}
                             </p>
                           ) : null}
                           {normalizeMenuTypes(item).length > 0 ? (

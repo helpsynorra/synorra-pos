@@ -454,12 +454,15 @@ class PosController extends ChangeNotifier {
 
   void updateCartQty(int index, int newQty) {
     if (index >= 0 && index < cart.length) {
+      final previousTotal = total;
       if (newQty <= 0) {
         cart.removeAt(index);
       } else {
         cart[index].qty = newQty;
       }
-      if (paymentMethod != 'cash') {
+      if (paymentMethod != 'cash' ||
+          tenderedAmount == 0 ||
+          tenderedAmount == previousTotal) {
         tenderedAmount = total;
       }
       _persistActiveCheckout();
@@ -819,14 +822,14 @@ class PosController extends ChangeNotifier {
     return savedPassword == password ? staff : null;
   }
 
-  Future<StaffUser?> authenticateCachedStaffOffline(
-    String username,
-    String password,
-  ) async {
-    final normalizedUsername = username.trim().toLowerCase();
+  Future<StaffUser?> authenticateCachedStaffOffline({
+    required String email,
+    required String password,
+  }) async {
+    final normalizedEmail = email.trim().toLowerCase();
     final staff = localStorage.getStaff().where((cached) {
-      return cached.username.trim().toLowerCase() == normalizedUsername ||
-          cached.name.trim().toLowerCase() == normalizedUsername;
+      return cached.role == 'cashier' &&
+          cached.email.trim().toLowerCase() == normalizedEmail;
     }).firstOrNull;
     if (staff == null) return null;
 

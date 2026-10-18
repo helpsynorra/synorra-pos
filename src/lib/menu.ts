@@ -5,13 +5,13 @@ export const MENU_IMAGES = [
 ] as const;
 
 export const MENU_CATEGORIES = [
-  "Special",
-  "Classic",
-  "Non-Coffee",
-  "Fresh Drinks",
-  "Matcha Drinks",
-  "Food",
-  "Pastries",
+  "Non Coffee",
+  "Soda Series",
+  "Coffee Series",
+  "Milky Series",
+  "Yogurt Series",
+  "Milk Tea Series",
+  "Frappe Series",
 ] as const;
 
 export const DRINK_STYLES: DrinkStyle[] = ["iced", "hot"];
@@ -25,7 +25,7 @@ export function inferMenuCategoryType(category: string): MenuCategoryType {
   const normalized = String(category ?? "").trim().toLowerCase();
   if (/food|meal|snack/i.test(normalized)) return "food";
   if (/pastr|cake|bread|dessert/i.test(normalized)) return "pastry";
-  if (/drink|coffee|matcha|tea|juice|smoothie|beverage|fresh/i.test(normalized)) return "drink";
+  if (/drink|coffee|matcha|tea|juice|smoothie|beverage|fresh|soda|milky|yogurt|frappe|series/i.test(normalized)) return "drink";
   return "other";
 }
 
@@ -199,7 +199,7 @@ export function resolveOrderAddons(
     return [{
       id: addon.id,
       name: addon.name,
-      price: addon.price,
+      price: addon.id.startsWith("size:") ? addon.price - menuItem.price : addon.price,
       qty: addonAllowsQty(addon) ? qty : 1,
       inventoryItemId: addon.inventoryItemId,
       usageAmount: addon.usageAmount,
@@ -217,6 +217,7 @@ export function cartLineUnitPrice(item: Pick<OrderItem, "price" | "addons">) {
 }
 
 function addonPriceLabel(addon: OrderAddon) {
+  if (addon.id.startsWith("size:")) return addon.name;
   const qty = Math.max(1, addon.qty || 1);
   const name = qty > 1 ? `${qty}× ${addon.name}` : addon.name;
   if (!addon.price) return name;
@@ -373,51 +374,55 @@ export function pricedOrderLine(
   };
 }
 
-export const DEFAULT_MENU: MenuItem[] = ([
-  // Special
-  { id: "commune-signature", name: "Synorra Signature", price: 170, category: "Special", available: true },
-  { id: "honey-oat", name: "Honey Oat", price: 170, category: "Special", available: true },
-  { id: "spanish-latte", name: "Spanish Latte", price: 125, category: "Special", available: true },
-  { id: "sea-salt-cream", name: "Sea Salt Cream", price: 135, category: "Special", available: true },
+function makeSeriesItems(
+  category: string,
+  idPrefix: string,
+  names: string[],
+  sizes: { name: string; price: number }[],
+): MenuItem[] {
+  return names.map((name) => {
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    return {
+      id: `${idPrefix}-${slug}`,
+      name,
+      price: sizes[0]?.price ?? 0,
+      category,
+      available: true,
+      addons: sizes.map((size) => ({
+        id: `size:${size.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+        name: size.name,
+        price: size.price,
+      })),
+    };
+  });
+}
 
-  // Classic Coffee
-  { id: "americano-long-black", name: "Americano / Long Black", price: 120, category: "Classic", available: true },
-  { id: "latte", name: "Latte", price: 140, category: "Classic", available: true },
-  { id: "cappuccino", name: "Cappuccino", price: 150, category: "Classic", available: true },
-  { id: "biscoff-latte", name: "Biscoff Latte", price: 150, category: "Classic", available: true },
-  { id: "caramel-macchiato", name: "Caramel Macchiato", price: 130, category: "Classic", available: true },
-  { id: "hazelnut-blanc", name: "Hazelnut Blanc", price: 130, category: "Classic", available: true },
-
-  // Non-Coffee
-  { id: "strawberry-creme", name: "Strawberry Créme", price: 130, category: "Non-Coffee", available: true },
-  { id: "oreo-blush", name: "Oreo Blush", price: 120, category: "Non-Coffee", available: true },
-  { id: "chocolate", name: "Chocolate", price: 120, category: "Non-Coffee", available: true },
-
-  // Fresh Drinks
-  { id: "strawberry-whisper", name: "Strawberry Whisper", price: 120, category: "Fresh Drinks", available: true },
-  { id: "watermelon-whisper", name: "Watermelon Whisper", price: 120, category: "Fresh Drinks", available: true },
-
-  // Matcha Drinks
-  { id: "matcha-umami", name: "Matcha Umami", price: 190, category: "Matcha Drinks", available: true },
-  { id: "matcha-latte", name: "Matcha Latte", price: 155, category: "Matcha Drinks", available: true },
-  { id: "hojicha-latte", name: "Hojicha Latte", price: 155, category: "Matcha Drinks", available: true },
-  { id: "matcha-creme-latte", name: "Matcha Créme Latte", price: 155, category: "Matcha Drinks", available: true },
-  { id: "sea-salt-matcha-cloud", name: "Sea Salt Matcha Cloud", price: 155, category: "Matcha Drinks", available: true },
-
-  // Food
-  { id: "fries", name: "Fries", price: 120, category: "Food", available: true },
-  { id: "tuna-sandwich", name: "Tuna Sandwich", price: 130, category: "Food", available: true },
-  { id: "club-sandwich", name: "Club Sandwich", price: 180, category: "Food", available: true },
-
-  // Pastries
-  { id: "choco-chip-cookie", name: "Choco Chip Cookie", price: 80, category: "Pastries", available: true },
-  { id: "red-velvet-cookie", name: "Red Velvet Cookie", price: 80, category: "Pastries", available: true },
-  { id: "choco-fudge", name: "Choco Fudge", price: 85, category: "Pastries", available: true },
-  { id: "revel-bar", name: "Revel Bar", price: 85, category: "Pastries", available: true },
-]).map((item) => ({
+export const DEFAULT_MENU: MenuItem[] = [
+  ...makeSeriesItems("Non Coffee", "non-coffee", [
+    "Iced Matcha", "Iced Milo", "Iced Choco", "Choco Hazel Nut", "Matcha Berry", "Blueberry Matcha",
+  ], [{ name: "16oz", price: 50 }, { name: "22oz", price: 70 }]),
+  ...makeSeriesItems("Soda Series", "soda", [
+    "Green Apple", "Strawberry", "Blueberry", "Mixed Berries", "Lychee",
+  ], [{ name: "16oz", price: 50 }, { name: "22oz", price: 70 }]),
+  ...makeSeriesItems("Coffee Series", "coffee", [
+    "Caramel Macchiato", "Spanish Latte", "Vanilla Latte", "Salted Caramel", "Matcha Latte", "Mocha Latte",
+  ], [{ name: "16oz", price: 50 }, { name: "22oz", price: 70 }]),
+  ...makeSeriesItems("Milky Series", "milky", [
+    "Strawberry Milk", "Strawberry Matcha", "Matcha Oreo", "Cookies & Cream", "Milo Lava", "Choco Berry",
+  ], [{ name: "16oz", price: 89 }, { name: "22oz", price: 109 }]),
+  ...makeSeriesItems("Yogurt Series", "yogurt", [
+    "Strawberry", "Blueberry", "Green Apple", "Mixed Berries",
+  ], [{ name: "16oz", price: 50 }, { name: "22oz", price: 70 }]),
+  ...makeSeriesItems("Milk Tea Series", "milk-tea", [
+    "Brown Sugar Boba", "Okinawa", "Wintermelon", "Dark Choco", "Cookies & Cream",
+  ], [{ name: "16oz", price: 60 }, { name: "22oz", price: 80 }]),
+  ...makeSeriesItems("Frappe Series", "frappe", [
+    "Strawberry Milk", "Matcha", "Matcha Oreo", "Dark Choco Cookies", "Java Chips",
+  ], [{ name: "22oz", price: 129 }]),
+].map((item) => ({
   ...item,
   image: MENU_IMAGES[0].src,
-  styles: isFoodOrPastry(item.category) ? [] : [...DRINK_STYLES],
+  styles: [...DRINK_STYLES.slice(0, 1)],
 }));
 
 export const MENU = DEFAULT_MENU;

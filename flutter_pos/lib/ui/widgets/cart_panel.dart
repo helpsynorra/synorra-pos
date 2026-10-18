@@ -31,14 +31,23 @@ class _CartPanelState extends State<CartPanel> {
   @override
   void initState() {
     super.initState();
+    widget.controller.addListener(_handleControllerChanged);
     _amountController.text = widget.controller.tenderedAmount > 0
         ? widget.controller.tenderedAmount.toInt().toString()
         : '0';
   }
 
+  void _handleControllerChanged() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void didUpdateWidget(covariant CartPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_handleControllerChanged);
+      widget.controller.addListener(_handleControllerChanged);
+    }
     if (_amountFocusNode.hasFocus) return;
 
     final amountText = widget.controller.paymentMethod != 'cash'
@@ -51,6 +60,7 @@ class _CartPanelState extends State<CartPanel> {
 
   @override
   void dispose() {
+    widget.controller.removeListener(_handleControllerChanged);
     _amountController.dispose();
     _amountFocusNode.dispose();
     super.dispose();
@@ -164,7 +174,7 @@ class _CartPanelState extends State<CartPanel> {
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             Expanded(
-                              flex: 5,
+                              flex: 4,
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -195,14 +205,38 @@ class _CartPanelState extends State<CartPanel> {
                               ),
                             ),
                             Expanded(
-                              flex: 3,
-                              child: Text(
-                                '${controller.cart[index].qty}',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 10,
-                                ),
+                              flex: 5,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  _quantityButton(
+                                    icon: Icons.remove,
+                                    label: 'Decrease ${controller.cart[index].name} quantity',
+                                    onTap: () => controller.updateCartQty(
+                                      index,
+                                      controller.cart[index].qty - 1,
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: 24,
+                                    child: Text(
+                                      '${controller.cart[index].qty}',
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 10,
+                                      ),
+                                    ),
+                                  ),
+                                  _quantityButton(
+                                    icon: Icons.add,
+                                    label: 'Increase ${controller.cart[index].name} quantity',
+                                    onTap: () => widget.controller.updateCartQty(
+                                      index,
+                                      controller.cart[index].qty + 1,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                             Expanded(
@@ -523,6 +557,30 @@ class _CartPanelState extends State<CartPanel> {
     );
   }
 
+  Widget _quantityButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return Semantics(
+      button: true,
+      label: label,
+      child: Material(
+        color: const Color(0xFFF3F4F6),
+        shape: const CircleBorder(),
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: Icon(icon, size: 20, color: const Color(0xFF111827)),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _openAmountKeypad() async {
     final controller = widget.controller;
     if (controller.paymentMethod != 'cash') return;
@@ -668,27 +726,34 @@ class _CartPanelState extends State<CartPanel> {
 
   Widget _buildServiceModeButton(String mode, String label) {
     final isSelected = widget.controller.serviceMode == mode;
-    return InkWell(
-      onTap: () => widget.controller.setServiceMode(mode),
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? Colors.black : Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isSelected ? Colors.black : const Color(0xFFD1D5DB),
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: isSelected ? Colors.white : const Color(0xFF374151),
-          ),
-        ),
-      ),
+    return SizedBox(
+      height: widget.isFullWidth ? 56 : 48,
+      child: isSelected
+          ? FilledButton(
+              onPressed: () => widget.controller.setServiceMode(mode),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.black,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: Text(label),
+            )
+          : OutlinedButton(
+              onPressed: () => widget.controller.setServiceMode(mode),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF374151),
+                backgroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                side: const BorderSide(color: Color(0xFFD1D5DB)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: Text(label),
+            ),
     );
   }
 

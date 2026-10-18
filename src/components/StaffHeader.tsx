@@ -6,14 +6,13 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { logout } from "@/actions/auth";
 import type { Session } from "@/lib/types";
 
-export type AdminPanel = "sales" | "menu" | "transactions" | "staff" | "pos-settings";
+export type AdminPanel = "sales" | "menu" | "transactions" | "staff";
 
 const TABS: { id: AdminPanel; label: string }[] = [
   { id: "sales", label: "Sales" },
   { id: "menu", label: "Menu" },
   { id: "transactions", label: "Inventory" },
   { id: "staff", label: "Staff" },
-  { id: "pos-settings", label: "POS Settings" },
 ];
 
 type StaffHeaderProps = {
