@@ -100,6 +100,8 @@ class _PosScreenState extends State<PosScreen> {
   }
 
   Future<void> _openPrinterPicker(PrinterRole role) async {
+    final permission = role == PrinterRole.labels ? 'connectLabels' : 'connectReceipt';
+    if (!widget.controller.syncService.hasPermission(permission)) return;
     await Future<void>.delayed(Duration.zero);
     if (!mounted) return;
     await showDialog<void>(
@@ -110,20 +112,24 @@ class _PosScreenState extends State<PosScreen> {
 
   Future<void> _printOrder(Order order) async {
     final results = <String>[];
-    try {
-      await _printerService.printReceipt(order);
-      results.add('Receipt sent');
-    } catch (error) {
-      results.add('Receipt: $error');
+    if (widget.controller.syncService.hasPermission('customerReceipt')) {
+      try {
+        await _printerService.printReceipt(order);
+        results.add('Receipt sent');
+      } catch (error) {
+        results.add('Receipt: $error');
+      }
     }
-    try {
-      await _printerService.printLabels(
-        order,
-        menu: widget.controller.menu,
-      );
-      results.add('Labels sent');
-    } catch (error) {
-      results.add('Labels: $error');
+    if (widget.controller.syncService.hasPermission('cupLabels')) {
+      try {
+        await _printerService.printLabels(
+          order,
+          menu: widget.controller.menu,
+        );
+        results.add('Labels sent');
+      } catch (error) {
+        results.add('Labels: $error');
+      }
     }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -213,6 +219,7 @@ class _PosScreenState extends State<PosScreen> {
   }
 
   void _openReceiptDialog([Order? targetOrder]) {
+    if (!widget.controller.syncService.hasPermission('printButton')) return;
     final order = targetOrder ??
         widget.controller.lastCompletedOrder ??
         (widget.controller.orders.isNotEmpty
@@ -232,6 +239,9 @@ class _PosScreenState extends State<PosScreen> {
         orders: widget.controller.orders,
         menu: widget.controller.menu,
         onPrint: _printOrder,
+        customerReceiptEnabled: widget.controller.syncService.hasPermission('customerReceipt'),
+        cupLabelsEnabled: widget.controller.syncService.hasPermission('cupLabels'),
+        printButtonEnabled: widget.controller.syncService.hasPermission('printButton'),
       ),
     );
   }
@@ -263,6 +273,20 @@ class _PosScreenState extends State<PosScreen> {
 
   Future<void> _handleProceedOrder({VoidCallback? closeMobileCheckout}) async {
     final controller = widget.controller;
+    final permissions = controller.syncService;
+    final dineInEnabled = permissions.hasPermission('dineIn');
+    final takeOutEnabled = permissions.hasPermission('takeOut');
+    if (!dineInEnabled && !takeOutEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This Owner account has no service mode permission.')),
+      );
+      return;
+    }
+    if (controller.serviceMode == 'dine-in' && !dineInEnabled) {
+      controller.setServiceMode('take-out');
+    } else if (controller.serviceMode == 'take-out' && !takeOutEnabled) {
+      controller.setServiceMode('dine-in');
+    }
     final stockShortfalls =
         controller.syncService.findStockShortfalls(controller.cart);
     if (stockShortfalls.isNotEmpty) {
@@ -355,6 +379,8 @@ class _PosScreenState extends State<PosScreen> {
             Expanded(
               child: CartPanel(
                 controller: widget.controller,
+                dineInEnabled: widget.controller.syncService.hasPermission('dineIn'),
+                takeOutEnabled: widget.controller.syncService.hasPermission('takeOut'),
                 isFullWidth: true,
                 isKeyboardOpen: keyboardOpen,
                 onProceedOrder: () => _handleProceedOrder(
@@ -375,6 +401,7 @@ class _PosScreenState extends State<PosScreen> {
   }
 
   void _navigateToStock() {
+    if (!widget.controller.syncService.hasPermission('stockInventory')) return;
     _navigateToPos();
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -389,6 +416,7 @@ class _PosScreenState extends State<PosScreen> {
   }
 
   void _navigateToRestock() {
+    if (!widget.controller.syncService.hasPermission('restockInventory')) return;
     _navigateToPos();
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -417,6 +445,10 @@ class _PosScreenState extends State<PosScreen> {
       canLogout: canLogout,
       inventoryFeaturesEnabled:
           controller.syncService.inventoryFeaturesEnabled,
+      stockInventoryEnabled: controller.syncService.hasPermission('stockInventory'),
+      restockInventoryEnabled: controller.syncService.hasPermission('restockInventory'),
+      connectLabelsEnabled: controller.syncService.hasPermission('connectLabels'),
+      connectReceiptEnabled: controller.syncService.hasPermission('connectReceipt'),
       logoutDisabledMessage: controller.isVoidRequestPending
           ? 'Wait for void approval first'
           : 'Clear checkout first',
@@ -470,7 +502,7 @@ class _PosScreenState extends State<PosScreen> {
       resizeToAvoidBottomInset: false,
       appBar: PosAppBar(
         isVoidRequestPending: controller.isVoidRequestPending,
-        showPrintButton: !sync.printButtonHidden,
+        showPrintButton: !sync.printButtonHidden && sync.hasPermission('printButton'),
         syncStatus: syncStatusLabel,
         syncDotColor: syncDotColor,
         onPrint: _openReceiptDialog,
@@ -669,6 +701,8 @@ class _PosScreenState extends State<PosScreen> {
                 child: CartPanel(
                   panelWidth: checkoutPanelWidth,
                   controller: controller,
+                  dineInEnabled: sync.hasPermission('dineIn'),
+                  takeOutEnabled: sync.hasPermission('takeOut'),
                   isKeyboardOpen: keyboardOpen,
                   onProceedOrder: _handleProceedOrder,
                 ),

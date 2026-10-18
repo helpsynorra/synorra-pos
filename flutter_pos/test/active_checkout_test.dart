@@ -71,6 +71,7 @@ class _RefreshingSessionSupabaseService
   Future<Map<String, dynamic>> authenticateStaff(
     String username,
     String password, {
+    String email = '',
     bool persistSessionToken = true,
   }) async {
     authCalls++;

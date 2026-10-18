@@ -12,6 +12,10 @@ class PosNavigationDrawer extends StatelessWidget {
   final String syncStatus;
   final bool canLogout;
   final bool inventoryFeaturesEnabled;
+  final bool stockInventoryEnabled;
+  final bool restockInventoryEnabled;
+  final bool connectLabelsEnabled;
+  final bool connectReceiptEnabled;
   final String logoutDisabledMessage;
   final VoidCallback onOpenTerminal;
   final VoidCallback onOpenStock;
@@ -33,6 +37,10 @@ class PosNavigationDrawer extends StatelessWidget {
     required this.syncStatus,
     required this.canLogout,
     required this.inventoryFeaturesEnabled,
+    required this.stockInventoryEnabled,
+    required this.restockInventoryEnabled,
+    required this.connectLabelsEnabled,
+    required this.connectReceiptEnabled,
     required this.logoutDisabledMessage,
     required this.onOpenTerminal,
     required this.onOpenStock,
@@ -108,7 +116,7 @@ class PosNavigationDrawer extends StatelessWidget {
                     label: 'POS Terminal',
                     onTap: onOpenTerminal,
                   ),
-                  if (inventoryFeaturesEnabled) const Padding(
+                  if (inventoryFeaturesEnabled && (stockInventoryEnabled || restockInventoryEnabled)) const Padding(
                     padding: EdgeInsets.fromLTRB(16, 16, 16, 6),
                     child: Text(
                       'INVENTORY',
@@ -120,14 +128,14 @@ class PosNavigationDrawer extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (inventoryFeaturesEnabled) _destination(
+                  if (inventoryFeaturesEnabled && stockInventoryEnabled) _destination(
                     context,
                     section: PosSection.stock,
                     icon: Icons.inventory_2_outlined,
                     label: 'Stock inventory',
                     onTap: onOpenStock,
                   ),
-                  if (inventoryFeaturesEnabled) _destination(
+                  if (inventoryFeaturesEnabled && restockInventoryEnabled) _destination(
                     context,
                     section: PosSection.restock,
                     icon: Icons.add_shopping_cart_outlined,
@@ -157,7 +165,7 @@ class PosNavigationDrawer extends StatelessWidget {
                     title: const Text('Back office'),
                     onTap: () => _closeThen(context, onOpenBackOffice),
                   ),
-                  const Padding(
+                  if (connectLabelsEnabled || connectReceiptEnabled) const Padding(
                     padding: EdgeInsets.fromLTRB(16, 16, 16, 6),
                     child: Text(
                       'PRINTERS',
@@ -169,14 +177,14 @@ class PosNavigationDrawer extends StatelessWidget {
                       ),
                     ),
                   ),
-                  ListTile(
+                  if (connectLabelsEnabled) ListTile(
                     leading: const Icon(Icons.local_cafe_outlined,
                         color: Colors.black87),
                     title: const Text('Connect labels'),
                     subtitle: Text(labelsConnection),
                     onTap: () => _closeThen(context, onConnectLabels),
                   ),
-                  ListTile(
+                  if (connectReceiptEnabled) ListTile(
                     leading: const Icon(Icons.receipt_long_outlined,
                         color: Colors.black87),
                     title: const Text('Connect receipt'),

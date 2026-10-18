@@ -22,6 +22,19 @@ class SyncService extends ChangeNotifier {
   bool isOnline = true;
   bool inventoryFeaturesEnabled = true;
   bool printButtonHidden = false;
+  final Map<String, bool> ownerPermissions = {
+    'stockInventory': true,
+    'restockInventory': true,
+    'connectLabels': true,
+    'connectReceipt': true,
+    'printButton': true,
+    'customerReceipt': true,
+    'cupLabels': true,
+    'dineIn': true,
+    'takeOut': true,
+  };
+
+  bool hasPermission(String key) => ownerPermissions[key] ?? true;
   String? lastError;
   DateTime? lastSyncTime;
   int pendingCount = 0;
@@ -297,6 +310,24 @@ class SyncService extends ChangeNotifier {
         }
 
         if (fullStore['users'] is List) {
+          final activeStaffId = localStorage.getActiveStaffId();
+          Map<String, dynamic>? activeUser;
+          for (final entry in (fullStore['users'] as List).whereType<Map>()) {
+            final user = Map<String, dynamic>.from(entry);
+            if (user['id']?.toString() == activeStaffId) {
+              activeUser = user;
+              break;
+            }
+          }
+          final permissions = activeUser?['permissions'];
+          for (final key in ownerPermissions.keys.toList()) {
+            ownerPermissions[key] = true;
+          }
+          if (permissions is Map) {
+            for (final key in ownerPermissions.keys.toList()) {
+              ownerPermissions[key] = permissions[key] != false;
+            }
+          }
           final freshStaff = (fullStore['users'] as List)
               .whereType<Map>()
               .map((e) => StaffUser.fromJson(Map<String, dynamic>.from(e)))

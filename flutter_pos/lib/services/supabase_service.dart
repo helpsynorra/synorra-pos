@@ -147,11 +147,11 @@ class SupabaseService {
       if (result['ok'] != true || result['user'] is! Map) {
         debugPrint(
           'POS API auth rejected (API: $_posApiUri): '
-          '${result['error'] ?? 'Invalid username or password'}',
+          '${result['error'] ?? 'Invalid login credentials'}',
         );
         return {
           'ok': false,
-          'error': result['error'] ?? 'Invalid username or password'
+          'error': result['error'] ?? 'Invalid login credentials'
         };
       }
       final token = result['token']?.toString() ?? '';

@@ -8,6 +8,8 @@ class CartPanel extends StatefulWidget {
   final bool isFullWidth;
   final double panelWidth;
   final bool isKeyboardOpen;
+  final bool dineInEnabled;
+  final bool takeOutEnabled;
 
   const CartPanel({
     super.key,
@@ -16,6 +18,8 @@ class CartPanel extends StatefulWidget {
     this.isFullWidth = false,
     this.panelWidth = 350,
     this.isKeyboardOpen = false,
+    this.dineInEnabled = true,
+    this.takeOutEnabled = true,
   });
 
   @override
@@ -270,17 +274,21 @@ class _CartPanelState extends State<CartPanel> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildServiceModeButton('dine-in', 'Dine In'),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _buildServiceModeButton('take-out', 'Take Out'),
-                    ),
-                  ],
-                ),
+                if (widget.dineInEnabled || widget.takeOutEnabled)
+                  Row(
+                    children: [
+                      if (widget.dineInEnabled)
+                        Expanded(
+                          child: _buildServiceModeButton('dine-in', 'Dine In'),
+                        ),
+                      if (widget.dineInEnabled && widget.takeOutEnabled)
+                        const SizedBox(width: 8),
+                      if (widget.takeOutEnabled)
+                        Expanded(
+                          child: _buildServiceModeButton('take-out', 'Take Out'),
+                        ),
+                    ],
+                  ),
                 SizedBox(height: keyboardOpen ? 2 : 5),
                 Row(
                   children: [

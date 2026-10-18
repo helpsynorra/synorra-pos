@@ -66,6 +66,9 @@ class ReceiptDialog extends StatefulWidget {
   final List<Order> orders;
   final List<MenuItem> menu;
   final Future<void> Function(Order order) onPrint;
+  final bool customerReceiptEnabled;
+  final bool cupLabelsEnabled;
+  final bool printButtonEnabled;
 
   const ReceiptDialog({
     super.key,
@@ -73,6 +76,9 @@ class ReceiptDialog extends StatefulWidget {
     required this.orders,
     required this.menu,
     required this.onPrint,
+    this.customerReceiptEnabled = true,
+    this.cupLabelsEnabled = true,
+    this.printButtonEnabled = true,
   });
 
   @override
@@ -236,7 +242,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                         spacing: 16,
                         runSpacing: 16,
                         children: [
-                      SizedBox(
+                      if (widget.customerReceiptEnabled) SizedBox(
                         width: panelWidth,
                         child: Container(
                           padding: const EdgeInsets.all(14),
@@ -289,7 +295,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                           ),
                         ),
                       ),
-                      SizedBox(
+                      if (widget.cupLabelsEnabled) SizedBox(
                         width: panelWidth,
                         child: Container(
                           padding: const EdgeInsets.all(14),
@@ -388,8 +394,8 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                     child: const Text('Close'),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
+                if (widget.printButtonEnabled && (widget.customerReceiptEnabled || widget.cupLabelsEnabled)) const SizedBox(width: 12),
+                if (widget.printButtonEnabled && (widget.customerReceiptEnabled || widget.cupLabelsEnabled)) Expanded(
                   child: ElevatedButton.icon(
                     onPressed: () async => widget.onPrint(selectedOrder),
                     icon: const Icon(Icons.print_outlined, size: 18),

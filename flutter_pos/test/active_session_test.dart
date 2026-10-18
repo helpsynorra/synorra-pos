@@ -190,6 +190,7 @@ void main() {
     const staff = StaffUser(
       id: 'staff-1',
       username: 'rey',
+      email: 'rey@example.com',
       password: '',
       name: 'Rey',
       role: 'cashier',
@@ -207,13 +208,19 @@ void main() {
 
     sync.isOnline = true;
     expect(
-      (await controller.authenticateCachedStaffOffline('rey', '1234'))?.id,
+      (await controller.authenticateCachedStaffOffline(
+        email: 'rey@example.com',
+        password: '1234',
+      ))?.id,
       staff.id,
     );
 
     await storage.saveOfflineStaffCredential(staff.id, 'different');
     expect(
-      await controller.authenticateCachedStaffOffline('rey', '1234'),
+      await controller.authenticateCachedStaffOffline(
+        email: 'rey@example.com',
+        password: '1234',
+      ),
       isNull,
     );
 
@@ -401,6 +408,7 @@ class _StubSupabaseService extends SupabaseService {
   Future<Map<String, dynamic>> authenticateStaff(
     String username,
     String password, {
+    String email = '',
     bool persistSessionToken = true,
   }) async =>
       authResponse;
