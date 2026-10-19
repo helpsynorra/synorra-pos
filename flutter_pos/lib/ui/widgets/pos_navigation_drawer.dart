@@ -136,6 +136,8 @@ class PosNavigationDrawer extends StatelessWidget {
                     title: 'Support',
                     onTap: () => _closeThen(context, onOpenHelpCenter),
                   ),
+                   _sectionLabel('PRINTERS'),
+
                   if (connectLabelsEnabled || connectReceiptEnabled) ...[
                     if (connectLabelsEnabled)
                       _row(
