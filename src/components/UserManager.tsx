@@ -12,6 +12,7 @@ import {
   deleteStaffSession,
   updateOwnerPermissions,
   updateStaffUser,
+  updateLoginGates,
 } from "@/actions/users";
 import type { PublicStaffUser } from "@/lib/users";
 import { DEFAULT_STAFF_PERMISSIONS } from "@/lib/users";
@@ -39,6 +40,8 @@ type UserManagerProps = {
   inventoryFeaturesEnabled?: boolean;
   showLoginLinksTab?: boolean;
   showPrintButtonToggle?: boolean;
+  showViewPermissionsButton?: boolean;
+  adminLoginPath?: string;
 };
 
 type SubTab = "staff" | "inout" | "off" | "gates" | "settings";
@@ -56,7 +59,7 @@ const permissionOptions: { key: keyof StaffPermissions; label: string }[] = [
   { key: "takeOut", label: "Take out" },
 ];
 
-export function UserManager({ users, session, loginActivity, offRequests, showShiftTabs = true, showAdminRole = true, showOwnerRole = true, showBaristaRole = true, showBaristasOnly = false, showEditStaffButton = true, showDeleteStaffButton = true, baristaOnlyStaffActions = false, showLoginLinksTab = true, showPrintButtonToggle = true }: UserManagerProps) {
+export function UserManager({ users, session, loginActivity, offRequests, showShiftTabs = true, showAdminRole = true, showOwnerRole = true, showBaristaRole = true, showBaristasOnly = false, showEditStaffButton = true, showDeleteStaffButton = true, baristaOnlyStaffActions = false, showLoginLinksTab = true, showPrintButtonToggle = true, showViewPermissionsButton = true, adminLoginPath = "mouna1234" }: UserManagerProps) {
   const [tab, setTab] = useState<SubTab>("staff");
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
   const [name, setName] = useState("");
@@ -65,6 +68,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
   const [role, setRole] = useState<StaffRole>(showBaristasOnly ? "Barista" : "Owner");
   const [password, setPassword] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  const [adminPath, setAdminPath] = useState(adminLoginPath);
   const [permissionState, setPermissionState] = useState<Record<string, StaffPermissions>>(
     () => Object.fromEntries(users.map((user) => [user.id, { ...DEFAULT_STAFF_PERMISSIONS, ...user.permissions }])),
   );
@@ -333,7 +337,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                     </p>
                   </div>
                   <div className="flex items-center gap-1">
-                    {user.role === "cashier" && showPrintButtonToggle ? (
+                    {user.role === "cashier" && showViewPermissionsButton ? (
                       <button
                         type="button"
                         onClick={() => {
@@ -360,7 +364,11 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                       type="button"
                       aria-label={`Delete ${user.name}`}
                       disabled={pending || user.id === session.userId}
-                      onClick={() =>
+                      onClick={() => {
+                        const confirmation = user.role === "cashier"
+                          ? `Delete ${user.name}'s Owner account and all of its store data? This cannot be undone.`
+                          : `Delete ${user.name}'s staff account?`;
+                        if (!window.confirm(confirmation)) return;
                         startTransition(async () => {
                           const result = await deleteStaffUser(user.id);
                           if (result && "error" in result && result.error) {
@@ -369,8 +377,8 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                           }
                           if (editingId === user.id) resetForm();
                           setNotice(null);
-                        })
-                      }
+                        });
+                      }}
                       className="flex h-9 w-9 items-center justify-center rounded-xl text-neutral-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30"
                     >
                       <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor">
@@ -806,8 +814,46 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
         {tab === "gates" ? (
           <>
             <h1 className="text-xl font-semibold tracking-tight">Login links</h1>
-            <div className="space-y-3 rounded-2xl border border-neutral-200 bg-white p-4 text-sm sm:p-5">
-              <p><span className="font-medium">Owner:</span> /back-office</p>
+            <div className="space-y-5 rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
+              <form
+                className="flex flex-col gap-3 sm:flex-row sm:items-end"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  startTransition(async () => {
+                    const result = await updateLoginGates(adminPath);
+                    if ("error" in result) {
+                      setNotice(result.error);
+                      return;
+                    }
+                    setAdminPath(result.admin);
+                    setNotice("Admin login link updated.");
+                  });
+                }}
+              >
+                <label className="block flex-1 text-sm font-medium">
+                  Admin login link
+                  <span className="mt-1.5 flex items-center rounded-xl border border-neutral-200 px-3.5 focus-within:border-neutral-900 focus-within:ring-1 focus-within:ring-neutral-900">
+                    <span className="text-sm text-neutral-500">/</span>
+                    <input
+                      value={adminPath}
+                      onChange={(event) => setAdminPath(event.target.value)}
+                      className="w-full bg-transparent py-2.5 pl-1 text-sm outline-none"
+                      autoComplete="off"
+                      required
+                    />
+                  </span>
+                </label>
+                <button
+                  type="submit"
+                  disabled={pending}
+                  className="rounded-full bg-black px-4 py-2.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-40"
+                >
+                  {pending ? "Saving…" : "Save link"}
+                </button>
+              </form>
+              <p className="text-sm text-neutral-600">
+                <span className="font-medium text-neutral-900">Owner login link:</span> /back-office
+              </p>
             </div>
           </>
         ) : null}

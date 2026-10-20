@@ -52,7 +52,9 @@ export default async function SynorraHostPage() {
         showOwnerRole={true}
         showBaristaRole={false}
         showEditStaffButton={false}
-        showDeleteStaffButton={false}
+        showDeleteStaffButton={true}
+        showViewPermissionsButton={false}
+        adminLoginPath={store.loginGates.admin}
         printButtonHidden={store.pos.printButtonHidden}
         inventoryFeaturesEnabled={store.pos.inventoryFeaturesEnabled}
         showPrintButtonToggle={true}

@@ -10,6 +10,7 @@ import {
   sessionCookieOptions,
 } from "@/lib/auth";
 import {
+  deleteOwnerAccountAndData,
   deleteLoginActivityRecords,
   deleteOffRequestRecord,
   deleteStaffUserRecord,
@@ -17,6 +18,7 @@ import {
   getOwnerAccounts,
   getStore,
   initializeOwnerStore,
+  isRealSupabaseConfigured,
   insertLoginActivityRecord,
   insertOffRequestRecord,
   updateLoginActivityTimeRecord,
@@ -299,6 +301,24 @@ export async function deleteStaffUser(id: string) {
   }
   if (session.userId === id) {
     return { error: "You cannot delete the account you are using." };
+  }
+
+  if (session.role === "admin" && isRealSupabaseConfigured()) {
+    const owner = (await getOwnerAccounts()).find((entry) => entry.id === id);
+    if (!owner) return { error: "Owner account not found." };
+
+    try {
+      await deleteOwnerAccountAndData(owner.id);
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Could not delete that Owner account and its store data.",
+      };
+    }
+    refresh();
+    return { ok: true };
   }
 
   const store = await getStore();

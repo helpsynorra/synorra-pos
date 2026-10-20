@@ -18,7 +18,7 @@ export const DEFAULT_USERS: StaffUser[] = [
   {
     id: "admin-1",
     username: "admin",
-    password: "commune",
+    password: "synorra",
     name: "Admin",
     role: "admin",
     title: "Admin",
@@ -26,7 +26,7 @@ export const DEFAULT_USERS: StaffUser[] = [
   {
     id: "cashier-1",
     username: "cashier",
-    password: "commune",
+    password: "synorra",
     name: "Sale In Charge",
     role: "cashier",
     title: "Owner",
@@ -34,7 +34,7 @@ export const DEFAULT_USERS: StaffUser[] = [
   {
     id: "barista-1",
     username: "barista",
-    password: "commune",
+    password: "synorra",
     name: "Barista",
     role: "barista",
     title: "Barista",

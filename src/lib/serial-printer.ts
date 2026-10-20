@@ -36,7 +36,7 @@ function serialAvailable(): boolean {
 }
 
 function storageKey(role: PrinterRole): string {
-  return `commune_${role}_printer_config`;
+  return `synorra_${role}_printer_config`;
 }
 
 function readStoredConfig(

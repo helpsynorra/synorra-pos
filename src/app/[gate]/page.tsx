@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { StaffLogin } from "@/components/StaffLogin";
 import { getSession, homeForRole } from "@/lib/auth";
-import { getStore } from "@/lib/store";
+import { getStore, legacyOwnerId } from "@/lib/store";
 import { roleForLoginGate } from "@/lib/staff-gates";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +13,7 @@ export default async function GatePage({
 }) {
   const { gate } = await params;
 
-  const store = await getStore();
+  const store = await getStore({ ownerId: await legacyOwnerId() });
   const role = roleForLoginGate(gate, store.loginGates);
   if (!role) notFound();
 

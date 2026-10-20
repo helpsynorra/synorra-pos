@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Session } from "@/lib/types";
 
-export const SESSION_COOKIE = "commune_session";
+export const SESSION_COOKIE = "synorra_session";
 const SESSION_LIFETIME_SECONDS = 60 * 60 * 12;
 
 function signingKey() {

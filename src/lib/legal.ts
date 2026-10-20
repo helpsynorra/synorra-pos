@@ -80,7 +80,7 @@ export const privacyPolicy: LegalSection[] = [
 export const cookiePolicy: LegalSection[] = [
   {
     heading: "Essential sign-in cookie",
-    body: "The Synorra POS website uses an essential cookie named commune_session to keep an authenticated staff session and apply role-based access. It is set after sign-in, marked HttpOnly, and expires after 12 hours. In secure production environments it is also marked Secure. The cookie is not used for advertising.",
+    body: "The Synorra POS website uses an essential cookie named synorra_session to keep an authenticated staff session and apply role-based access. It is set after sign-in, marked HttpOnly, and expires after 12 hours. In secure production environments it is also marked Secure. The cookie is not used for advertising.",
   },
   {
     heading: "No analytics cookies currently configured",

@@ -27,7 +27,7 @@ import { parsePayment } from "@/lib/payments";
 import { DEFAULT_LOGIN_GATES, normalizeLoginGates } from "@/lib/staff-gates";
 import { DEFAULT_USERS, parseRole } from "@/lib/users";
 
-const POS_STATE_ID = "commune-coffee";
+const POS_STATE_ID = "synorra-pos";
 
 let queue: Promise<unknown> = Promise.resolve();
 let memoryStore: StoreData | null = null;
@@ -46,8 +46,7 @@ async function activeOwnerId(): Promise<string | null> {
     if (data?.owner_id) return data.owner_id;
   }
   if (session?.role === "admin" && isRealSupabaseConfigured()) {
-    const { data } = await supabaseAdmin().from("staff_users").select("id").eq("role", "cashier").order("created_at", { ascending: true, nullsFirst: true }).limit(1).maybeSingle();
-    return data?.id ?? "cashier-1";
+    return (await legacyOwnerId()) ?? "cashier-1";
   }
   return null;
 }
@@ -82,6 +81,48 @@ export async function getOwnerAccounts(): Promise<StaffUser[]> {
 /** Permanently remove an Owner and all records that belong to that store. */
 export async function deleteOwnerAccountAndData(ownerId: string): Promise<void> {
   const db = supabaseAdmin();
+  const { data: ownerStaff, error: staffReadError } = await db
+    .from("staff_users")
+    .select("id")
+    .eq("owner_id", ownerId);
+  if (staffReadError) {
+    throw new Error(`Unable to read Owner staff accounts: ${staffReadError.message}`);
+  }
+
+  const staffIds = Array.from(
+    new Set([ownerId, ...(ownerStaff ?? []).map((staff) => staff.id)]),
+  );
+  const { error: activityReferenceError } = await db
+    .from("login_activity")
+    .update({ user_id: null })
+    .in("user_id", staffIds);
+  if (activityReferenceError) {
+    throw new Error(
+      `Unable to preserve Owner login history: ${activityReferenceError.message}`,
+    );
+  }
+
+  const { data: menuItems, error: menuReadError } = await db
+    .from("menu_items")
+    .select("id")
+    .eq("owner_id", ownerId);
+  if (menuReadError) {
+    throw new Error(`Unable to read Owner menu items: ${menuReadError.message}`);
+  }
+
+  const menuItemIds = (menuItems ?? []).map((item) => item.id);
+  if (menuItemIds.length > 0) {
+    // Keep order-line snapshots but detach their optional live menu reference.
+    // This also handles older deployments where the FK is still NO ACTION.
+    const { error } = await db
+      .from("order_items")
+      .update({ menu_item_id: null })
+      .in("menu_item_id", menuItemIds);
+    if (error) {
+      throw new Error(`Unable to preserve Owner order history: ${error.message}`);
+    }
+  }
+
   const ownerTables = [
     "recipe_costing_menu_items",
     "recipe_costing_ingredients",
@@ -475,7 +516,7 @@ function normalizeStore(store: StoreData): StoreData {
       store.users.push({
         id: "barista-1",
         username: baristaUsernameTaken ? `barista-${Date.now().toString(36)}` : "barista",
-        password: "commune",
+        password: "synorra",
         name: "Barista",
         role: "barista",
         title: "Barista",
@@ -1905,6 +1946,16 @@ export async function deleteStaffUserRecord(id: string): Promise<void> {
       return;
     }
     const supabase = supabaseAdmin();
+    // Some deployed databases still have the older NO ACTION FK on
+    // login_activity.user_id. Keep the attendance snapshots, but detach the
+    // account reference before deleting the staff row.
+    const { error: activityError } = await supabase
+      .from("login_activity")
+      .update({ user_id: null })
+      .eq("user_id", id);
+    if (activityError) {
+      throw new Error(`Unable to preserve staff login history: ${activityError.message}`);
+    }
     const { data: staff, error: staffError } = await supabase
       .from("staff_users")
       .select("name")
