@@ -912,18 +912,18 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                             const countMode = promoCountModes[owner.id] ?? "5";
                             const count = countMode === "custom" ? Number(promoCustomCounts[owner.id] ?? "25") : Number(countMode);
                             const result = await generateOwnerPromotionCode(owner.id, type, type === "item" ? promoItemCountDrafts[owner.id] ?? 1 : promoValueDrafts[owner.id] ?? 10, count, promoPrefixDrafts[owner.id] ?? "SYNORRA");
-                            if ("promos" in result && result.promos.length > 0) {
+                            const generatedPromos = result.promos ?? [];
+                            if (generatedPromos.length > 0) {
                               setPromoCodeRecords((current) => ({
                                 ...current,
-                                [owner.id]: [...result.promos, ...(current[owner.id] ?? [])],
+                                [owner.id]: [...generatedPromos, ...(current[owner.id] ?? [])],
                               }));
                             }
-                            if (result && "error" in result) {
-                              const partialPromos = "promos" in result ? result.promos : [];
-                              setNotice(partialPromos.length ? `${result.error} ${partialPromos.length} code(s) were created.` : result.error);
+                            if ("error" in result && result.error) {
+                              setNotice(generatedPromos.length ? `${result.error} ${generatedPromos.length} code(s) were created.` : result.error);
                               return;
                             }
-                            setNotice(`${result.promos.length} promotion code(s) generated.`);
+                            setNotice(`${generatedPromos.length} promotion code(s) generated.`);
                           })}
                           className="rounded-full bg-black px-4 py-2 text-xs font-medium text-white disabled:opacity-40"
                         >Generate codes</button>
@@ -944,7 +944,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                                 if (!window.confirm(`Delete promotion code ${promo.code}?`)) return;
                                 startTransition(async () => {
                                   const result = await deleteOwnerPromotionCode(owner.id, promo.code);
-                                  if ("error" in result) {
+                                  if ("error" in result && result.error) {
                                     setNotice(result.error);
                                     return;
                                   }

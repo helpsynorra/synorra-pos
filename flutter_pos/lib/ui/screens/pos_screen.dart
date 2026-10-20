@@ -561,7 +561,7 @@ class _PosScreenState extends State<PosScreen> {
                               gridDelegate:
                                   SliverGridDelegateWithFixedCrossAxisCount(
                                 crossAxisCount: crossAxisCount,
-                                mainAxisExtent: 72,
+                                mainAxisExtent: 160,
                                 crossAxisSpacing: 12,
                                 mainAxisSpacing: 12,
                               ),

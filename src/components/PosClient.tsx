@@ -1793,6 +1793,7 @@ export function PosClient({
                         <button type="button" onClick={() => { setPromoCode(""); setPromoDraft(""); setPromoItemIndex(null); setPromoItemQty(null); }} className="underline">Remove</button>
                       </div>
                       {selectedPromo.discountType === "item" ? (
+                        <>
                         <select
                           aria-label="Choose item to make free"
                           value={promoItemIndex ?? ""}
@@ -1807,6 +1808,7 @@ export function PosClient({
                           {cart.map((item, index) => <option key={`${cartLineKey(item)}-${index}`} value={index} disabled={item.qty < Math.max(1, Math.floor(selectedPromo.discountValue || 1))}>{drinkDisplayName(item)} · qty {item.qty}</option>)}
                         </select>
                         <p className="text-[11px] text-neutral-500">Select a cart item with enough quantity; {Math.max(1, Math.floor(selectedPromo.discountValue || 1))} unit(s) will be free.</p>
+                        </>
                       ) : null}
                     </>
                   ) : (

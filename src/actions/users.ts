@@ -32,7 +32,6 @@ import { phDateString, phIsoFromDateTimeInput } from "@/lib/datetime";
 import { openBaristaShifts, pairLoginSessions } from "@/lib/staff-sessions";
 import {
   canUsePos,
-  DEFAULT_STAFF_PERMISSIONS,
   parseRole,
   staffUserId,
   toSession,
@@ -280,15 +279,22 @@ export async function updateOwnerPermissions(userId: string, permissions: StaffP
   const user = store.users.find((entry) => entry.id === userId);
   if (!user || user.role !== "cashier") return { error: "Owner account not found." };
 
-  const normalized = Object.fromEntries(
-    Object.keys(DEFAULT_STAFF_PERMISSIONS).filter((key) => key !== "promoCodes").map((key) => [
-      key,
-      permissions[key as keyof StaffPermissions] === true,
-    ]),
-  ) as StaffPermissions;
+  const normalized: StaffPermissions = {
+    stockInventory: permissions.stockInventory === true,
+    restockInventory: permissions.restockInventory === true,
+    connectLabels: permissions.connectLabels === true,
+    connectReceipt: permissions.connectReceipt === true,
+    printButton: permissions.printButton === true,
+    customerReceipt: permissions.customerReceipt === true,
+    cupLabels: permissions.cupLabels === true,
+    dineIn: permissions.dineIn === true,
+    takeOut: permissions.takeOut === true,
+    promotionDiscount: permissions.promotionDiscount === true,
+    promotionsEnabled: permissions.promotionsEnabled === true,
+    promoCodes: user.permissions?.promoCodes ?? [],
+  };
   // Supabase stores promotion records separately, while the in-memory store
   // keeps them on the Owner permission object. Preserve them in both cases.
-  normalized.promoCodes = user.permissions?.promoCodes ?? [];
   try {
     await upsertStaffUserRecord({ ...user, permissions: normalized });
   } catch (error) {

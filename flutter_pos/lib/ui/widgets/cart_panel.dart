@@ -132,6 +132,47 @@ class _SplitPaymentScreenState extends State<_SplitPaymentScreen> {
   }
 }
 
+class _PromotionCodeDialog extends StatefulWidget {
+  const _PromotionCodeDialog();
+
+  @override
+  State<_PromotionCodeDialog> createState() => _PromotionCodeDialogState();
+}
+
+class _PromotionCodeDialogState extends State<_PromotionCodeDialog> {
+  final TextEditingController _inputController = TextEditingController();
+
+  @override
+  void dispose() {
+    _inputController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Promotion code'),
+      content: TextField(
+        controller: _inputController,
+        autofocus: true,
+        textCapitalization: TextCapitalization.characters,
+        decoration: const InputDecoration(hintText: 'Enter code'),
+        onSubmitted: (value) => Navigator.pop(context, value),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _inputController.text),
+          child: const Text('Apply'),
+        ),
+      ],
+    );
+  }
+}
+
 class _CartPanelState extends State<CartPanel> {
   static const _navy = Color(0xFF202D43);
   static const _ink = Color(0xFF14213A);
@@ -144,25 +185,10 @@ class _CartPanelState extends State<CartPanel> {
   String _splitDigitalMethod = 'gcash';
 
   Future<void> _showPromotionDialog() async {
-    final input = TextEditingController();
     final code = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Promotion code'),
-        content: TextField(
-          controller: input,
-          autofocus: true,
-          textCapitalization: TextCapitalization.characters,
-          decoration: const InputDecoration(hintText: 'Enter code'),
-          onSubmitted: (value) => Navigator.pop(dialogContext, value),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, input.text), child: const Text('Apply')),
-        ],
-      ),
+      builder: (_) => const _PromotionCodeDialog(),
     );
-    input.dispose();
     if (code == null || !mounted) return;
     final normalizedCode = code.trim().toUpperCase();
     final matchingPromotions = widget.controller.syncService.promotionCodes.where(
