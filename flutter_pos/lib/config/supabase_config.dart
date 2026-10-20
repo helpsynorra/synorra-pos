@@ -77,6 +77,6 @@ class SupabaseConfig {
   static const String rpcSaveRecipeCosting = 'save_recipe_costing';
   static const String rpcRenameMenuCategory = 'rename_menu_category';
 
-  static const String posStateId = 'commune-coffee';
+  static const String posStateId = 'synorra-pos';
 }
  

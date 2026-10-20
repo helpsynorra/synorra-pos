@@ -42,18 +42,10 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   void initState() {
     super.initState();
-    _launchController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1700),
-    )
-      ..addStatusListener((status) {
-        if (status == AnimationStatus.completed &&
-            mounted &&
-            !_mustChangePassword) {
-          _emailFocusNode.requestFocus();
-        }
-      })
-      ..forward();
+    _launchController = AnimationController(vsync: this, value: 1);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_mustChangePassword) _emailFocusNode.requestFocus();
+    });
     _authController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1100),

@@ -18,11 +18,11 @@ class BluetoothPrinterService extends ChangeNotifier {
   BluetoothPrinterService._();
 
   static final BluetoothPrinterService instance = BluetoothPrinterService._();
-  static const _receiptAddressKey = 'commune_receipt_printer_address';
-  static const _receiptNameKey = 'commune_receipt_printer_name';
-  static const _labelsAddressKey = 'commune_labels_printer_address';
-  static const _labelsNameKey = 'commune_labels_printer_name';
-  static const _labelsLanguageKey = 'commune_labels_printer_language';
+  static const _receiptAddressKey = 'synorra_receipt_printer_address';
+  static const _receiptNameKey = 'synorra_receipt_printer_name';
+  static const _labelsAddressKey = 'synorra_labels_printer_address';
+  static const _labelsNameKey = 'synorra_labels_printer_name';
+  static const _labelsLanguageKey = 'synorra_labels_printer_language';
 
   final FlutterClassicBluetooth _bluetooth = FlutterClassicBluetooth();
   final Map<PrinterRole, BtcConnection> _connections = {};

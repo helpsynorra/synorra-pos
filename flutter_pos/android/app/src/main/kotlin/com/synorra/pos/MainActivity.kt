@@ -1,4 +1,4 @@
-package com.commune.commune_pos
+package com.synorra.pos
 
 import io.flutter.embedding.android.FlutterActivity
 
