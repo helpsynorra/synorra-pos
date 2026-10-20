@@ -210,7 +210,9 @@ export async function login(
     return { error: "Enter your Owner account email." };
   }
 
-  const store = await getFreshStore();
+  // Login must search the global staff list. A stale Owner/Admin session can
+  // otherwise scope getFreshStore() to one tenant and hide the Admin account.
+  const store = await getFreshStore({ ownerId: null });
   const lowerUsername = username.toLowerCase();
   const user =
     selectedRole === "cashier"

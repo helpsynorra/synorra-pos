@@ -338,6 +338,7 @@ export function PosClient({
   const total = Math.max(0, subtotal - promoDiscount);
   const promoReady = !promoCode || Boolean(
     selectedPromo &&
+    (!selectedPromo.expiresAt || Date.parse(selectedPromo.expiresAt) > Date.now()) &&
     session.permissions?.promotionsEnabled &&
     session.permissions?.promotionDiscount &&
     (selectedPromo.discountType !== "item" || (promoItemIndex != null && Boolean(cart[promoItemIndex]) && promoItemQty != null && promoItemQty === Math.max(1, Math.floor(selectedPromo.discountValue || 1)) && promoItemQty <= (cart[promoItemIndex]?.qty ?? 0))),
@@ -505,6 +506,10 @@ export function PosClient({
     }
     if (promo.redeemedAt) {
       setMessage("Promo voucher already used.");
+      return;
+    }
+    if (promo.expiresAt && Date.parse(promo.expiresAt) <= Date.now()) {
+      setMessage("This promo voucher has expired.");
       return;
     }
     setPromoCode(code);

@@ -431,6 +431,7 @@ class PosController extends ChangeNotifier {
     ).firstOrNull;
     if (promo == null || code.isEmpty) return 'Invalid promo voucher.';
     if (_isPromotionRedeemed(promo)) return 'Promo voucher already used.';
+    if (_isPromotionExpired(promo)) return 'This promo voucher has expired.';
     final value = (promo['discountValue'] as num?)?.toDouble() ?? 0;
     final isFreeItem = promo['discountType'] == 'item';
     final freeItemQty = value.round().clamp(1, 99).toInt();
@@ -465,6 +466,7 @@ class PosController extends ChangeNotifier {
     ).firstOrNull;
     if (promo == null ||
         _isPromotionRedeemed(promo) ||
+        _isPromotionExpired(promo) ||
         !syncService.hasPermission('promotionsEnabled') ||
         !syncService.hasPermission('promotionDiscount')) {
       promoId = null;
@@ -489,6 +491,12 @@ class PosController extends ChangeNotifier {
 
   bool _isPromotionRedeemed(Map<String, dynamic> promo) =>
       promo['redeemedAt'] != null || promo['redeemed_at'] != null;
+
+  bool _isPromotionExpired(Map<String, dynamic> promo) {
+    final rawExpiry = promo['expiresAt'] ?? promo['expires_at'];
+    final expiresAt = DateTime.tryParse(rawExpiry?.toString() ?? '');
+    return expiresAt != null && !DateTime.now().isBefore(expiresAt);
+  }
 
   void clearPromotion() {
     final previousTotal = total;

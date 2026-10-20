@@ -24,6 +24,8 @@ import type { LoginActivity, OffRequest, PromotionCode, Session, StaffPermission
 
 const field =
   "w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm text-neutral-900 outline-none transition-all focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900";
+const adminField =
+  "h-12 w-full min-w-0 rounded-xl border border-[#dce6f4] bg-white px-3.5 text-sm text-[#243a5e] outline-none transition focus:border-[#5363ff] focus:ring-2 focus:ring-[#e8ebff]";
 
 type UserManagerProps = {
   users: PublicStaffUser[];
@@ -46,7 +48,7 @@ type UserManagerProps = {
   adminLoginPath: string;
 };
 
-type SubTab = "staff" | "inout" | "off" | "gates" | "settings";
+type SubTab = "staff" | "inout" | "off" | "gates" | "settings" | "customWebsitePromo";
 type StaffRole = "Admin" | "Barista" | "Owner";
 
 type PermissionFlag = Exclude<keyof StaffPermissions, "promoCodes">;
@@ -63,6 +65,32 @@ const permissionOptions: { key: PermissionFlag; label: string }[] = [
   { key: "takeOut", label: "Take out" },
   { key: "promotionDiscount", label: "Promotion discounts in POS" },
   { key: "promotionsEnabled", label: "Promotions enabled" },
+];
+
+const adminPermissionGroups: {
+  title: string;
+  description: string;
+  icon: "inventory" | "operations" | "customer";
+  permissions: PermissionFlag[];
+}[] = [
+  {
+    title: "Inventory & Sales",
+    description: "Manage products, stock and sales operations.",
+    icon: "inventory",
+    permissions: ["stockInventory", "connectReceipt", "cupLabels", "promotionDiscount"],
+  },
+  {
+    title: "Operations",
+    description: "Handle daily operations and customer flow.",
+    icon: "operations",
+    permissions: ["restockInventory", "printButton", "dineIn", "promotionsEnabled"],
+  },
+  {
+    title: "Customer & Labels",
+    description: "Manage customer data and label printing.",
+    icon: "customer",
+    permissions: ["connectLabels", "customerReceipt", "takeOut"],
+  },
 ];
 
 export function UserManager({ users, session, loginActivity, offRequests, showShiftTabs = true, showAdminRole = true, showOwnerRole = true, showBaristaRole = true, showBaristasOnly = false, showEditStaffButton = true, showDeleteStaffButton = true, baristaOnlyStaffActions = false, showLoginLinksTab = true, showPrintButtonToggle = true, showViewPermissionsButton = true, adminLoginPath }: UserManagerProps) {
@@ -86,6 +114,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
   const [promoTypeDrafts, setPromoTypeDrafts] = useState<Record<string, PromotionCode["discountType"]>>({});
   const [promoItemCountDrafts, setPromoItemCountDrafts] = useState<Record<string, number>>({});
   const [promoPrefixDrafts, setPromoPrefixDrafts] = useState<Record<string, string>>({});
+  const [promoExpiryDrafts, setPromoExpiryDrafts] = useState<Record<string, string>>({});
   const [promoCountModes, setPromoCountModes] = useState<Record<string, string>>({});
   const [promoCustomCounts, setPromoCustomCounts] = useState<Record<string, string>>({});
   const [pending, startTransition] = useTransition();
@@ -115,6 +144,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
     ? uniqueUsers.filter((user) => user.role === "barista")
     : uniqueUsers;
   const ownerUsers = visibleUsers.filter((user) => user.role === "cashier");
+  const isAdminConsole = session.role === "admin";
   const editing = visibleUsers.find((user) => user.id === editingId) ?? null;
   const floorStaff = visibleUsers.filter((user) =>
     baristaOnlyStaffActions ? user.role === "barista" : user.role !== "admin",
@@ -195,6 +225,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
               { id: "off", label: "Request off" },
               { id: "gates", label: "Login links" },
               ...(showPrintButtonToggle ? [{ id: "settings" as const, label: "Settings" }] : []),
+              ...(isAdminConsole ? [{ id: "customWebsitePromo" as const, label: "Custom Website Promo" }] : []),
             ] as const
           )
             .filter((entry) => (showShiftTabs || (entry.id !== "inout" && entry.id !== "off")) && (showLoginLinksTab || entry.id !== "gates"))
@@ -206,8 +237,14 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                 setTab(entry.id);
                 setNotice(null);
               }}
-              className={`shrink-0 px-4 py-1.5 rounded text-xs font-bold transition shadow-sm uppercase ${
-                tab === entry.id ? "bg-black text-white" : "bg-white text-neutral-700 hover:bg-neutral-100"
+              className={`shrink-0 rounded-xl px-4 py-2.5 text-xs font-bold uppercase transition ${
+                isAdminConsole
+                  ? tab === entry.id
+                    ? "bg-[#4353ff] text-white shadow-[0_4px_12px_rgba(67,83,255,0.2)]"
+                    : "bg-white text-[#536783] shadow-sm hover:bg-[#f2f5ff]"
+                  : tab === entry.id
+                    ? "bg-black text-white shadow-sm"
+                    : "bg-white text-neutral-700 shadow-sm hover:bg-neutral-100"
               }`}
             >
               {entry.label}
@@ -410,6 +447,8 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
             </div>
           </>
         ) : null}
+
+        {tab === "customWebsitePromo" ? <div aria-label="Custom Website Promo" className="min-h-[240px]">commune</div> : null}
 
         {tab === "inout" ? (
           <>
@@ -765,11 +804,23 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
 
         {tab === "settings" ? (
           <>
-            <div>
-              <h1 className="text-xl font-semibold tracking-tight">{selectedPermissionOwnerId ? "Owner permissions" : "Settings"}</h1>
-              <p className="mt-1 text-sm text-neutral-500">
-                {selectedPermissionOwnerId ? "Choose which POS features this Owner account can use." : "Select an Owner to view their permissions."}
-              </p>
+            <div className={isAdminConsole ? "rounded-2xl border border-[#e4ebf5] bg-white p-5 shadow-[0_8px_30px_rgba(37,75,130,0.06)] sm:p-6" : "rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5"}>
+              <div className="flex items-start gap-3">
+                {isAdminConsole ? (
+                  <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#eef2ff] text-[#4353ff]">
+                    <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                      <path d="M12 3 20 6v5c0 5-3.4 8.2-8 10-4.6-1.8-8-5-8-10V6l8-3Z" strokeLinejoin="round" />
+                      <path d="m8.5 12 2.2 2.2 4.8-4.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </span>
+                ) : null}
+                <div className="min-w-0 flex-1">
+                  <h1 className="text-xl font-semibold tracking-tight text-[#14213d]">{selectedPermissionOwnerId ? "Owner Permissions" : "Settings"}</h1>
+                  <p className="mt-1 text-sm text-neutral-500">
+                    {selectedPermissionOwnerId ? "Choose which POS features this Owner account can use." : "Select an Owner to view their permissions."}
+                  </p>
+                </div>
+              </div>
             </div>
             {!selectedPermissionOwnerId ? (
               <div className="divide-y divide-neutral-100 overflow-hidden rounded-2xl border border-neutral-200 bg-white">
@@ -793,45 +844,75 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                 if (!owner) return <p className="text-sm text-neutral-500">Owner account not found.</p>;
                 const permissions = permissionState[owner.id] ?? { ...DEFAULT_STAFF_PERMISSIONS, ...owner.permissions };
                 return (
-                  <section className="space-y-3 rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
+                  <section className={isAdminConsole ? "space-y-5 rounded-2xl border border-[#e4ebf5] bg-white p-4 shadow-[0_8px_30px_rgba(37,75,130,0.06)] sm:p-6" : "space-y-3 rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5"}>
                     <div className="flex items-center justify-between gap-3">
-                      <h2 className="font-semibold">{owner.name}</h2>
-                      <button type="button" onClick={() => setSelectedPermissionOwnerId(null)} className="text-xs font-medium text-neutral-600 hover:text-black">Back</button>
+                      <h2 className="font-semibold text-[#14213d]">{owner.name}</h2>
+                      <button type="button" onClick={() => setSelectedPermissionOwnerId(null)} className={isAdminConsole ? "rounded-lg border border-[#dce5f2] px-3 py-1.5 text-xs font-medium text-[#516783] transition hover:border-[#4353ff] hover:text-[#4353ff]" : "text-xs font-medium text-neutral-600 hover:text-black"}>Back</button>
                     </div>
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                      {permissionOptions.map(({ key, label }) => (
-                        <label key={key} className="flex cursor-pointer items-center gap-3 rounded-lg border border-neutral-200 px-3 py-2.5 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={permissions[key]}
-                            disabled={pending}
-                            onChange={(event) => {
-                              const next = { ...permissions, [key]: event.target.checked };
-                              setPermissionState((current) => ({ ...current, [owner.id]: next }));
-                              startTransition(async () => {
-                                const result = await updateOwnerPermissions(owner.id, next);
-                                if (result && "error" in result && result.error) {
-                                  setPermissionState((current) => ({ ...current, [owner.id]: permissions }));
-                                  setNotice(result.error);
-                                  return;
-                                }
-                                setNotice(null);
-                              });
-                            }}
-                            className="size-4 accent-black"
-                          />
-                          {label}
-                        </label>
+                    <div className={isAdminConsole ? "grid gap-3 lg:grid-cols-3" : "grid gap-2 sm:grid-cols-2 lg:grid-cols-3"}>
+                      {(isAdminConsole ? adminPermissionGroups : [{ title: "Permissions", description: "", icon: "inventory" as const, permissions: permissionOptions.map(({ key }) => key) }]).map((group) => (
+                        <section key={group.title} className={isAdminConsole ? "rounded-xl border border-[#e1eaf6] bg-gradient-to-b from-white to-[#fbfdff] p-4" : "contents"}>
+                          {isAdminConsole ? (
+                            <div className="mb-3 flex items-start gap-2.5">
+                              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#f0f4fb] text-[#263c61]">
+                                {group.icon === "inventory" ? (
+                                  <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5Z" strokeLinejoin="round"/><path d="M3 8v9l9 5 9-5V8M12 13v9" strokeLinejoin="round"/></svg>
+                                ) : group.icon === "operations" ? (
+                                  <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M7 8V3h10v5M6 18H4a2 2 0 0 1-2-2v-5a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v5a2 2 0 0 1-2 2h-2" strokeLinejoin="round"/><path d="M6 14h12v7H6zM18 11h.01" strokeLinejoin="round"/></svg>
+                                ) : (
+                                  <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20v-1a6 6 0 0 1 12 0v1M17 11a3 3 0 1 0 0-6M18 14a5 5 0 0 1 3 5v1" strokeLinecap="round"/></svg>
+                                )}
+                              </span>
+                              <div>
+                                <h3 className="text-sm font-semibold text-[#172849]">{group.title}</h3>
+                                <p className="mt-0.5 text-[11px] leading-4 text-[#8091ab]">{group.description}</p>
+                              </div>
+                            </div>
+                          ) : null}
+                          <div className="space-y-0.5">
+                            {group.permissions.map((key) => {
+                              const label = permissionOptions.find((option) => option.key === key)?.label ?? key;
+                              return (
+                                <label key={key} className={isAdminConsole ? "flex min-h-9 cursor-pointer items-center justify-between gap-3 rounded-lg px-1.5 text-xs text-[#364b6d] transition hover:bg-[#f5f8fd]" : "flex cursor-pointer items-center gap-3 rounded-lg border border-neutral-200 px-3 py-2.5 text-sm"}>
+                                  <span>{label}</span>
+                                  <input
+                                    type="checkbox"
+                                    checked={permissions[key]}
+                                    disabled={pending}
+                                    onChange={(event) => {
+                                      const next = { ...permissions, [key]: event.target.checked };
+                                      setPermissionState((current) => ({ ...current, [owner.id]: next }));
+                                      startTransition(async () => {
+                                        const result = await updateOwnerPermissions(owner.id, next);
+                                        if (result && "error" in result && result.error) {
+                                          setPermissionState((current) => ({ ...current, [owner.id]: permissions }));
+                                          setNotice(result.error);
+                                          return;
+                                        }
+                                        setNotice(null);
+                                      });
+                                    }}
+                                    className={isAdminConsole ? "peer sr-only" : "size-4 accent-black"}
+                                  />
+                                  {isAdminConsole ? <span aria-hidden="true" className={`relative h-5 w-9 shrink-0 rounded-full transition peer-focus-visible:ring-2 peer-focus-visible:ring-[#4353ff] peer-focus-visible:ring-offset-2 ${permissions[key] ? "bg-[#4353ff]" : "bg-[#cbd5e1]"}`}><span className={`absolute top-0.5 size-4 rounded-full bg-white shadow-sm transition ${permissions[key] ? "left-[18px]" : "left-0.5"}`} /></span> : null}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </section>
                       ))}
                     </div>
-                    <div className="space-y-3 border-t border-neutral-200 pt-4">
+                    <div className={isAdminConsole ? "space-y-4 border-t border-[#e7edf6] pt-5" : "space-y-3 border-t border-neutral-200 pt-4"}>
                       <div>
-                        <h3 className="text-sm font-semibold">Generate promo vouchers</h3>
+                        <div className="flex items-center gap-2.5">
+                          {isAdminConsole ? <span className="flex size-8 items-center justify-center rounded-lg bg-[#eef2ff] text-[#4353ff]"><svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M20 12v8H4v-8M2 7h20v5H2zM12 20V7" strokeLinejoin="round"/><path d="M12 7H7.5a2.5 2.5 0 1 1 2.5-2.5C10 6 12 7 12 7ZM12 7h4.5A2.5 2.5 0 1 0 14 4.5C14 6 12 7 12 7Z" strokeLinejoin="round"/></svg></span> : null}
+                          <h3 className="text-sm font-semibold text-[#172849]">{isAdminConsole ? "Generate Promotion Codes" : "Generate promo vouchers"}</h3>
+                        </div>
                         <p className="text-xs text-neutral-500">Each voucher can only be redeemed once. Add a prefix, then the system generates a unique 6-character suffix.</p>
                       </div>
-                      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1.4fr_auto]">
-                        <label className="block text-xs font-medium text-neutral-600">
-                          <span className="sr-only">Voucher prefix</span>
+                      <div className={`grid gap-x-3 gap-y-2 sm:grid-cols-2 ${isAdminConsole ? `items-end ${(promoTypeDrafts[owner.id] ?? "percent") === "item" ? "xl:grid-cols-[minmax(150px,1fr)_minmax(170px,1.1fr)_140px_minmax(170px,1.2fr)_minmax(170px,1fr)_auto]" : "xl:grid-cols-[minmax(150px,1fr)_minmax(170px,1.1fr)_minmax(140px,1fr)_minmax(170px,1.2fr)_minmax(170px,1fr)_auto]"}` : "xl:grid-cols-[1fr_1fr_1fr_1.4fr_1fr_auto]"}`}>
+                        <label className={isAdminConsole ? "block min-w-0 space-y-1.5 text-xs font-medium text-[#586b89]" : "block text-xs font-medium text-neutral-600"}>
+                          <span className={isAdminConsole ? "block" : "sr-only"}>Prefix</span>
                           <input
                             aria-label="Promo voucher prefix"
                             type="text"
@@ -839,10 +920,22 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                             maxLength={16}
                             placeholder="Voucher prefix"
                             onChange={(event) => setPromoPrefixDrafts((current) => ({ ...current, [owner.id]: event.target.value.toUpperCase() }))}
-                            className={field}
+                            className={isAdminConsole ? adminField : field}
                           />
                         </label>
-                        <select
+                        {isAdminConsole ? <label className="block min-w-0 space-y-1.5 text-xs font-medium text-[#586b89]">
+                          <span className="block">Discount type</span>
+                          <select
+                            aria-label="Promotion discount type"
+                            value={promoTypeDrafts[owner.id] ?? "percent"}
+                            onChange={(event) => setPromoTypeDrafts((current) => ({ ...current, [owner.id]: event.target.value as PromotionCode["discountType"] }))}
+                            className={adminField}
+                          >
+                            <option value="percent">Percent discount</option>
+                            <option value="amount">Peso discount</option>
+                            <option value="item">Free item(s)</option>
+                          </select>
+                        </label> : <select
                           aria-label="Promotion discount type"
                           value={promoTypeDrafts[owner.id] ?? "percent"}
                           onChange={(event) => setPromoTypeDrafts((current) => ({ ...current, [owner.id]: event.target.value as PromotionCode["discountType"] }))}
@@ -851,21 +944,33 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                           <option value="percent">Percent discount</option>
                           <option value="amount">Peso discount</option>
                           <option value="item">Free item(s)</option>
-                        </select>
+                        </select>}
                         {(promoTypeDrafts[owner.id] ?? "percent") !== "item" ? (
-                          <input
-                            aria-label="Promotion discount value"
-                            type="number"
-                            min="0.01"
-                            max={(promoTypeDrafts[owner.id] ?? "percent") === "percent" ? 100 : undefined}
-                            step="0.01"
-                            value={promoValueDrafts[owner.id] ?? "10"}
-                            onChange={(event) => setPromoValueDrafts((current) => ({ ...current, [owner.id]: Number(event.target.value) }))}
-                            className={field}
-                          />
+                          isAdminConsole ? <label className="block min-w-0 space-y-1.5 text-xs font-medium text-[#586b89]">
+                            <span className="block">Discount value</span>
+                            <input
+                              aria-label="Promotion discount value"
+                              type="number"
+                              min="0.01"
+                              max={(promoTypeDrafts[owner.id] ?? "percent") === "percent" ? 100 : undefined}
+                              step="0.01"
+                              value={promoValueDrafts[owner.id] ?? "10"}
+                              onChange={(event) => setPromoValueDrafts((current) => ({ ...current, [owner.id]: Number(event.target.value) }))}
+                              className={adminField}
+                            />
+                          </label> : <input
+                              aria-label="Promotion discount value"
+                              type="number"
+                              min="0.01"
+                              max={(promoTypeDrafts[owner.id] ?? "percent") === "percent" ? 100 : undefined}
+                              step="0.01"
+                              value={promoValueDrafts[owner.id] ?? "10"}
+                              onChange={(event) => setPromoValueDrafts((current) => ({ ...current, [owner.id]: Number(event.target.value) }))}
+                              className={field}
+                            />
                         ) : (
-                          <label className="block text-xs font-medium text-neutral-600">
-                            <span className="mb-1 block">Free item quantity</span>
+                          <label className={isAdminConsole ? "block min-w-0 space-y-1.5 text-xs font-medium text-[#586b89]" : "block text-xs font-medium text-neutral-600"}>
+                            <span className={isAdminConsole ? "block whitespace-nowrap" : "mb-1 block"}>Free item quantity</span>
                             <input
                               aria-label="Number of free items per voucher"
                               type="number"
@@ -874,44 +979,58 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                               step="1"
                               value={promoItemCountDrafts[owner.id] ?? 1}
                               onChange={(event) => setPromoItemCountDrafts((current) => ({ ...current, [owner.id]: Number(event.target.value) }))}
-                              className={field}
+                              className={isAdminConsole ? adminField : field}
                             />
                           </label>
                         )}
-                        <div className="flex gap-2">
-                          <select
-                            aria-label="Number of promo vouchers"
-                            value={promoCountModes[owner.id] ?? "5"}
-                            onChange={(event) => setPromoCountModes((current) => ({ ...current, [owner.id]: event.target.value }))}
-                            className={field}
-                          >
-                            <option value="1">1 voucher</option>
-                            <option value="5">5 vouchers</option>
-                            <option value="10">10 vouchers</option>
-                            <option value="20">20 vouchers</option>
-                            <option value="custom">Custom</option>
-                          </select>
-                          {(promoCountModes[owner.id] ?? "5") === "custom" ? (
-                            <input
-                              aria-label="Custom number of promo vouchers"
-                              type="number"
-                              min="1"
-                              max="100"
-                              step="1"
-                              value={promoCustomCounts[owner.id] ?? "25"}
-                              onChange={(event) => setPromoCustomCounts((current) => ({ ...current, [owner.id]: event.target.value }))}
-                              className={`${field} max-w-24`}
-                            />
-                          ) : null}
+                        <div className={isAdminConsole ? "min-w-0 space-y-1.5" : "flex gap-2"}>
+                          {isAdminConsole ? <span className="block text-xs font-medium text-[#586b89]">Quantity</span> : null}
+                          <div className={isAdminConsole ? "flex min-w-0 gap-2" : "contents"}>
+                            <select
+                              aria-label="Number of promo vouchers"
+                              value={promoCountModes[owner.id] ?? "5"}
+                              onChange={(event) => setPromoCountModes((current) => ({ ...current, [owner.id]: event.target.value }))}
+                              className={isAdminConsole ? `${adminField} flex-1` : field}
+                            >
+                              <option value="1">1 voucher</option>
+                              <option value="5">5 vouchers</option>
+                              <option value="10">10 vouchers</option>
+                              <option value="20">20 vouchers</option>
+                              <option value="custom">Custom</option>
+                            </select>
+                            {(promoCountModes[owner.id] ?? "5") === "custom" ? (
+                              <input
+                                aria-label="Custom number of promo vouchers"
+                                type="number"
+                                min="1"
+                                max="100"
+                                step="1"
+                                value={promoCustomCounts[owner.id] ?? "25"}
+                                onChange={(event) => setPromoCustomCounts((current) => ({ ...current, [owner.id]: event.target.value }))}
+                                className={`${isAdminConsole ? adminField : field} max-w-24`}
+                              />
+                            ) : null}
+                          </div>
                         </div>
+                        <label className={isAdminConsole ? "block min-w-0 space-y-1.5 text-xs font-medium text-[#586b89]" : "block text-xs font-medium text-neutral-600"}>
+                          <span className={isAdminConsole ? "block" : "mb-1 block"}>Expires on</span>
+                          <input
+                            aria-label="Promo voucher expiration date"
+                            type="date"
+                            min={phDateString()}
+                            value={promoExpiryDrafts[owner.id] ?? ""}
+                            onChange={(event) => setPromoExpiryDrafts((current) => ({ ...current, [owner.id]: event.target.value }))}
+                            className={isAdminConsole ? adminField : field}
+                          />
+                        </label>
                         <button
                           type="button"
-                          disabled={pending || !permissions.promotionsEnabled || !/^[A-Z0-9]{1,16}$/.test(promoPrefixDrafts[owner.id] ?? "SYNORRA") || ((promoTypeDrafts[owner.id] ?? "percent") === "item" && (!Number.isInteger(promoItemCountDrafts[owner.id] ?? 1) || (promoItemCountDrafts[owner.id] ?? 1) < 1 || (promoItemCountDrafts[owner.id] ?? 1) > 99)) || ((promoCountModes[owner.id] ?? "5") === "custom" && (!/^\d+$/.test(promoCustomCounts[owner.id] ?? "25") || Number(promoCustomCounts[owner.id] ?? "25") < 1 || Number(promoCustomCounts[owner.id] ?? "25") > 100))}
+                          disabled={pending || !permissions.promotionsEnabled || !promoExpiryDrafts[owner.id] || promoExpiryDrafts[owner.id] < phDateString() || !/^[A-Z0-9]{1,16}$/.test(promoPrefixDrafts[owner.id] ?? "SYNORRA") || ((promoTypeDrafts[owner.id] ?? "percent") === "item" && (!Number.isInteger(promoItemCountDrafts[owner.id] ?? 1) || (promoItemCountDrafts[owner.id] ?? 1) < 1 || (promoItemCountDrafts[owner.id] ?? 1) > 99)) || ((promoCountModes[owner.id] ?? "5") === "custom" && (!/^\d+$/.test(promoCustomCounts[owner.id] ?? "25") || Number(promoCustomCounts[owner.id] ?? "25") < 1 || Number(promoCustomCounts[owner.id] ?? "25") > 100))}
                           onClick={() => startTransition(async () => {
                             const type = promoTypeDrafts[owner.id] ?? "percent";
                             const countMode = promoCountModes[owner.id] ?? "5";
                             const count = countMode === "custom" ? Number(promoCustomCounts[owner.id] ?? "25") : Number(countMode);
-                            const result = await generateOwnerPromotionCode(owner.id, type, type === "item" ? promoItemCountDrafts[owner.id] ?? 1 : promoValueDrafts[owner.id] ?? 10, count, promoPrefixDrafts[owner.id] ?? "SYNORRA");
+                            const result = await generateOwnerPromotionCode(owner.id, type, type === "item" ? promoItemCountDrafts[owner.id] ?? 1 : promoValueDrafts[owner.id] ?? 10, count, promoPrefixDrafts[owner.id] ?? "SYNORRA", promoExpiryDrafts[owner.id] ?? "");
                             const generatedPromos = result.promos ?? [];
                             if (generatedPromos.length > 0) {
                               setPromoCodeRecords((current) => ({
@@ -925,17 +1044,21 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                             }
                             setNotice(`${generatedPromos.length} promo voucher(s) generated.`);
                           })}
-                          className="rounded-full bg-black px-4 py-2 text-xs font-medium text-white disabled:opacity-40"
-                        >Generate vouchers</button>
+                          className={isAdminConsole ? "h-12 whitespace-nowrap self-end rounded-xl bg-[#4353ff] px-5 text-xs font-semibold text-white shadow-[0_5px_14px_rgba(67,83,255,0.22)] transition hover:bg-[#3345ed] disabled:opacity-40" : "rounded-full bg-black px-4 py-2 text-xs font-medium text-white disabled:opacity-40"}
+                        >Generate codes</button>
                       </div>
-                      <div className="divide-y divide-neutral-100 rounded-xl border border-neutral-200">
+                      <div className={isAdminConsole ? "overflow-hidden rounded-xl border border-[#e3eaf4]" : "divide-y divide-neutral-100 rounded-xl border border-neutral-200"}>
+                        {isAdminConsole ? <div className="hidden grid-cols-[1.35fr_0.8fr_0.8fr_1fr_1fr_0.8fr_auto] gap-3 bg-[#f5f8fc] px-4 py-2.5 text-[10px] font-semibold tracking-wide text-[#7587a3] uppercase sm:grid"><span>Code</span><span>Discount</span><span>Prefix</span><span>Total items</span><span>Expires</span><span>Status</span><span className="text-right">Actions</span></div> : null}
                         {(promoCodeRecords[owner.id] ?? []).length === 0 ? (
                           <p className="p-3 text-xs text-neutral-500">No promo vouchers generated.</p>
                         ) : (promoCodeRecords[owner.id] ?? []).map((promo) => (
-                          <div key={promo.code} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
+                          <div key={promo.code} className={isAdminConsole ? "grid grid-cols-2 gap-2 border-t border-[#edf1f7] px-4 py-3 text-xs text-[#405475] sm:grid-cols-[1.35fr_0.8fr_0.8fr_1fr_1fr_0.8fr_auto] sm:items-center sm:gap-3" : "flex flex-wrap items-center justify-between gap-2 p-3 text-sm"}>
                             <span className="font-mono font-semibold tracking-widest">{promo.code}</span>
                             <span>{promo.discountType === "item" ? `${promo.discountValue || 1} free item${(promo.discountValue || 1) === 1 ? "" : "s"}` : promo.discountType === "percent" ? `${promo.discountValue}% off` : `₱${promo.discountValue} off`}</span>
-                            <span className={promo.redeemedAt ? "text-neutral-400" : "text-emerald-700"}>{promo.redeemedAt ? "Used" : "Unused"}</span>
+                            {isAdminConsole ? <span>{promo.code.includes("-") ? promo.code.split("-").slice(0, -1).join("-") : "—"}</span> : null}
+                            {isAdminConsole ? <span>{promo.discountType === "item" ? `${promo.discountValue || 1} free item${(promo.discountValue || 1) === 1 ? "" : "s"}` : "-"}</span> : null}
+                            {isAdminConsole ? <span>{promo.expiresAt ? phDateString(promo.expiresAt) : "No expiry"}</span> : null}
+                            <span className={promo.redeemedAt ? "text-neutral-400" : promo.expiresAt && Date.parse(promo.expiresAt) <= Date.now() ? "text-amber-700" : "text-emerald-700"}>{promo.redeemedAt ? "Used" : promo.expiresAt && Date.parse(promo.expiresAt) <= Date.now() ? "Expired" : isAdminConsole ? "Active" : "Unused"}</span>
                             <button
                               type="button"
                               aria-label={`Delete promo voucher ${promo.code}`}
@@ -955,7 +1078,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                                   setNotice(`Promo voucher ${promo.code} deleted.`);
                                 });
                               }}
-                              className="rounded-full border border-neutral-300 px-3 py-1 text-xs font-medium text-red-600 hover:border-red-300 hover:bg-red-50 disabled:opacity-40"
+                              className={isAdminConsole ? "justify-self-start rounded-full border border-[#ffd6d9] bg-[#fff8f8] px-3 py-1.5 text-[11px] font-medium text-[#f04452] transition hover:bg-[#fff0f1] disabled:opacity-40 sm:justify-self-end" : "rounded-full border border-neutral-300 px-3 py-1 text-xs font-medium text-red-600 hover:border-red-300 hover:bg-red-50 disabled:opacity-40"}
                             >
                               Delete
                             </button>

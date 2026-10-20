@@ -19,8 +19,8 @@ export default async function SynorraHostPage() {
     .map(publicUser);
 
   return (
-    <main className="min-h-svh overflow-x-hidden bg-neutral-100 text-black">
-      <header className="relative z-40 flex min-h-[72px] items-center justify-between border-b border-neutral-200 bg-white px-4 py-3 sm:px-6">
+    <main className="min-h-svh overflow-x-hidden bg-[#f5f8fc] text-[#17243e]">
+      <header className="relative z-40 flex min-h-[68px] items-center justify-between border-b border-[#e7edf5] bg-white px-4 py-3 sm:px-6">
         <div className="flex items-center gap-4">
           <Link
             href="/"
@@ -32,11 +32,16 @@ export default async function SynorraHostPage() {
             </svg>
           </Link>
           <BrandLogo size="sm" align="start" />
-          <h1 className="text-base font-medium">Staff</h1>
+          <span className="hidden h-7 w-px bg-[#e5ebf4] sm:block" />
+          <h1 className="text-sm font-semibold tracking-tight text-[#263b5d]">Admin Console</h1>
         </div>
         <div className="flex items-center gap-4">
+          <div className="hidden text-right sm:block">
+            <p className="text-xs font-semibold text-[#263b5d]">{session.name}</p>
+            <p className="text-[10px] text-[#8a9ab0]">Administrator</p>
+          </div>
           <form action={logout}>
-            <button type="submit" className="text-sm font-medium text-neutral-600 hover:text-black">
+            <button type="submit" className="rounded-full border border-[#dce5f2] px-3.5 py-2 text-xs font-semibold text-[#536783] transition hover:border-[#4353ff] hover:text-[#4353ff]">
               Log out
             </button>
           </form>

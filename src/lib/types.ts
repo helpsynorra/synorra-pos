@@ -28,6 +28,7 @@ export type PromotionCode = {
   code: string;
   discountType: "percent" | "amount" | "item";
   discountValue: number;
+  expiresAt?: string;
   redeemedAt?: string;
   redeemedOrderId?: string;
 };

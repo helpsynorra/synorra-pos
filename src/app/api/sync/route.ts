@@ -529,6 +529,9 @@ export async function POST(req: NextRequest) {
         if (promo.redeemedAt) {
           return NextResponse.json({ ok: false, error: "The promotion code already used." }, { status: 409, headers: corsHeaders });
         }
+        if (promo.expiresAt && Date.parse(promo.expiresAt) <= Date.now()) {
+          return NextResponse.json({ ok: false, error: "This promo voucher has expired." }, { status: 409, headers: corsHeaders });
+        }
         const subtotal = Number(rawOrder.subtotal) || 0;
         const promoItemIndex = typeof rawOrder.promoItemIndex === "number" && Number.isInteger(rawOrder.promoItemIndex)
           ? rawOrder.promoItemIndex

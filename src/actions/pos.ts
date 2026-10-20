@@ -359,6 +359,9 @@ export async function createOrder(
       return { ok: false as const, error: "Invalid promotion code." };
     }
     if (promo.redeemedAt) return { ok: false as const, error: "The promotion code already used." };
+    if (promo.expiresAt && Date.parse(promo.expiresAt) <= Date.now()) {
+      return { ok: false as const, error: "This promo voucher has expired." };
+    }
     if (promo.discountType === "item") {
       const freeItemQty = Math.max(1, Math.floor(promo.discountValue || 1));
       if (!Number.isInteger(promoItemIndex) || promoItemIndex! < 0 || promoItemIndex! >= priced.length) {

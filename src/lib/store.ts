@@ -74,7 +74,7 @@ export async function getOwnerAccounts(): Promise<StaffUser[]> {
   const supabase = supabaseAdmin();
   const [{ data, error }, { data: promotions, error: promotionsError }] = await Promise.all([
     supabase.from("staff_users").select("id,owner_id,username,email,password,password_changed,name,role,title,permissions").eq("role", "cashier").order("created_at"),
-    supabase.from("promotions").select("owner_id,code,discount_type,discount_value,redeemed_at,redeemed_order_id").order("created_at", { ascending: false }),
+    supabase.from("promotions").select("owner_id,code,discount_type,discount_value,expires_at,redeemed_at,redeemed_order_id").order("created_at", { ascending: false }),
   ]);
   if (error) throw new Error(`Unable to read Owner accounts: ${error.message}`);
   if (promotionsError) throw new Error(`Unable to read promotion codes: ${promotionsError.message}`);
@@ -87,6 +87,7 @@ export async function getOwnerAccounts(): Promise<StaffUser[]> {
         code: promo.code,
         discountType: promo.discount_type,
         discountValue: Number(promo.discount_value),
+        expiresAt: promo.expires_at ?? undefined,
         redeemedAt: promo.redeemed_at ?? undefined,
         redeemedOrderId: promo.redeemed_order_id ?? undefined,
       })),
@@ -705,6 +706,7 @@ async function readStore(options?: { fresh?: boolean; ownerId?: string | null })
                     code: promo.code,
                     discountType: promo.discount_type,
                     discountValue: Number(promo.discount_value),
+                    expiresAt: promo.expires_at ?? undefined,
                     redeemedAt: promo.redeemed_at ?? undefined,
                     redeemedOrderId: promo.redeemed_order_id ?? undefined,
                   })),
@@ -1242,6 +1244,9 @@ export async function createOrderAtomic(input: {
           return { ok: false, error: "Invalid promotion code." };
         }
         if (promoEntry.redeemedAt) return { ok: false, error: "The promotion code already used." };
+        if (promoEntry.expiresAt && Date.parse(promoEntry.expiresAt) <= Date.now()) {
+          return { ok: false, error: "This promo voucher has expired." };
+        }
         const selectedLine = Number.isInteger(order.promoItemIndex)
           ? order.items[order.promoItemIndex!]
           : undefined;
@@ -1344,6 +1349,9 @@ export async function createOrderAtomic(input: {
     if (error) {
       if (error.message.includes("PROMO_ALREADY_USED")) {
         return { ok: false, error: "The promotion code already used." };
+      }
+      if (error.message.includes("PROMO_EXPIRED")) {
+        return { ok: false, error: "This promo voucher has expired." };
       }
       if (error.message.includes("PROMO_INVALID")) {
         return { ok: false, error: "Invalid promotion code." };
@@ -1944,7 +1952,7 @@ export async function setMenuItemAvailableRecord(
 
 export async function insertOwnerPromotionRecord(
   ownerId: string,
-  input: Pick<PromotionCode, "discountType" | "discountValue">,
+  input: Pick<PromotionCode, "discountType" | "discountValue" | "expiresAt">,
   prefix = "",
 ): Promise<PromotionCode> {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -1970,6 +1978,7 @@ export async function insertOwnerPromotionRecord(
       code: promo.code,
       discount_type: promo.discountType,
       discount_value: promo.discountValue,
+      expires_at: promo.expiresAt,
     });
     if (!error) return promo;
     if (error.code !== "23505") throw new Error(`Could not generate promotion code: ${error.message}`);

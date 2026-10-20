@@ -310,6 +310,7 @@ export async function generateOwnerPromotionCode(
   discountValue: number,
   count = 1,
   prefix = "SYNORRA",
+  expiresOn = "",
 ) {
   await requireAdmin();
   if (discountType !== "percent" && discountType !== "amount" && discountType !== "item") {
@@ -327,6 +328,16 @@ export async function generateOwnerPromotionCode(
   if (!/^[A-Z0-9]{1,16}$/.test(normalizedPrefix)) {
     return { error: "Enter a code prefix with 1 to 16 letters or numbers." };
   }
+  const expiryDay = new Date(`${expiresOn}T00:00:00.000Z`);
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(expiresOn) ||
+    Number.isNaN(expiryDay.getTime()) ||
+    expiryDay.toISOString().slice(0, 10) !== expiresOn ||
+    expiresOn < phDateString()
+  ) {
+    return { error: "Choose a valid expiration date that is today or later." };
+  }
+  const expiresAt = new Date(`${expiresOn}T23:59:59.999+08:00`).toISOString();
   const value = Number(discountValue);
   if (discountType === "item" && (!Number.isInteger(value) || value < 1 || value > 99)) {
     return { error: "Choose between 1 and 99 free items." };
@@ -339,7 +350,7 @@ export async function generateOwnerPromotionCode(
     for (let index = 0; index < codeCount; index += 1) {
       promos.push(await insertOwnerPromotionRecord(
         userId,
-        { discountType, discountValue: Math.round(value * 100) / 100 },
+        { discountType, discountValue: Math.round(value * 100) / 100, expiresAt },
         normalizedPrefix,
       ));
     }
