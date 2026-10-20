@@ -43,9 +43,6 @@ class _LoginScreenState extends State<LoginScreen>
   void initState() {
     super.initState();
     _launchController = AnimationController(vsync: this, value: 1);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && !_mustChangePassword) _emailFocusNode.requestFocus();
-    });
     _authController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1100),
@@ -54,8 +51,6 @@ class _LoginScreenState extends State<LoginScreen>
       vsync: this,
       duration: const Duration(milliseconds: 400),
     );
-    // Pull latest staff accounts, menu, and inventory from Admin on login screen load
-    widget.controller.syncService.syncAll();
   }
 
   @override

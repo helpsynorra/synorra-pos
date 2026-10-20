@@ -184,8 +184,7 @@ class PosController extends ChangeNotifier {
     _refreshFromLocalStorage();
     _restoreActiveStaff();
 
-    // Load cached POS data immediately, then refresh it without blocking login.
-    unawaited(syncService.syncAll());
+    // Startup sync starts after the first UI frame.
   }
 
   void _restoreActiveCheckout() {

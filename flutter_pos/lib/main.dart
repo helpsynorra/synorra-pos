@@ -38,7 +38,6 @@ Future<PosController> _initializeController() async {
     supabaseService: supabaseService,
     syncService: syncService,
   );
-  syncService.start();
   await posController.init();
   return posController;
 }
@@ -58,14 +57,38 @@ class SynorraPosApp extends StatelessWidget {
         future: initialization,
         builder: (context, snapshot) {
           if (snapshot.hasData) {
-            final controller = snapshot.data!;
-            return controller.currentUser == null
-                ? LoginScreen(controller: controller)
-                : PosScreen(controller: controller);
+            return _ReadyApp(controller: snapshot.data!);
           }
           return const Scaffold(backgroundColor: Color(0xFFF8FAFC));
         },
       ),
     );
+  }
+}
+
+class _ReadyApp extends StatefulWidget {
+  final PosController controller;
+
+  const _ReadyApp({required this.controller});
+
+  @override
+  State<_ReadyApp> createState() => _ReadyAppState();
+}
+
+class _ReadyAppState extends State<_ReadyApp> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.controller.syncService.start();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = widget.controller;
+    return controller.currentUser == null
+        ? LoginScreen(controller: controller)
+        : PosScreen(controller: controller);
   }
 }
