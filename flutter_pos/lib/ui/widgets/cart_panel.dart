@@ -1,6 +1,7 @@
 // ignore_for_file: curly_braces_in_flow_control_structures, deprecated_member_use
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../state/pos_controller.dart';
 
@@ -156,6 +157,12 @@ class _PromotionCodeDialogState extends State<_PromotionCodeDialog> {
         controller: _inputController,
         autofocus: true,
         textCapitalization: TextCapitalization.characters,
+        keyboardType: TextInputType.visiblePassword,
+        autocorrect: false,
+        enableSuggestions: false,
+        inputFormatters: [
+          FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9-]')),
+        ],
         decoration: const InputDecoration(hintText: 'Enter code'),
         onSubmitted: (value) => Navigator.pop(context, value),
       ),
@@ -190,7 +197,7 @@ class _CartPanelState extends State<CartPanel> {
       builder: (_) => const _PromotionCodeDialog(),
     );
     if (code == null || !mounted) return;
-    final normalizedCode = code.trim().toUpperCase();
+    final normalizedCode = code.replaceAll(RegExp(r'\s+'), '').toUpperCase();
     final matchingPromotions = widget.controller.syncService.promotionCodes.where(
       (entry) => entry['code']?.toString().trim().toUpperCase() == normalizedCode,
     );

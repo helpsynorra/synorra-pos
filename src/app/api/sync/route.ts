@@ -13,6 +13,7 @@ import {
   deleteRestockAtomic,
   editRestockAtomic,
   getFreshStore,
+  getOwnerAccounts,
   insertLoginActivityRecord,
   insertVoidRequestRecord,
   legacyOwnerId,
@@ -90,8 +91,11 @@ export async function GET(request: NextRequest) {
 
   try {
     const store = await getFreshStore({ ownerId: claims.role === "cashier" ? claims.userId : await legacyOwnerId() });
+    const ownerAccount = claims.role === "cashier"
+      ? (await getOwnerAccounts()).find((user) => user.id === claims.userId)
+      : undefined;
     if (claims.role === "cashier") {
-      const cashier = store.users.find((user) => user.id === claims.userId);
+      const cashier = ownerAccount ?? store.users.find((user) => user.id === claims.userId);
       if (!cashier?.passwordChanged) {
         return NextResponse.json(
           { ok: false, error: "Change your Owner password before using the POS." },
@@ -118,7 +122,10 @@ export async function GET(request: NextRequest) {
         recipeCostings: store.recipeCostings,
         voidRequests: store.voidRequests,
         loginActivity: store.loginActivity,
-        users: store.users.map((u) => {
+        users: [
+          ...store.users.filter((user) => user.id !== ownerAccount?.id),
+          ...(ownerAccount ? [ownerAccount] : []),
+        ].map((u) => {
           const resolvedRole = parseRole(String(u.title ?? ""), u.role);
           return {
             id: u.id,
@@ -488,6 +495,9 @@ export async function POST(req: NextRequest) {
         );
       }
       const store = await getFreshStore({ ownerId: claims.role === "cashier" ? claims.userId : undefined });
+      const ownerAccount = claims.role === "cashier"
+        ? (await getOwnerAccounts()).find((user) => user.id === claims.userId)
+        : undefined;
       const existingOrder = store.orders.find((o) => o.id === rawOrder.id);
       if (existingOrder) {
         return NextResponse.json(
@@ -502,14 +512,14 @@ export async function POST(req: NextRequest) {
         (item): OrderItem => ({ ...item, serviceMode }),
       );
       const requestedPromoCode = typeof rawOrder.promoLabel === "string"
-        ? rawOrder.promoLabel.trim().toUpperCase()
+        ? rawOrder.promoLabel.replace(/\s+/g, "").toUpperCase()
         : "";
       const requestedDiscount = Math.round(Number(rawOrder.discount) || 0);
       if (requestedPromoCode || requestedDiscount > 0) {
         if (!/^(?:[A-Z0-9]{6}|[A-Z0-9]{1,16}-[A-Z0-9]{6})$/.test(requestedPromoCode)) {
           return NextResponse.json({ ok: false, error: "Invalid promotion code." }, { status: 400, headers: corsHeaders });
         }
-        const owner = store.users.find((user) => user.id === claims.userId && user.role === "cashier");
+        const owner = ownerAccount ?? store.users.find((user) => user.id === claims.userId && user.role === "cashier");
         const permissions = owner?.permissions;
         const promo = Array.isArray(permissions?.promoCodes)
           ? permissions.promoCodes.find((entry) => entry.code.trim().toUpperCase() === requestedPromoCode)

@@ -414,7 +414,7 @@ class PosController extends ChangeNotifier {
       (subtotal - discountAmount) > 0 ? (subtotal - discountAmount) : 0.0;
 
   String? applyPromotionCode(String rawCode, {int? itemIndex, int? itemQty}) {
-    final code = rawCode.trim().toUpperCase();
+    final code = rawCode.replaceAll(RegExp(r'\s+'), '').toUpperCase();
     if (!syncService.hasPermission('promotionsEnabled') ||
         !syncService.hasPermission('promotionDiscount')) {
       return 'Promotions are not enabled for this Owner.';
