@@ -315,14 +315,24 @@ class SyncService extends ChangeNotifier {
         if (fullStore['users'] is List) {
           final activeStaffId = localStorage.getActiveStaffId();
           Map<String, dynamic>? activeUser;
-          for (final entry in (fullStore['users'] as List).whereType<Map>()) {
-            final user = Map<String, dynamic>.from(entry);
+          final users = (fullStore['users'] as List)
+              .whereType<Map>()
+              .map((entry) => Map<String, dynamic>.from(entry))
+              .toList();
+          for (final user in users) {
             if (user['id']?.toString() == activeStaffId) {
               activeUser = user;
               break;
             }
           }
-          final permissions = activeUser?['permissions'];
+          // Promotion codes and POS feature permissions belong to the Owner
+          // account. The signed-in profile can be a cashier/barista whose own
+          // permissions do not contain the Owner's promoCodes list.
+          final ownerUser = users.cast<Map<String, dynamic>?>().firstWhere(
+                (user) => user?['role']?.toString().toLowerCase() == 'cashier',
+                orElse: () => null,
+              );
+          final permissions = (ownerUser ?? activeUser)?['permissions'];
           promotionCodes = [];
           for (final key in ownerPermissions.keys.toList()) {
             ownerPermissions[key] = true;

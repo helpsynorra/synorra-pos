@@ -228,6 +228,17 @@ class _CartPanelState extends State<CartPanel> {
     final error = widget.controller.applyPromotionCode(code, itemIndex: itemIndex, itemQty: itemQty);
     if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+    } else {
+      final messenger = ScaffoldMessenger.of(context);
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Promo voucher applied'),
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 2),
+          ),
+        );
     }
   }
 
@@ -511,8 +522,27 @@ class _CartPanelState extends State<CartPanel> {
                                 icon: const Icon(Icons.local_offer_outlined, size: 17),
                                 label: const Text('Apply promotion code'),
                               )
-                            : Text('Promo ${controller.promoLabel}${controller.promoItemIndex != null ? ' · ${controller.promoItemQty ?? 1} × ${controller.cart[controller.promoItemIndex!].name} free' : ''}  −₱${currency.format(controller.discountAmount)}',
-                                style: const TextStyle(fontSize: 12, color: _ink)),
+                            : Row(
+                                children: [
+                                  const Icon(
+                                    Icons.check_circle,
+                                    size: 16,
+                                    color: Color(0xFF15803D),
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Expanded(
+                                    child: Text(
+                                      'Promo ${controller.promoLabel}${controller.promoItemIndex != null ? ' · ${controller.promoItemQty ?? 1} × ${controller.cart[controller.promoItemIndex!].name} free' : ''}  −₱${currency.format(controller.discountAmount)}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: _ink,
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
                       ),
                       if (controller.promoLabel != null)
                         IconButton(
