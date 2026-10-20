@@ -143,6 +143,33 @@ class _CartPanelState extends State<CartPanel> {
   String? _selectedPreset;
   String _splitDigitalMethod = 'gcash';
 
+  Future<void> _showPromotionDialog() async {
+    final input = TextEditingController();
+    final code = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Promotion code'),
+        content: TextField(
+          controller: input,
+          autofocus: true,
+          textCapitalization: TextCapitalization.characters,
+          decoration: const InputDecoration(hintText: 'Enter code'),
+          onSubmitted: (value) => Navigator.pop(dialogContext, value),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, input.text), child: const Text('Apply')),
+        ],
+      ),
+    );
+    input.dispose();
+    if (code == null || !mounted) return;
+    final error = widget.controller.applyPromotionCode(code);
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -411,6 +438,29 @@ class _CartPanelState extends State<CartPanel> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (controller.cart.isNotEmpty &&
+                    controller.syncService.hasPermission('promotionsEnabled') &&
+                    controller.syncService.hasPermission('promotionDiscount'))
+                  Row(
+                    children: [
+                      Expanded(
+                        child: controller.promoLabel == null
+                            ? TextButton.icon(
+                                onPressed: _showPromotionDialog,
+                                icon: const Icon(Icons.local_offer_outlined, size: 17),
+                                label: const Text('Apply promotion code'),
+                              )
+                            : Text('Promo ${controller.promoLabel}  −₱${currency.format(controller.discountAmount)}',
+                                style: const TextStyle(fontSize: 12, color: _ink)),
+                      ),
+                      if (controller.promoLabel != null)
+                        IconButton(
+                          tooltip: 'Remove promotion',
+                          onPressed: controller.clearPromotion,
+                          icon: const Icon(Icons.close, size: 18),
+                        ),
+                    ],
+                  ),
                 if (widget.dineInEnabled || widget.takeOutEnabled)
                   Row(
                     children: [

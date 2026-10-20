@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   createOffRequest,
   createStaffUser,
@@ -11,6 +11,7 @@ import {
   updateStaffSessionTimes,
   deleteStaffSession,
   updateOwnerPermissions,
+  generateOwnerPromotionCode,
   updateStaffUser,
   updateLoginGates,
 } from "@/actions/users";
@@ -18,7 +19,7 @@ import type { PublicStaffUser } from "@/lib/users";
 import { DEFAULT_STAFF_PERMISSIONS } from "@/lib/users";
 import { phDateString, phDateTimeInputValue, phDateTimeLabel } from "@/lib/datetime";
 import { pairLoginSessions, type StaffSession } from "@/lib/staff-sessions";
-import type { LoginActivity, OffRequest, Session, StaffPermissions } from "@/lib/types";
+import type { LoginActivity, OffRequest, PromotionCode, Session, StaffPermissions } from "@/lib/types";
 
 const field =
   "w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm text-neutral-900 outline-none transition-all focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900";
@@ -47,7 +48,9 @@ type UserManagerProps = {
 type SubTab = "staff" | "inout" | "off" | "gates" | "settings";
 type StaffRole = "Admin" | "Barista" | "Owner";
 
-const permissionOptions: { key: keyof StaffPermissions; label: string }[] = [
+type PermissionFlag = Exclude<keyof StaffPermissions, "promoCodes">;
+
+const permissionOptions: { key: PermissionFlag; label: string }[] = [
   { key: "stockInventory", label: "Stock inventory" },
   { key: "restockInventory", label: "Restock inventory" },
   { key: "connectLabels", label: "Connect labels" },
@@ -57,6 +60,8 @@ const permissionOptions: { key: keyof StaffPermissions; label: string }[] = [
   { key: "cupLabels", label: "Cup labels" },
   { key: "dineIn", label: "Dine in" },
   { key: "takeOut", label: "Take out" },
+  { key: "promotionDiscount", label: "Promotion discounts in POS" },
+  { key: "promotionsEnabled", label: "Promotions enabled" },
 ];
 
 export function UserManager({ users, session, loginActivity, offRequests, showShiftTabs = true, showAdminRole = true, showOwnerRole = true, showBaristaRole = true, showBaristasOnly = false, showEditStaffButton = true, showDeleteStaffButton = true, baristaOnlyStaffActions = false, showLoginLinksTab = true, showPrintButtonToggle = true, showViewPermissionsButton = true, adminLoginPath = "mouna1234" }: UserManagerProps) {
@@ -73,6 +78,11 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
     () => Object.fromEntries(users.map((user) => [user.id, { ...DEFAULT_STAFF_PERMISSIONS, ...user.permissions }])),
   );
   const [selectedPermissionOwnerId, setSelectedPermissionOwnerId] = useState<string | null>(null);
+  const [promoCodeRecords, setPromoCodeRecords] = useState<Record<string, PromotionCode[]>>(
+    () => Object.fromEntries(users.map((user) => [user.id, user.permissions?.promoCodes ?? []])),
+  );
+  const [promoValueDrafts, setPromoValueDrafts] = useState<Record<string, number>>({});
+  const [promoTypeDrafts, setPromoTypeDrafts] = useState<Record<string, PromotionCode["discountType"]>>({});
   const [pending, startTransition] = useTransition();
   const [punchUserId, setPunchUserId] = useState("");
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
@@ -81,6 +91,10 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
   const [offUserId, setOffUserId] = useState("");
   const [offDate, setOffDate] = useState(phDateString());
   const [offReason, setOffReason] = useState("");
+
+  useEffect(() => {
+    setPromoCodeRecords(Object.fromEntries(users.map((user) => [user.id, user.permissions?.promoCodes ?? []])));
+  }, [users]);
   
   // Global filter/display date state for In / Out
   const [selectedDate, setSelectedDate] = useState(phDateString());
@@ -804,6 +818,60 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                           {label}
                         </label>
                       ))}
+                    </div>
+                    <div className="space-y-3 border-t border-neutral-200 pt-4">
+                      <div>
+                        <h3 className="text-sm font-semibold">Generate a promotion code</h3>
+                        <p className="text-xs text-neutral-500">Admin-generated codes are 6 characters and can only be redeemed once.</p>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                        <select
+                          aria-label="Promotion discount type"
+                          value={promoTypeDrafts[owner.id] ?? "percent"}
+                          onChange={(event) => setPromoTypeDrafts((current) => ({ ...current, [owner.id]: event.target.value as PromotionCode["discountType"] }))}
+                          className={field}
+                        >
+                          <option value="percent">Percent discount</option>
+                          <option value="amount">Peso discount</option>
+                        </select>
+                        <input
+                          aria-label="Promotion discount value"
+                          type="number"
+                          min="0.01"
+                          max={(promoTypeDrafts[owner.id] ?? "percent") === "percent" ? 100 : undefined}
+                          step="0.01"
+                          value={promoValueDrafts[owner.id] ?? "10"}
+                          onChange={(event) => setPromoValueDrafts((current) => ({ ...current, [owner.id]: Number(event.target.value) }))}
+                          className={field}
+                        />
+                        <button
+                          type="button"
+                          disabled={pending || !permissions.promotionsEnabled}
+                          onClick={() => startTransition(async () => {
+                            const result = await generateOwnerPromotionCode(owner.id, promoTypeDrafts[owner.id] ?? "percent", promoValueDrafts[owner.id] ?? 10);
+                            if (result && "error" in result) {
+                              setNotice(result.error);
+                              return;
+                            }
+                            if ("promo" in result) {
+                              setPromoCodeRecords((current) => ({ ...current, [owner.id]: [...(current[owner.id] ?? []), result.promo] }));
+                            }
+                            setNotice("Promotion code generated.");
+                          })}
+                          className="rounded-full bg-black px-4 py-2 text-xs font-medium text-white disabled:opacity-40"
+                        >Generate code</button>
+                      </div>
+                      <div className="divide-y divide-neutral-100 rounded-xl border border-neutral-200">
+                        {(promoCodeRecords[owner.id] ?? []).length === 0 ? (
+                          <p className="p-3 text-xs text-neutral-500">No promotion codes generated.</p>
+                        ) : (promoCodeRecords[owner.id] ?? []).map((promo) => (
+                          <div key={promo.code} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
+                            <span className="font-mono font-semibold tracking-widest">{promo.code}</span>
+                            <span>{promo.discountType === "percent" ? `${promo.discountValue}% off` : `₱${promo.discountValue} off`}</span>
+                            <span className={promo.redeemedAt ? "text-neutral-400" : "text-emerald-700"}>{promo.redeemedAt ? "Used" : "Unused"}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </section>
                 );

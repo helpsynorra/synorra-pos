@@ -221,7 +221,7 @@ export async function login(
   );
 
   if (!user || !user.password) {
-    return { error: "Those credentials do not match a Synorra staff account." };
+    return { error: "Invalid username or password." };
   }
   if (selectedRole === "cashier" && user.email?.trim().toLowerCase() !== email) {
     return { error: "Those credentials do not match a Synorra Owner account." };
@@ -231,7 +231,7 @@ export async function login(
     ? await bcrypt.compare(password, user.password)
     : user.password === password || user.password.trim() === password.trim();
   if (!passwordMatches) {
-    return { error: "Those credentials do not match a Synorra staff account." };
+    return { error: "Invalid username or password." };
   }
 
   const effectiveRole = parseRole(String(user.title ?? ""), user.role);

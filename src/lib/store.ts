@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { randomInt } from "node:crypto";
 import { getSession } from "@/lib/auth";
 import { nextTicketNo } from "@/lib/escpos";
 import type {
@@ -13,6 +14,7 @@ import type {
   Order,
   OrderItem,
   PrintJob,
+  PromotionCode,
   RecipeCosting,
   RecipeIngredient,
   Role,
@@ -22,10 +24,10 @@ import type {
   VoidRequest,
 } from "@/lib/types";
 import { roundQty } from "@/lib/inventory";
-import { DEFAULT_MENU, MENU_CATEGORIES, hydrateOrderLine, inferMenuCategoryType, normalizeMenuAddons, normalizeMenuCategoryType, normalizeMenuStyles, normalizeMenuTypes, parseDrinkStyle, parseMenuImageOptions, parseStoredOrderAddons, stripMenuImage } from "@/lib/menu";
+import { hydrateOrderLine, inferMenuCategoryType, normalizeMenuAddons, normalizeMenuCategoryType, normalizeMenuStyles, normalizeMenuTypes, parseDrinkStyle, parseMenuImageOptions, parseStoredOrderAddons, stripMenuImage } from "@/lib/menu";
 import { parsePayment } from "@/lib/payments";
 import { DEFAULT_LOGIN_GATES, normalizeLoginGates } from "@/lib/staff-gates";
-import { DEFAULT_USERS, parseRole } from "@/lib/users";
+import { DEFAULT_STAFF_PERMISSIONS, DEFAULT_USERS, parseRole } from "@/lib/users";
 
 const POS_STATE_ID = "synorra-pos";
 
@@ -69,12 +71,26 @@ export async function legacyOwnerId(): Promise<string | null> {
 
 export async function getOwnerAccounts(): Promise<StaffUser[]> {
   if (!isRealSupabaseConfigured()) return (await getStore()).users.filter((user) => user.role === "cashier");
-  const { data, error } = await supabaseAdmin().from("staff_users").select("id,owner_id,username,email,password,password_changed,name,role,title,permissions").eq("role", "cashier").order("created_at");
+  const supabase = supabaseAdmin();
+  const [{ data, error }, { data: promotions, error: promotionsError }] = await Promise.all([
+    supabase.from("staff_users").select("id,owner_id,username,email,password,password_changed,name,role,title,permissions").eq("role", "cashier").order("created_at"),
+    supabase.from("promotions").select("owner_id,code,discount_type,discount_value,redeemed_at,redeemed_order_id").order("created_at", { ascending: false }),
+  ]);
   if (error) throw new Error(`Unable to read Owner accounts: ${error.message}`);
+  if (promotionsError) throw new Error(`Unable to read promotion codes: ${promotionsError.message}`);
   return (data ?? []).map((row) => ({
     id: row.id, ownerId: row.owner_id ?? row.id, username: row.username, email: row.email ?? "",
     password: row.password ?? "", passwordChanged: Boolean(row.password_changed), name: row.name,
-    role: "cashier", title: "Owner", permissions: row.permissions ?? undefined,
+    role: "cashier", title: "Owner", permissions: {
+      ...(row.permissions ?? {}),
+      promoCodes: (promotions ?? []).filter((promo) => promo.owner_id === row.id).map((promo) => ({
+        code: promo.code,
+        discountType: promo.discount_type,
+        discountValue: Number(promo.discount_value),
+        redeemedAt: promo.redeemed_at ?? undefined,
+        redeemedOrderId: promo.redeemed_order_id ?? undefined,
+      })),
+    },
   }));
 }
 
@@ -259,17 +275,13 @@ const DEFAULT_INVENTORY: InventoryItem[] = [];
 const DEFAULT_RECIPES: Record<string, RecipeIngredient[]> = {};
 
 function emptyStore(): StoreData {
-  const categoryTypes = Object.fromEntries(
-    MENU_CATEGORIES.map((name) => [name, inferMenuCategoryType(name)]),
-  ) as Record<string, MenuCategoryType>;
-
   return {
     pos: { isOpen: false, openedAt: null, openedBy: null, inventoryFeaturesEnabled: true, printButtonHidden: false },
     orders: [],
     printJobs: [],
-    menu: DEFAULT_MENU.map((item) => ({ ...item })),
-    categories: [...MENU_CATEGORIES],
-    categoryTypes,
+    menu: [],
+    categories: [],
+    categoryTypes: {},
     users: DEFAULT_USERS.map((item) => ({ ...item })),
     inventory: DEFAULT_INVENTORY.map((item) => ({ ...item })),
     recipes: structuredClone(DEFAULT_RECIPES),
@@ -353,9 +365,8 @@ function normalizeStore(store: StoreData): StoreData {
   }
   // An empty menu/categories set is valid, intentional state once the
   // database has been initialized - normalizeStore must never fabricate
-  // DEFAULT_MENU/MENU_CATEGORIES into it (that is how deleted items used to
-  // reappear, KAN-123). First-run defaults are seeded explicitly and once by
-  // readStore when the database is truly virgin.
+  // defaults into it (that is how deleted items used to reappear, KAN-123).
+  // A new store starts with an empty menu and categories.
   if (!Array.isArray(store.menu)) {
     store.menu = [];
   } else {
@@ -581,7 +592,7 @@ async function readStore(options?: { fresh?: boolean; ownerId?: string | null })
   try {
     const tenantQuery = <T,>(query: T): T =>
       ownerId ? (query as any).eq("owner_id", ownerId) as T : query;
-    const [pos, users, categories, menu, inventory, orders, orderItems, usageLogs, restocks, recipes, recipeCostings, recipeCostingMenuItems, recipeCostingIngredients, loginActivity, offRequests, voidRequests, loginGates] = await Promise.all([
+    const [pos, users, categories, menu, inventory, orders, orderItems, usageLogs, restocks, recipes, recipeCostings, recipeCostingMenuItems, recipeCostingIngredients, loginActivity, offRequests, voidRequests, promotions, loginGates] = await Promise.all([
       ownerId
         ? supabase.from("pos_state").select("*").eq("owner_id", ownerId).maybeSingle()
         : supabase.from("pos_state").select("*").eq("id", POS_STATE_ID).maybeSingle(),
@@ -600,6 +611,7 @@ async function readStore(options?: { fresh?: boolean; ownerId?: string | null })
       tenantQuery(supabase.from("login_activity").select("*")).order("at"),
       tenantQuery(supabase.from("off_requests").select("*")).order("created_at"),
       tenantQuery(supabase.from("void_requests").select("*")).order("requested_at", { ascending: false }),
+      tenantQuery(supabase.from("promotions").select("*")).order("created_at", { ascending: false }),
       ownerId
         ? supabase.from("login_links").select("*").eq("owner_id", ownerId).maybeSingle()
         : supabase.from("login_links").select("*").eq("id", POS_STATE_ID).maybeSingle(),
@@ -622,6 +634,7 @@ async function readStore(options?: { fresh?: boolean; ownerId?: string | null })
         ["login_activity", loginActivity.error],
         ["off_requests", offRequests.error],
         ["void_requests", voidRequests.error],
+        ["promotions", promotions.error],
         ["login_links", loginGates.error],
       ] as const
     ).find(([, error]) => error);
@@ -659,7 +672,18 @@ async function readStore(options?: { fresh?: boolean; ownerId?: string | null })
               email: row.email ?? "",
               password: row.password,
               passwordChanged: Boolean(row.password_changed),
-              permissions: row.permissions ?? undefined,
+              permissions: {
+                ...(row.permissions ?? {}),
+                promoCodes: (promotions.data ?? [])
+                  .filter((promo) => promo.owner_id === row.id)
+                  .map((promo) => ({
+                    code: promo.code,
+                    discountType: promo.discount_type,
+                    discountValue: Number(promo.discount_value),
+                    redeemedAt: promo.redeemed_at ?? undefined,
+                    redeemedOrderId: promo.redeemed_order_id ?? undefined,
+                  })),
+              },
               name: row.name,
               role: parseRole(String(row.role ?? row.title ?? ""), String(row.title ?? row.username ?? "")),
               title: row.role === "admin" ? "Admin" : row.role === "cashier" ? "Owner" : row.title || "Barista",
@@ -864,17 +888,7 @@ async function seedInitialStore(
   supabase: ReturnType<typeof supabaseAdmin>,
 ): Promise<void> {
   const ownerId = await legacyOwnerId() ?? "cashier-1";
-  const categoryRows = MENU_CATEGORIES.map((name) => ({
-    id: `${ownerId}--${name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "other"}`,
-    owner_id: ownerId,
-    name,
-    type: inferMenuCategoryType(name),
-  }));
-  const categoryId = new Map(
-    categoryRows.map((row) => [row.name.toLowerCase(), row.id]),
-  );
   const results = await Promise.all([
-    supabase.from("menu_categories").upsert(categoryRows, { onConflict: "id", ignoreDuplicates: true }),
     supabase.from("staff_users").upsert(
       DEFAULT_USERS.map((user) => ({
         id: user.id,
@@ -900,55 +914,16 @@ async function seedInitialStore(
   if (seedError) {
     throw new Error(`Unable to seed store data: ${seedError.message}`);
   }
-  const { error: menuError } = await supabase.from("menu_items").upsert(
-    DEFAULT_MENU.map((item) => ({
-      id: `${ownerId}--${item.id}`,
-      owner_id: ownerId,
-      name: item.name,
-      price: Math.round(item.price),
-      category_id: categoryId.get(item.category.toLowerCase()) ?? categoryRows[0]?.id,
-      image: stripMenuImage(item.image),
-      available: item.available,
-      types: normalizeMenuTypes(item),
-      styles: normalizeMenuStyles(item),
-      addons: normalizeMenuAddons(item),
-    })),
-    { onConflict: "id", ignoreDuplicates: true },
-  );
-  if (menuError) {
-    throw new Error(`Unable to seed menu items: ${menuError.message}`);
-  }
 }
 
-/** Create a new Owner's blank operational store with an independent default menu. */
+/** Create a new Owner's blank operational store. */
 export async function initializeOwnerStore(ownerId: string): Promise<void> {
   const supabase = supabaseAdmin();
-  const categoryRows = MENU_CATEGORIES.map((name) => ({
-    id: `${ownerId}--${name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "other"}`,
-    owner_id: ownerId,
-    name,
-    type: inferMenuCategoryType(name),
-  }));
-  const categoryId = new Map(categoryRows.map((row) => [row.name.toLowerCase(), row.id]));
-  const menuRows = DEFAULT_MENU.map((item) => ({
-    id: `${ownerId}--${item.id}`,
-    owner_id: ownerId,
-    name: item.name,
-    price: Math.round(item.price),
-    category_id: categoryId.get(item.category.toLowerCase()) ?? categoryRows[0]?.id,
-    image: stripMenuImage(item.image),
-    available: item.available,
-    types: normalizeMenuTypes(item),
-    styles: normalizeMenuStyles(item),
-    addons: normalizeMenuAddons(item).map(({ inventoryItemId: _inventoryItemId, usageAmount: _usageAmount, usageUnit: _usageUnit, ...addon }) => addon),
-  }));
-  const [categories, menu, pos, links] = await Promise.all([
-    supabase.from("menu_categories").upsert(categoryRows, { onConflict: "id" }),
-    supabase.from("menu_items").upsert(menuRows, { onConflict: "id" }),
+  const [pos, links] = await Promise.all([
     supabase.from("pos_state").upsert({ id: ownerId, owner_id: ownerId, is_open: false, opened_at: null, opened_by_name: null, inventory_features_enabled: true, print_button_hidden: false, updated_at: new Date().toISOString() }, { onConflict: "id" }),
     supabase.from("login_links").upsert({ id: ownerId, owner_id: ownerId, admin_path: "back-office", updated_at: new Date().toISOString() }, { onConflict: "id" }),
   ]);
-  for (const result of [categories, menu, pos, links]) {
+  for (const result of [pos, links]) {
     if (result.error) throw new Error(`Unable to initialize Owner store: ${result.error.message}`);
   }
 }
@@ -1228,6 +1203,27 @@ export async function createOrderAtomic(input: {
     if (!isRealSupabaseConfigured()) {
       if (!memoryStore) memoryStore = normalizeStore(emptyStore());
       const { order, deductions } = input;
+      const memoryOwnerId = await activeOwnerId();
+      let promoEntry: PromotionCode | undefined;
+      let promoOwner: StaffUser | undefined;
+      if (order.promoLabel) {
+        promoOwner = memoryStore.users.find((user) => user.id === memoryOwnerId && user.role === "cashier");
+        const permissions = promoOwner?.permissions;
+        promoEntry = permissions?.promoCodes?.find((entry) => entry.code === order.promoLabel?.toUpperCase());
+        if (!promoOwner || permissions?.promotionsEnabled !== true || permissions.promotionDiscount !== true || !promoEntry) {
+          return { ok: false, error: "Invalid promotion code." };
+        }
+        if (promoEntry.redeemedAt) return { ok: false, error: "The promotion code already used." };
+        const expectedDiscount = Math.min(
+          order.subtotal ?? order.total,
+          Math.round(promoEntry.discountType === "amount"
+            ? promoEntry.discountValue
+            : (order.subtotal ?? order.total) * promoEntry.discountValue / 100),
+        );
+        if ((order.discount ?? 0) !== expectedDiscount) {
+          return { ok: false, error: "Promotion discount does not match this code." };
+        }
+      }
       if (order.voided && !order.voidedByName && input.voidedBy) {
         order.voidedByName = memoryStore.users.find((user) => user.id === input.voidedBy)?.name;
       }
@@ -1236,6 +1232,13 @@ export async function createOrderAtomic(input: {
         if (item && item.stock < deduction.amount) {
           return { ok: false, error: `Not enough ${deduction.itemName} in stock.` };
         }
+      }
+      if (promoEntry && promoOwner) {
+        const redeemedPromo = { ...promoEntry, redeemedAt: new Date().toISOString(), redeemedOrderId: order.id };
+        promoOwner.permissions = {
+          ...promoOwner.permissions!,
+          promoCodes: promoOwner.permissions!.promoCodes!.map((entry) => entry.code === promoEntry!.code ? redeemedPromo : entry),
+        };
       }
       if (!order.ticketNo) {
         order.ticketNo = `#${nextTicketNo(memoryStore.orders, new Date(order.createdAt))}`;
@@ -1286,18 +1289,27 @@ export async function createOrderAtomic(input: {
       p_void_reason: order.voidReason ?? null,
       p_voided_by: input.voidedBy ?? null,
     };
-    let { data, error } = await supabase.rpc("create_order_for_owner_atomic", { p_owner_id: ownerId, ...rpcArgs });
+    const promoRpcArgs = order.promoLabel ? { p_promo_code: order.promoLabel } : {};
+    const rpcName = order.promoLabel ? "create_order_with_promo_for_owner_atomic" : "create_order_for_owner_atomic";
+    let { data, error } = await supabase.rpc(rpcName, { p_owner_id: ownerId, ...promoRpcArgs, ...rpcArgs });
     if (
       error?.code === "23503" &&
       error.message.includes("orders_barista_user_id_fkey")
     ) {
-      ({ data, error } = await supabase.rpc("create_order_for_owner_atomic", {
+      ({ data, error } = await supabase.rpc(rpcName, {
         p_owner_id: ownerId,
+        ...promoRpcArgs,
         ...rpcArgs,
         p_barista_user_id: null,
       }));
     }
     if (error) {
+      if (error.message.includes("PROMO_ALREADY_USED")) {
+        return { ok: false, error: "The promotion code already used." };
+      }
+      if (error.message.includes("PROMO_INVALID")) {
+        return { ok: false, error: "Invalid promotion code." };
+      }
       const insufficient = /INSUFFICIENT_STOCK:(.+)/.exec(error.message);
       if (insufficient) return { ok: false, error: `Not enough ${insufficient[1]} in stock.` };
       throw new Error(`Unable to create order: ${error.message}`);
@@ -1890,6 +1902,39 @@ export async function setMenuItemAvailableRecord(
       if (item) item.available = available;
     }
   });
+}
+
+export async function insertOwnerPromotionRecord(
+  ownerId: string,
+  input: Pick<PromotionCode, "discountType" | "discountValue">,
+): Promise<PromotionCode> {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const makeCode = () => Array.from({ length: 6 }, () => alphabet[randomInt(alphabet.length)]).join("");
+  if (!isRealSupabaseConfigured()) {
+    if (!memoryStore) memoryStore = normalizeStore(emptyStore());
+    const owner = memoryStore.users.find((entry) => entry.id === ownerId && entry.role === "cashier");
+    if (!owner) throw new Error("Owner account not found.");
+    const promoCodes = owner.permissions?.promoCodes ?? [];
+    let code = makeCode();
+    while (memoryStore.users.some((entry) => entry.permissions?.promoCodes?.some((promo) => promo.code === code))) code = makeCode();
+    const promo: PromotionCode = { code, ...input };
+    owner.permissions = { ...DEFAULT_STAFF_PERMISSIONS, ...owner.permissions, promoCodes: [...promoCodes, promo] };
+    return promo;
+  }
+
+  const supabase = supabaseAdmin();
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const promo: PromotionCode = { code: makeCode(), ...input };
+    const { error } = await supabase.from("promotions").insert({
+      owner_id: ownerId,
+      code: promo.code,
+      discount_type: promo.discountType,
+      discount_value: promo.discountValue,
+    });
+    if (!error) return promo;
+    if (error.code !== "23505") throw new Error(`Could not generate promotion code: ${error.message}`);
+  }
+  throw new Error("Could not generate a unique promotion code. Please try again.");
 }
 
 export async function upsertStaffUserRecord(user: StaffUser): Promise<void> {

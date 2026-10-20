@@ -111,6 +111,9 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
   const [itemStyles, setItemStyles] = useState<DrinkStyle[]>([]);
   const [itemAddons, setItemAddons] = useState<MenuAddon[]>([]);
   const [itemTypes, setItemTypes] = useState<string[]>([]);
+  const [itemImage, setItemImage] = useState("");
+  const [itemPhoto, setItemPhoto] = useState<File | null>(null);
+  const [sizePhotos, setSizePhotos] = useState<Record<string, File>>({});
 
   const counts = useMemo(() => {
     const map = new Map<string, number>();
@@ -158,6 +161,9 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
     setItemStyles([]);
     setItemAddons([]);
     setItemTypes([]);
+    setItemImage("");
+    setItemPhoto(null);
+    setSizePhotos({});
     setNotice(null);
     setTab("items");
   }
@@ -171,6 +177,9 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
     setItemStyles(normalizeMenuStyles(item));
     setItemAddons(normalizeMenuAddons(item));
     setItemTypes(normalizeMenuTypes(item));
+    setItemImage(item.image);
+    setItemPhoto(null);
+    setSizePhotos({});
     setNotice(null);
     setTab("items");
   }
@@ -194,6 +203,8 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
     for (const style of itemStyles) data.append("styles", style);
     data.set("addons", JSON.stringify(itemAddons.filter((addon) => addon.name.trim())));
     data.set("types", JSON.stringify(itemTypes.filter((type) => type.trim())));
+    if (itemPhoto) data.set("photo", itemPhoto);
+    for (const [id, file] of Object.entries(sizePhotos)) data.set(`sizePhoto:${id}`, file);
     return data;
   }
 
@@ -559,6 +570,17 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                     </select>
                   </label>
                 </div>
+                <div className="flex items-center gap-3">
+                  {itemImage ? <img src={itemImage} alt="Menu item preview" className="h-16 w-16 rounded-xl object-cover" /> : null}
+                  <label className="text-xs font-medium text-neutral-600">
+                    <span className="mb-1.5 block">Menu photo</span>
+                    <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(event) => {
+                      const file = event.target.files?.[0] ?? null;
+                      setItemPhoto(file);
+                      if (file) setItemImage(URL.createObjectURL(file));
+                    }} className="block max-w-full text-xs" />
+                  </label>
+                </div>
                 {!itemCategoryIsFoodOrPastry ? (
                   <div>
                     <p className="mb-1.5 text-xs font-medium text-neutral-600">Type</p>
@@ -623,6 +645,12 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                           aria-label="Size name"
                           className={field}
                         />
+                        <label className="text-xs text-neutral-500">Size photo
+                          <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            if (file) setSizePhotos((current) => ({ ...current, [size.id]: file }));
+                          }} className="block max-w-full text-xs" />
+                        </label>
                         <input
                           type="number"
                           min="0"

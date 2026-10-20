@@ -4,16 +4,6 @@ export const MENU_IMAGES = [
   { label: "Logo", src: "/images/logo.png" },
 ] as const;
 
-export const MENU_CATEGORIES = [
-  "Non Coffee",
-  "Soda Series",
-  "Coffee Series",
-  "Milky Series",
-  "Yogurt Series",
-  "Milk Tea Series",
-  "Frappe Series",
-] as const;
-
 export const DRINK_STYLES: DrinkStyle[] = ["iced", "hot"];
 
 export function normalizeMenuCategoryType(value: unknown): MenuCategoryType {
@@ -117,6 +107,7 @@ export function normalizeMenuAddons(item: Pick<MenuItem, "addons"> | undefined):
         id,
         name,
         price,
+        image: String(addon?.image ?? "").trim() || undefined,
         qtyEnabled: Boolean(addon.qtyEnabled),
         inventoryItemId: inventoryItemId || undefined,
         usageAmount: usageAmount || undefined,

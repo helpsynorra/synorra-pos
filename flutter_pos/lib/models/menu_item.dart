@@ -7,6 +7,7 @@ class MenuAddon {
   final String? inventoryItemId;
   final double? usageAmount;
   final String? usageUnit;
+  final String? image;
 
   const MenuAddon({
     required this.id,
@@ -17,6 +18,7 @@ class MenuAddon {
     this.inventoryItemId,
     this.usageAmount,
     this.usageUnit,
+    this.image,
   });
 
   factory MenuAddon.fromJson(Map<String, dynamic> json) {
@@ -30,6 +32,7 @@ class MenuAddon {
       inventoryItemId: json['inventoryItemId'] as String? ?? json['inventory_item_id'] as String?,
       usageAmount: (json['usageAmount'] as num?)?.toDouble() ?? (json['usage_amount'] as num?)?.toDouble(),
       usageUnit: json['usageUnit'] as String? ?? json['usage_unit'] as String?,
+      image: json['image'] as String?,
     );
   }
 
@@ -42,6 +45,7 @@ class MenuAddon {
     if (inventoryItemId != null) 'inventoryItemId': inventoryItemId,
     if (usageAmount != null) 'usageAmount': usageAmount,
     if (usageUnit != null) 'usageUnit': usageUnit,
+    if (image != null && image!.isNotEmpty) 'image': image,
   };
 }
 

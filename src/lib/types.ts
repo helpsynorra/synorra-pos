@@ -19,6 +19,17 @@ export type StaffPermissions = {
   cupLabels: boolean;
   dineIn: boolean;
   takeOut: boolean;
+  promotionDiscount: boolean;
+  promotionsEnabled: boolean;
+  promoCodes?: PromotionCode[];
+};
+
+export type PromotionCode = {
+  code: string;
+  discountType: "percent" | "amount";
+  discountValue: number;
+  redeemedAt?: string;
+  redeemedOrderId?: string;
 };
 
 export type DrinkStyle = "iced" | "hot";
@@ -44,6 +55,7 @@ export type MenuAddon = {
   inventoryItemId?: string;
   usageAmount?: number;
   usageUnit?: string;
+  image?: string;
 };
 
 export type OrderAddon = {

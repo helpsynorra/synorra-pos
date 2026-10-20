@@ -18,6 +18,7 @@ import {
   getOwnerAccounts,
   getStore,
   initializeOwnerStore,
+  insertOwnerPromotionRecord,
   isRealSupabaseConfigured,
   insertLoginActivityRecord,
   insertOffRequestRecord,
@@ -279,12 +280,14 @@ export async function updateOwnerPermissions(userId: string, permissions: StaffP
   if (!user || user.role !== "cashier") return { error: "Owner account not found." };
 
   const normalized = Object.fromEntries(
-    Object.keys(DEFAULT_STAFF_PERMISSIONS).map((key) => [
+    Object.keys(DEFAULT_STAFF_PERMISSIONS).filter((key) => key !== "promoCodes").map((key) => [
       key,
       permissions[key as keyof StaffPermissions] === true,
     ]),
   ) as StaffPermissions;
-
+  // Supabase stores promotion records separately, while the in-memory store
+  // keeps them on the Owner permission object. Preserve them in both cases.
+  normalized.promoCodes = user.permissions?.promoCodes ?? [];
   try {
     await upsertStaffUserRecord({ ...user, permissions: normalized });
   } catch (error) {
@@ -292,6 +295,35 @@ export async function updateOwnerPermissions(userId: string, permissions: StaffP
   }
   refresh();
   return { ok: true };
+}
+
+export async function generateOwnerPromotionCode(
+  userId: string,
+  discountType: "percent" | "amount",
+  discountValue: number,
+) {
+  await requireAdmin();
+  if (discountType !== "percent" && discountType !== "amount") {
+    return { error: "Choose a valid promotion discount type." };
+  }
+  const store = await getFreshStore({ ownerId: userId });
+  const owner = store.users.find((entry) => entry.id === userId && entry.role === "cashier");
+  if (!owner) return { error: "Owner account not found." };
+  if (owner.permissions?.promotionsEnabled !== true) return { error: "Enable promotions for this Owner first." };
+  const value = Number(discountValue);
+  if (!Number.isFinite(value) || value <= 0 || (discountType === "percent" && value > 100)) {
+    return { error: "Enter a valid promotion discount." };
+  }
+  try {
+    const promo = await insertOwnerPromotionRecord(userId, {
+      discountType,
+      discountValue: Math.round(value * 100) / 100,
+    });
+    refresh();
+    return { ok: true, promo };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Could not generate a promotion code." };
+  }
 }
 
 export async function deleteStaffUser(id: string) {

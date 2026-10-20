@@ -69,6 +69,7 @@ export function AdminShell({ session, users, store, children }: AdminShellProps)
           printButtonHidden={store.pos.printButtonHidden}
           showLoginLinksTab={session.role !== "cashier"}
           showPrintButtonToggle={session.role !== "cashier"}
+          showViewPermissionsButton={session.role !== "cashier"}
           adminLoginPath={store.loginGates.admin}
         />
       ) : null}

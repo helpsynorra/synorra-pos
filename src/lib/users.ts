@@ -12,6 +12,8 @@ export const DEFAULT_STAFF_PERMISSIONS = {
   cupLabels: true,
   dineIn: true,
   takeOut: true,
+  promotionDiscount: false,
+  promotionsEnabled: false,
 } as const;
 
 export const DEFAULT_USERS: StaffUser[] = [

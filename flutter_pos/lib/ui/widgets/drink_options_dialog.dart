@@ -177,6 +177,9 @@ class _DrinkOptionsDialogState extends State<DrinkOptionsDialog> {
                     final selected = (_addonQuantities[size.id] ?? 0) > 0;
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
+                      leading: size.image == null || size.image!.isEmpty
+                          ? const Icon(Icons.local_cafe_outlined)
+                          : ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(size.image!, width: 48, height: 48, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.local_cafe_outlined))),
                       title: Text(size.name),
                       subtitle: Text('₱${size.price.toStringAsFixed(0)}'),
                       trailing: Radio<String>(

@@ -32,7 +32,10 @@ class SyncService extends ChangeNotifier {
     'cupLabels': true,
     'dineIn': true,
     'takeOut': true,
+    'promotionDiscount': false,
+    'promotionsEnabled': false,
   };
+  List<Map<String, dynamic>> promotionCodes = [];
 
   bool hasPermission(String key) => ownerPermissions[key] ?? true;
   String? lastError;
@@ -320,12 +323,23 @@ class SyncService extends ChangeNotifier {
             }
           }
           final permissions = activeUser?['permissions'];
+          promotionCodes = [];
           for (final key in ownerPermissions.keys.toList()) {
             ownerPermissions[key] = true;
           }
           if (permissions is Map) {
             for (final key in ownerPermissions.keys.toList()) {
               ownerPermissions[key] = permissions[key] != false;
+            }
+            ownerPermissions['promotionDiscount'] =
+                permissions['promotionDiscount'] == true;
+            ownerPermissions['promotionsEnabled'] =
+                permissions['promotionsEnabled'] == true;
+            final rawPromotions = permissions['promoCodes'];
+            if (rawPromotions is List) {
+              promotionCodes = rawPromotions.whereType<Map>()
+                  .map((entry) => Map<String, dynamic>.from(entry))
+                  .toList();
             }
           }
           final freshStaff = (fullStore['users'] as List)

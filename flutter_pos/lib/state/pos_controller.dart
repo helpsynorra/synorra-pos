@@ -102,6 +102,7 @@ class PosController extends ChangeNotifier {
     shiftLogs = localStorage.getLoginActivity();
     _restoreOnShiftBarista();
     recipesData = localStorage.getRecipesData();
+    _refreshPromotionDiscount();
     notifyListeners();
   }
 
@@ -403,6 +404,69 @@ class PosController extends ChangeNotifier {
   double get subtotal => cart.fold(0.0, (sum, item) => sum + item.lineTotal);
   double get total =>
       (subtotal - discountAmount) > 0 ? (subtotal - discountAmount) : 0.0;
+
+  String? applyPromotionCode(String rawCode) {
+    final code = rawCode.trim().toUpperCase();
+    if (!syncService.hasPermission('promotionsEnabled') ||
+        !syncService.hasPermission('promotionDiscount')) {
+      return 'Promotions are not enabled for this Owner.';
+    }
+    if (!RegExp(r'^[A-Z0-9]{6}$').hasMatch(code)) {
+      return 'Invalid promotion code.';
+    }
+    final promo = syncService.promotionCodes.where(
+      (entry) => entry['code']?.toString().trim().toUpperCase() == code,
+    ).firstOrNull;
+    if (promo == null || code.isEmpty) return 'Invalid promotion code.';
+    if (promo['redeemedAt'] != null) return 'The promotion code already used.';
+    final value = (promo['discountValue'] as num?)?.toDouble() ?? 0;
+    final amount = promo['discountType'] == 'amount'
+        ? value
+        : subtotal * value / 100;
+    if (amount <= 0 || subtotal <= 0) return 'Add items before applying a promotion.';
+    final previousTotal = total;
+    promoId = code;
+    promoLabel = code;
+    discountAmount = amount.clamp(0, subtotal).roundToDouble();
+    if (paymentMethod != 'cash' || tenderedAmount == 0 || tenderedAmount == previousTotal) {
+      tenderedAmount = total;
+    }
+    _persistActiveCheckout();
+    notifyListeners();
+    return null;
+  }
+
+  void _refreshPromotionDiscount() {
+    final code = promoId?.trim().toUpperCase();
+    if (code == null) return;
+    final promo = syncService.promotionCodes.where(
+      (entry) => entry['code']?.toString().trim().toUpperCase() == code,
+    ).firstOrNull;
+    if (promo == null ||
+        promo['redeemedAt'] != null ||
+        !syncService.hasPermission('promotionsEnabled') ||
+        !syncService.hasPermission('promotionDiscount')) {
+      promoId = null;
+      promoLabel = null;
+      discountAmount = 0;
+      return;
+    }
+    final value = (promo['discountValue'] as num?)?.toDouble() ?? 0;
+    final amount = promo['discountType'] == 'amount' ? value : subtotal * value / 100;
+    discountAmount = amount.clamp(0, subtotal).roundToDouble();
+  }
+
+  void clearPromotion() {
+    final previousTotal = total;
+    promoId = null;
+    promoLabel = null;
+    discountAmount = 0;
+    if (paymentMethod != 'cash' || tenderedAmount == 0 || tenderedAmount == previousTotal) {
+      tenderedAmount = total;
+    }
+    _persistActiveCheckout();
+    notifyListeners();
+  }
   double get change => paymentMethod == 'cash' && tenderedAmount >= total
       ? (tenderedAmount - total)
       : 0.0;
@@ -440,6 +504,7 @@ class PosController extends ChangeNotifier {
         category: product.category,
       ));
     }
+    _refreshPromotionDiscount();
     if (paymentMethod != 'cash' ||
         tenderedAmount == 0 ||
         tenderedAmount == previousTotal) {
@@ -457,6 +522,7 @@ class PosController extends ChangeNotifier {
       } else {
         cart[index].qty = newQty;
       }
+      _refreshPromotionDiscount();
       if (paymentMethod != 'cash' ||
           tenderedAmount == 0 ||
           tenderedAmount == previousTotal) {
@@ -470,6 +536,7 @@ class PosController extends ChangeNotifier {
   void removeFromCart(int index) {
     if (index >= 0 && index < cart.length) {
       cart.removeAt(index);
+      _refreshPromotionDiscount();
       if (paymentMethod != 'cash') {
         tenderedAmount = total;
       }

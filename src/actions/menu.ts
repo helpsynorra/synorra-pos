@@ -82,6 +82,19 @@ function photoFromForm(formData: FormData) {
   return photo instanceof File && photo.size > 0 ? photo : null;
 }
 
+async function addonsWithPhotos(formData: FormData, addons: MenuAddon[], id: string) {
+  const result: MenuAddon[] = [];
+  for (const addon of addons) {
+    const photo = formData.get(`sizePhoto:${addon.id}`);
+    if (photo instanceof File && photo.size > 0) {
+      const saved = await saveMenuPhoto(photo, `${id}-${addon.id}`);
+      if ("error" in saved) throw new Error(saved.error);
+      result.push({ ...addon, image: saved.src });
+    } else result.push(addon);
+  }
+  return result;
+}
+
 function stylesFromForm(
   formData: FormData,
   category: string,
@@ -210,7 +223,7 @@ export async function createMenuItem(formData: FormData) {
   await requireMenuEditor();
   const name = readText(formData, "name");
   const category = readText(formData, "category");
-  const addons = addonsFromForm(formData);
+  let addons = addonsFromForm(formData);
   const sizes = addons.filter((addon) => addon.id.startsWith("size:"));
   const price = sizes.length
     ? Math.min(...sizes.map((size) => Number(size.price)))
@@ -232,6 +245,8 @@ export async function createMenuItem(formData: FormData) {
   );
 
   const id = menuItemId(name);
+  try { addons = await addonsWithPhotos(formData, addons, id); }
+  catch (error) { return { error: error instanceof Error ? error.message : "Could not upload size photo." }; }
   let image = "/images/logo.png";
   if (photo) {
     const saved = await saveMenuPhoto(photo, id);
@@ -260,7 +275,7 @@ export async function updateMenuItem(formData: FormData) {
   const id = readText(formData, "id");
   const name = readText(formData, "name");
   const category = readText(formData, "category");
-  const addons = addonsFromForm(formData);
+  let addons = addonsFromForm(formData);
   const sizes = addons.filter((addon) => addon.id.startsWith("size:"));
   const price = sizes.length
     ? Math.min(...sizes.map((size) => Number(size.price)))
@@ -275,6 +290,9 @@ export async function updateMenuItem(formData: FormData) {
   if (!Number.isFinite(price) || price <= 0) {
     return { error: sizes.length ? "Enter a valid price for every size." : "Enter a valid price." };
   }
+
+  try { addons = await addonsWithPhotos(formData, addons, id); }
+  catch (error) { return { error: error instanceof Error ? error.message : "Could not upload size photo." }; }
 
   let uploaded: string | undefined;
   if (photo) {

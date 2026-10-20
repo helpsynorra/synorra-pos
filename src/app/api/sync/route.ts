@@ -136,6 +136,9 @@ export async function GET(request: NextRequest) {
               cupLabels: true,
               dineIn: true,
               takeOut: true,
+              promotionDiscount: false,
+              promotionsEnabled: false,
+              promoCodes: [],
             },
             role: resolvedRole,
             title:
@@ -484,7 +487,7 @@ export async function POST(req: NextRequest) {
           { status: 400, headers: corsHeaders },
         );
       }
-      const store = await getFreshStore();
+      const store = await getFreshStore({ ownerId: claims.role === "cashier" ? claims.userId : undefined });
       const existingOrder = store.orders.find((o) => o.id === rawOrder.id);
       if (existingOrder) {
         return NextResponse.json(
@@ -498,6 +501,34 @@ export async function POST(req: NextRequest) {
       const orderItems: OrderItem[] = orderItemsFromApi(rawOrder.items).map(
         (item): OrderItem => ({ ...item, serviceMode }),
       );
+      const requestedPromoCode = typeof rawOrder.promoLabel === "string"
+        ? rawOrder.promoLabel.trim().toUpperCase()
+        : "";
+      const requestedDiscount = Math.round(Number(rawOrder.discount) || 0);
+      if (requestedPromoCode || requestedDiscount > 0) {
+        if (!/^[A-Z0-9]{6}$/.test(requestedPromoCode)) {
+          return NextResponse.json({ ok: false, error: "Invalid promotion code." }, { status: 400, headers: corsHeaders });
+        }
+        const owner = store.users.find((user) => user.id === claims.userId && user.role === "cashier");
+        const permissions = owner?.permissions;
+        const promo = Array.isArray(permissions?.promoCodes)
+          ? permissions.promoCodes.find((entry) => entry.code.trim().toUpperCase() === requestedPromoCode)
+          : undefined;
+        if (!owner || permissions?.promotionsEnabled !== true || permissions.promotionDiscount !== true || !promo) {
+          return NextResponse.json({ ok: false, error: "Invalid promotion code." }, { status: 400, headers: corsHeaders });
+        }
+        if (promo.redeemedAt) {
+          return NextResponse.json({ ok: false, error: "The promotion code already used." }, { status: 409, headers: corsHeaders });
+        }
+        const subtotal = Number(rawOrder.subtotal) || 0;
+        const rawExpectedDiscount = promo.discountType === "amount"
+          ? promo.discountValue
+          : subtotal * promo.discountValue / 100;
+        const expectedDiscount = Math.min(subtotal, Math.round(rawExpectedDiscount));
+        if (requestedDiscount !== expectedDiscount) {
+          return NextResponse.json({ ok: false, error: "Promotion discount does not match this code." }, { status: 400, headers: corsHeaders });
+        }
+      }
       const requestedCashierId = String(rawOrder.baristaUserId ?? '').trim();
       const requestedCashier = store.users.find((user) => {
         if (user.id !== requestedCashierId) return false;
