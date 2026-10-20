@@ -34,6 +34,7 @@ const POS_STATE_ID = "synorra-pos";
 let queue: Promise<unknown> = Promise.resolve();
 let memoryStore: StoreData | null = null;
 let memoryStoreReadAt = 0;
+let memoryCommunePromotions: PromotionCode[] = [];
 const tenantContext = new AsyncLocalStorage<string | null>();
 const tenantStoreCache = new Map<string, { store: StoreData; readAt: number }>();
 const GLOBAL_STORE_KEY = "__all_owners__";
@@ -2004,6 +2005,64 @@ export async function deleteOwnerPromotionRecord(ownerId: string, code: string):
       .eq("code", code);
     if (error) throw new Error(`Could not delete promotion code: ${error.message}`);
   });
+}
+
+function communePromotionFromRow(row: Record<string, unknown>): PromotionCode {
+  return {
+    code: String(row.code),
+    discountType: row.discount_type as PromotionCode["discountType"],
+    discountValue: Number(row.discount_value),
+    expiresAt: typeof row.expires_at === "string" ? row.expires_at : undefined,
+    redeemedAt: typeof row.redeemed_at === "string" ? row.redeemed_at : undefined,
+    redeemedOrderId: typeof row.redeemed_order_id === "string" ? row.redeemed_order_id : undefined,
+  };
+}
+
+export async function getCommunePromotionRecords(): Promise<PromotionCode[]> {
+  if (!isRealSupabaseConfigured()) return [...memoryCommunePromotions];
+  const { data, error } = await supabaseAdmin()
+    .from("commune_promotions")
+    .select("code,discount_type,discount_value,expires_at,redeemed_at,redeemed_order_id")
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(`Unable to read Commune promotion codes: ${error.message}`);
+  return (data ?? []).map((row) => communePromotionFromRow(row));
+}
+
+export async function insertCommunePromotionRecord(
+  input: Pick<PromotionCode, "discountType" | "discountValue" | "expiresAt">,
+  prefix: string,
+): Promise<PromotionCode> {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const makeCode = () => `${prefix}-${Array.from({ length: 6 }, () => alphabet[randomInt(alphabet.length)]).join("")}`;
+  if (!isRealSupabaseConfigured()) {
+    let promo: PromotionCode;
+    do { promo = { code: makeCode(), ...input }; }
+    while (memoryCommunePromotions.some((entry) => entry.code === promo.code));
+    memoryCommunePromotions = [promo, ...memoryCommunePromotions];
+    return promo;
+  }
+
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const promo: PromotionCode = { code: makeCode(), ...input };
+    const { error } = await supabaseAdmin().from("commune_promotions").insert({
+      code: promo.code,
+      discount_type: promo.discountType,
+      discount_value: promo.discountValue,
+      expires_at: promo.expiresAt,
+    });
+    if (!error) return promo;
+    if (error.code !== "23505") throw new Error(`Could not generate Commune voucher: ${error.message}`);
+  }
+  throw new Error("Could not generate a unique Commune voucher. Please try again.");
+}
+
+export async function deleteCommunePromotionRecord(code: string): Promise<void> {
+  if (!isRealSupabaseConfigured()) {
+    memoryCommunePromotions = memoryCommunePromotions.filter((promo) => promo.code !== code);
+    return;
+  }
+  const { error } = await supabaseAdmin().from("commune_promotions").delete().eq("code", code);
+  if (error) throw new Error(`Could not delete Commune voucher: ${error.message}`);
 }
 
 export async function upsertStaffUserRecord(user: StaffUser): Promise<void> {

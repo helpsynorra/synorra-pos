@@ -30,3 +30,13 @@ and persisted print jobs.
 The initial adapters target ESC/POS over Web Serial. Actual USB, Bluetooth,
 network, or vendor-specific printer support may require another transport or
 protocol adapter; checkout and persisted job logic should not need to change.
+
+## Commune promotion bridge
+
+Commune validates and redeems Synorra vouchers through the server-only
+`/api/commune-promotions` endpoint. Set `COMMUNE_PROMOTION_SHARED_SECRET` to the
+same random value of at least 32 characters in both the Synorra and Commune
+server environments. Keep it out of Flutter build defines and browser-visible
+environment variables. Commune can override the Synorra endpoint with
+`SYNORRA_PROMOTION_API_URL`; the default is
+`https://synorra-pos.vercel.app/api/commune-promotions`.

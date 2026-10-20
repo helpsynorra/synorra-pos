@@ -477,6 +477,64 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (action === "validate_promotion") {
+      const code = String(body.code ?? "").replace(/\s+/g, "").toUpperCase();
+      if (!/^(?:[A-Z0-9]{6}|[A-Z0-9]{1,16}-[A-Z0-9]{6})$/.test(code)) {
+        return NextResponse.json(
+          { ok: false, error: "Enter a valid promotion voucher." },
+          { status: 400, headers: corsHeaders },
+        );
+      }
+
+      const promotionOwner = (await getOwnerAccounts()).find(
+        (entry) => entry.id === tenantId,
+      );
+      const promotionPermissions = promotionOwner?.permissions;
+      if (
+        !promotionPermissions ||
+        promotionPermissions.promotionsEnabled !== true ||
+        promotionPermissions.promotionDiscount !== true
+      ) {
+        return NextResponse.json(
+          { ok: false, error: "Promotions are not enabled for this Owner." },
+          { status: 403, headers: corsHeaders },
+        );
+      }
+      const promotion = promotionPermissions.promoCodes?.find(
+        (entry) => entry.code.trim().toUpperCase() === code,
+      );
+      if (!promotion) {
+        return NextResponse.json(
+          { ok: false, error: "Invalid promotion voucher." },
+          { status: 404, headers: corsHeaders },
+        );
+      }
+      if (promotion.redeemedAt) {
+        return NextResponse.json(
+          { ok: false, error: "Promotion voucher already used." },
+          { status: 409, headers: corsHeaders },
+        );
+      }
+      if (promotion.expiresAt && Date.parse(promotion.expiresAt) <= Date.now()) {
+        return NextResponse.json(
+          { ok: false, error: "Promotion voucher has expired." },
+          { status: 409, headers: corsHeaders },
+        );
+      }
+      return NextResponse.json(
+        {
+          ok: true,
+          promotion: {
+            code: promotion.code,
+            discountType: promotion.discountType,
+            discountValue: promotion.discountValue,
+            expiresAt: promotion.expiresAt ?? null,
+          },
+        },
+        { headers: corsHeaders },
+      );
+    }
+
     if (action === "create_order") {
       const rawOrder = body.order ?? {};
       if (!claims || !["cashier", "admin"].includes(claims.role)) {

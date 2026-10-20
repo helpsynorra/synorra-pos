@@ -14,12 +14,15 @@ import {
   deleteLoginActivityRecords,
   deleteOffRequestRecord,
   deleteOwnerPromotionRecord,
+  deleteCommunePromotionRecord,
   deleteStaffUserRecord,
   getFreshStore,
   getOwnerAccounts,
+  getCommunePromotionRecords,
   getStore,
   initializeOwnerStore,
   insertOwnerPromotionRecord,
+  insertCommunePromotionRecord,
   isRealSupabaseConfigured,
   insertLoginActivityRecord,
   insertOffRequestRecord,
@@ -37,7 +40,7 @@ import {
   toSession,
 } from "@/lib/users";
 import { sanitizeLoginGate } from "@/lib/staff-gates";
-import type { LoginActivity, OffRequest, Role, StaffPermissions, StaffUser, StoreData } from "@/lib/types";
+import type { LoginActivity, OffRequest, PromotionCode, Role, StaffPermissions, StaffUser, StoreData } from "@/lib/types";
 
 async function requireAdmin() {
   const session = await getSession();
@@ -378,6 +381,85 @@ export async function deleteOwnerPromotionCode(userId: string, code: string) {
     return { ok: true };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Could not delete promotion code." };
+  }
+}
+
+export async function getCommunePromotionCodes() {
+  await requireAdmin();
+  try {
+    return { promos: await getCommunePromotionRecords() };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Could not load Commune vouchers." };
+  }
+}
+
+export async function generateCommunePromotionCodes(
+  discountType: "percent" | "amount" | "item",
+  discountValue: number,
+  count: number,
+  prefix: string,
+  expiresOn: string,
+) {
+  await requireAdmin();
+  if (discountType !== "percent" && discountType !== "amount" && discountType !== "item") {
+    return { error: "Choose a valid promotion discount type." };
+  }
+  const codeCount = Number(count);
+  if (!Number.isInteger(codeCount) || codeCount < 1 || codeCount > 100) {
+    return { error: "Choose between 1 and 100 Commune voucher codes." };
+  }
+  const normalizedPrefix = prefix.trim().toUpperCase();
+  if (!/^[A-Z0-9]{1,16}$/.test(normalizedPrefix)) {
+    return { error: "Enter a prefix with 1 to 16 letters or numbers." };
+  }
+  const expiryDay = new Date(`${expiresOn}T00:00:00.000Z`);
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(expiresOn) ||
+    Number.isNaN(expiryDay.getTime()) ||
+    expiryDay.toISOString().slice(0, 10) !== expiresOn ||
+    expiresOn < phDateString()
+  ) {
+    return { error: "Choose a valid expiration date that is today or later." };
+  }
+  const value = Number(discountValue);
+  if (discountType === "item" && (!Number.isInteger(value) || value < 1 || value > 99)) {
+    return { error: "Choose between 1 and 99 free items." };
+  }
+  if (discountType !== "item" && (!Number.isFinite(value) || value <= 0 || (discountType === "percent" && value > 100))) {
+    return { error: "Enter a valid promotion discount." };
+  }
+
+  const expiresAt = new Date(`${expiresOn}T23:59:59.999+08:00`).toISOString();
+  const promos: PromotionCode[] = [];
+  try {
+    for (let index = 0; index < codeCount; index += 1) {
+      promos.push(await insertCommunePromotionRecord({
+        discountType,
+        discountValue: Math.round(value * 100) / 100,
+        expiresAt,
+      }, normalizedPrefix));
+    }
+    refresh();
+    return { ok: true, promos };
+  } catch (error) {
+    refresh();
+    return {
+      error: error instanceof Error ? error.message : "Could not generate Commune vouchers.",
+      promos,
+    };
+  }
+}
+
+export async function deleteCommunePromotionCode(code: string) {
+  await requireAdmin();
+  const normalizedCode = code.trim().toUpperCase();
+  if (!/^[A-Z0-9]{1,16}-[A-Z0-9]{6}$/.test(normalizedCode)) return { error: "Invalid Commune voucher code." };
+  try {
+    await deleteCommunePromotionRecord(normalizedCode);
+    refresh();
+    return { ok: true };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Could not delete Commune voucher." };
   }
 }
 

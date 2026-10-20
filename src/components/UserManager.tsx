@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   createOffRequest,
   createStaffUser,
+  deleteCommunePromotionCode,
   deleteOffRequest,
   deleteOwnerPromotionCode,
   deleteStaffUser,
@@ -11,8 +12,10 @@ import {
   setOffRequestStatus,
   updateStaffSessionTimes,
   deleteStaffSession,
+  generateCommunePromotionCodes,
   updateOwnerPermissions,
   generateOwnerPromotionCode,
+  getCommunePromotionCodes,
   updateStaffUser,
   updateLoginGates,
 } from "@/actions/users";
@@ -107,6 +110,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
     () => Object.fromEntries(users.map((user) => [user.id, { ...DEFAULT_STAFF_PERMISSIONS, ...user.permissions }])),
   );
   const [selectedPermissionOwnerId, setSelectedPermissionOwnerId] = useState<string | null>(null);
+  const [communePromoCodes, setCommunePromoCodes] = useState<PromotionCode[]>([]);
   const [promoCodeRecords, setPromoCodeRecords] = useState<Record<string, PromotionCode[]>>(
     () => Object.fromEntries(users.map((user) => [user.id, user.permissions?.promoCodes ?? []])),
   );
@@ -129,6 +133,20 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
   useEffect(() => {
     setPromoCodeRecords(Object.fromEntries(users.map((user) => [user.id, user.permissions?.promoCodes ?? []])));
   }, [users]);
+
+  useEffect(() => {
+    if (session.role !== "admin") return;
+    let cancelled = false;
+    void getCommunePromotionCodes().then((result) => {
+      if (cancelled) return;
+      if ("error" in result && result.error) {
+        setNotice(result.error);
+        return;
+      }
+      setCommunePromoCodes(result.promos ?? []);
+    });
+    return () => { cancelled = true; };
+  }, [session.role]);
   
   // Global filter/display date state for In / Out
   const [selectedDate, setSelectedDate] = useState(phDateString());
@@ -448,7 +466,115 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
           </>
         ) : null}
 
-        {tab === "customWebsitePromo" ? <div aria-label="Custom Website Promo" className="min-h-[240px]">commune</div> : null}
+        {tab === "customWebsitePromo" ? (() => {
+          const communeDraftId = "__commune_website__";
+          const promoType = promoTypeDrafts[communeDraftId] ?? "percent";
+          const countMode = promoCountModes[communeDraftId] ?? "5";
+          const customCount = promoCustomCounts[communeDraftId] ?? "25";
+          const prefix = promoPrefixDrafts[communeDraftId] ?? "COMMUNE";
+          const expiry = promoExpiryDrafts[communeDraftId] ?? "";
+          const itemCount = promoItemCountDrafts[communeDraftId] ?? 1;
+          const value = promoValueDrafts[communeDraftId] ?? 10;
+          const promos = communePromoCodes;
+          const canGenerate = Boolean(
+              !pending &&
+              expiry &&
+              expiry >= phDateString() &&
+              /^[A-Z0-9]{1,16}$/.test(prefix) &&
+              (promoType !== "item" || (Number.isInteger(itemCount) && itemCount >= 1 && itemCount <= 99)) &&
+              (promoType === "item" || (Number.isFinite(value) && value > 0 && (promoType !== "percent" || value <= 100))) &&
+              (countMode !== "custom" || (/^\d+$/.test(customCount) && Number(customCount) >= 1 && Number(customCount) <= 100)),
+          );
+
+          return (
+            <section aria-label="Custom Website Promo" className="space-y-5 rounded-2xl border border-[#e4ebf5] bg-white p-4 shadow-[0_8px_30px_rgba(37,75,130,0.06)] sm:p-6">
+              <div>
+                <h1 className="text-xl font-semibold tracking-tight text-[#14213d]">Commune checkout vouchers</h1>
+                <p className="mt-1 text-sm text-[#7486a3]">Generate one-time promo codes for the Commune website checkout. These are stored separately from Synorra Owner vouchers.</p>
+              </div>
+
+              <>
+                  <div className="space-y-4 border-t border-[#e7edf6] pt-5">
+                    <div>
+                      <h2 className="text-sm font-semibold text-[#172849]">Generate voucher codes</h2>
+                      <p className="mt-1 text-xs text-[#8091ab]">Each code can be redeemed once and expires at the end of the selected date.</p>
+                    </div>
+                    <div className={`grid gap-3 sm:grid-cols-2 ${promoType === "item" ? "xl:grid-cols-[minmax(150px,1fr)_minmax(170px,1fr)_140px_minmax(170px,1fr)_minmax(170px,1fr)_auto]" : "xl:grid-cols-[minmax(150px,1fr)_minmax(170px,1fr)_minmax(140px,1fr)_minmax(170px,1fr)_minmax(170px,1fr)_auto]"}`}>
+                      <label className="block min-w-0 space-y-1.5 text-xs font-medium text-[#586b89]">
+                        <span>Prefix</span>
+                        <input aria-label="Commune voucher prefix" value={prefix} maxLength={16} onChange={(event) => setPromoPrefixDrafts((current) => ({ ...current, [communeDraftId]: event.target.value.toUpperCase() }))} className={adminField} />
+                      </label>
+                      <label className="block min-w-0 space-y-1.5 text-xs font-medium text-[#586b89]">
+                        <span>Discount type</span>
+                        <select aria-label="Commune voucher discount type" value={promoType} onChange={(event) => setPromoTypeDrafts((current) => ({ ...current, [communeDraftId]: event.target.value as PromotionCode["discountType"] }))} className={adminField}>
+                          <option value="percent">Percent discount</option>
+                          <option value="amount">Peso discount</option>
+                          <option value="item">Free item(s)</option>
+                        </select>
+                      </label>
+                      {promoType === "item" ? (
+                        <label className="block min-w-0 space-y-1.5 text-xs font-medium text-[#586b89]">
+                          <span>Free item quantity</span>
+                          <input aria-label="Commune free item quantity" type="number" min="1" max="99" step="1" value={itemCount} onChange={(event) => setPromoItemCountDrafts((current) => ({ ...current, [communeDraftId]: Number(event.target.value) }))} className={adminField} />
+                        </label>
+                      ) : (
+                        <label className="block min-w-0 space-y-1.5 text-xs font-medium text-[#586b89]">
+                          <span>Discount value</span>
+                          <input aria-label="Commune discount value" type="number" min="0.01" max={promoType === "percent" ? 100 : undefined} step="0.01" value={value} onChange={(event) => setPromoValueDrafts((current) => ({ ...current, [communeDraftId]: Number(event.target.value) }))} className={adminField} />
+                        </label>
+                      )}
+                      <label className="block min-w-0 space-y-1.5 text-xs font-medium text-[#586b89]">
+                        <span>Quantity</span>
+                        <select aria-label="Commune voucher quantity" value={countMode} onChange={(event) => setPromoCountModes((current) => ({ ...current, [communeDraftId]: event.target.value }))} className={adminField}>
+                          <option value="1">1 voucher</option><option value="5">5 vouchers</option><option value="10">10 vouchers</option><option value="20">20 vouchers</option><option value="custom">Custom</option>
+                        </select>
+                        {countMode === "custom" ? <input aria-label="Custom Commune voucher quantity" type="number" min="1" max="100" value={customCount} onChange={(event) => setPromoCustomCounts((current) => ({ ...current, [communeDraftId]: event.target.value }))} className={`${adminField} mt-2`} /> : null}
+                      </label>
+                      <label className="block min-w-0 space-y-1.5 text-xs font-medium text-[#586b89]">
+                        <span>Expires on</span>
+                        <input aria-label="Commune voucher expiration date" type="date" min={phDateString()} value={expiry} onChange={(event) => setPromoExpiryDrafts((current) => ({ ...current, [communeDraftId]: event.target.value }))} className={adminField} />
+                      </label>
+                      <button
+                        type="button"
+                        disabled={!canGenerate}
+                        onClick={() => startTransition(async () => {
+                          const count = countMode === "custom" ? Number(customCount) : Number(countMode);
+                          const result = await generateCommunePromotionCodes(promoType, promoType === "item" ? itemCount : value, count, prefix, expiry);
+                          const generatedPromos = result.promos ?? [];
+                          if (generatedPromos.length) setCommunePromoCodes((current) => [...generatedPromos, ...current]);
+                          setNotice("error" in result && result.error ? (generatedPromos.length ? `${result.error} ${generatedPromos.length} voucher(s) were created.` : result.error) : `${generatedPromos.length} Commune voucher(s) generated.`);
+                        })}
+                        className="h-12 self-end whitespace-nowrap rounded-xl bg-[#4353ff] px-5 text-xs font-semibold text-white shadow-[0_5px_14px_rgba(67,83,255,0.22)] transition hover:bg-[#3345ed] disabled:opacity-40"
+                      >Generate codes</button>
+                    </div>
+                  </div>
+
+                  <div className="overflow-hidden rounded-xl border border-[#e3eaf4]">
+                    <div className="hidden grid-cols-[1.35fr_0.8fr_0.8fr_1fr_1fr_0.8fr_auto] gap-3 bg-[#f5f8fc] px-4 py-2.5 text-[10px] font-semibold tracking-wide text-[#7587a3] uppercase sm:grid"><span>Code</span><span>Discount</span><span>Prefix</span><span>Total items</span><span>Expires</span><span>Status</span><span className="text-right">Actions</span></div>
+                    {promos.length === 0 ? <p className="p-4 text-sm text-neutral-500">No Commune website vouchers generated.</p> : promos.map((promo) => (
+                      <div key={promo.code} className="grid grid-cols-2 gap-2 border-t border-[#edf1f7] px-4 py-3 text-xs text-[#405475] sm:grid-cols-[1.35fr_0.8fr_0.8fr_1fr_1fr_0.8fr_auto] sm:items-center sm:gap-3">
+                        <span className="font-mono font-semibold tracking-widest">{promo.code}</span>
+                        <span>{promo.discountType === "item" ? `${promo.discountValue || 1} free item${(promo.discountValue || 1) === 1 ? "" : "s"}` : promo.discountType === "percent" ? `${promo.discountValue}% off` : `PHP ${promo.discountValue} off`}</span>
+                        <span>{promo.code.includes("-") ? promo.code.split("-").slice(0, -1).join("-") : "—"}</span>
+                        <span>{promo.discountType === "item" ? `${promo.discountValue || 1} free item${(promo.discountValue || 1) === 1 ? "" : "s"}` : "-"}</span>
+                        <span>{promo.expiresAt ? phDateString(promo.expiresAt) : "No expiry"}</span>
+                        <span className={promo.redeemedAt ? "text-neutral-400" : promo.expiresAt && Date.parse(promo.expiresAt) <= Date.now() ? "text-amber-700" : "text-emerald-700"}>{promo.redeemedAt ? "Used" : promo.expiresAt && Date.parse(promo.expiresAt) <= Date.now() ? "Expired" : "Active"}</span>
+                        <button type="button" aria-label={`Delete Commune voucher ${promo.code}`} disabled={pending} onClick={() => {
+                          if (!window.confirm(`Delete promo voucher ${promo.code}?`)) return;
+                          startTransition(async () => {
+                            const result = await deleteCommunePromotionCode(promo.code);
+                            if ("error" in result && result.error) { setNotice(result.error); return; }
+                            setCommunePromoCodes((current) => current.filter((entry) => entry.code !== promo.code));
+                            setNotice(`Promo voucher ${promo.code} deleted.`);
+                          });
+                        }} className="justify-self-start rounded-full border border-[#ffd6d9] bg-[#fff8f8] px-3 py-1.5 text-[11px] font-medium text-[#f04452] transition hover:bg-[#fff0f1] disabled:opacity-40 sm:justify-self-end">Delete</button>
+                      </div>
+                    ))}
+                  </div>
+              </>
+            </section>
+          );
+        })() : null}
 
         {tab === "inout" ? (
           <>
