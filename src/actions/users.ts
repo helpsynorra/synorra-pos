@@ -179,7 +179,7 @@ export async function createStaffUser(input: {
   if (taken) {
     return { error: "That username is already in use." };
   }
-  if (parsed.email && (store.users ?? []).some((user) => user.email?.toLowerCase() === parsed.email)) {
+  if (parsed.email && (store.users ?? []).some((user) => user.email?.trim().toLowerCase() === parsed.email)) {
     return { error: "That email is already assigned to a staff account." };
   }
 
@@ -235,7 +235,7 @@ export async function updateStaffUser(input: {
   if (taken) {
     return { error: "That username is already in use." };
   }
-  if (parsed.email && (store.users ?? []).some((entry) => entry.id !== input.id && entry.email?.toLowerCase() === parsed.email)) {
+  if (parsed.email && (store.users ?? []).some((entry) => entry.id !== input.id && entry.email?.trim().toLowerCase() === parsed.email)) {
     return { error: "That email is already assigned to a staff account." };
   }
   const admins = (store.users ?? []).filter((entry) => entry.role === "admin");

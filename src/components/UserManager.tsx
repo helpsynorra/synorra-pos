@@ -51,18 +51,44 @@ type StaffRole = "Admin" | "Barista" | "Owner";
 
 type PermissionFlag = Exclude<keyof StaffPermissions, "promoCodes">;
 
-const permissionOptions: { key: PermissionFlag; label: string }[] = [
-  { key: "stockInventory", label: "Stock inventory" },
-  { key: "restockInventory", label: "Restock inventory" },
-  { key: "connectLabels", label: "Connect labels" },
-  { key: "connectReceipt", label: "Connect receipt" },
-  { key: "printButton", label: "Print button" },
-  { key: "customerReceipt", label: "Customer receipt" },
-  { key: "cupLabels", label: "Cup labels" },
-  { key: "dineIn", label: "Dine in" },
-  { key: "takeOut", label: "Take out" },
-  { key: "promotionDiscount", label: "Promotion discounts in POS" },
-  { key: "promotionsEnabled", label: "Promotions enabled" },
+const permissionGroups: {
+  title: string;
+  description: string;
+  icon: "inventory" | "operations" | "customer";
+  permissions: { key: PermissionFlag; label: string }[];
+}[] = [
+  {
+    title: "Inventory & Sales",
+    description: "Manage products, stock and sales operations.",
+    icon: "inventory",
+    permissions: [
+      { key: "stockInventory", label: "Stock inventory" },
+      { key: "connectReceipt", label: "Connect receipt" },
+      { key: "cupLabels", label: "Cup labels" },
+      { key: "promotionDiscount", label: "Promotion discounts in POS" },
+    ],
+  },
+  {
+    title: "Operations",
+    description: "Handle daily operations and customer flow.",
+    icon: "operations",
+    permissions: [
+      { key: "restockInventory", label: "Restock inventory" },
+      { key: "printButton", label: "Print button" },
+      { key: "dineIn", label: "Dine in" },
+      { key: "promotionsEnabled", label: "Promotions enabled" },
+    ],
+  },
+  {
+    title: "Customer & Labels",
+    description: "Manage customer data and label printing.",
+    icon: "customer",
+    permissions: [
+      { key: "connectLabels", label: "Connect labels" },
+      { key: "customerReceipt", label: "Customer receipt" },
+      { key: "takeOut", label: "Take out" },
+    ],
+  },
 ];
 
 export function UserManager({ users, session, loginActivity, offRequests, showShiftTabs = true, showAdminRole = true, showOwnerRole = true, showBaristaRole = true, showBaristasOnly = false, showEditStaffButton = true, showDeleteStaffButton = true, baristaOnlyStaffActions = false, showLoginLinksTab = true, showPrintButtonToggle = true, showViewPermissionsButton = true, adminLoginPath = "mouna1234" }: UserManagerProps) {
@@ -792,41 +818,72 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                 const owner = ownerUsers.find((user) => user.id === selectedPermissionOwnerId);
                 if (!owner) return <p className="text-sm text-neutral-500">Owner account not found.</p>;
                 const permissions = permissionState[owner.id] ?? { ...DEFAULT_STAFF_PERMISSIONS, ...owner.permissions };
+                const updatePermission = (key: PermissionFlag, enabled: boolean) => {
+                  const next = { ...permissions, [key]: enabled };
+                  setPermissionState((current) => ({ ...current, [owner.id]: next }));
+                  startTransition(async () => {
+                    const result = await updateOwnerPermissions(owner.id, next);
+                    if (result && "error" in result && result.error) {
+                      setPermissionState((current) => ({ ...current, [owner.id]: permissions }));
+                      setNotice(result.error);
+                      return;
+                    }
+                    setNotice(null);
+                  });
+                };
                 return (
+                  <>
                   <section className="space-y-3 rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
                     <div className="flex items-center justify-between gap-3">
-                      <h2 className="font-semibold">{owner.name}</h2>
+                      <div>
+                        <h2 className="font-semibold">{owner.name}</h2>
+                        <p className="mt-0.5 text-xs text-neutral-500">Manage POS access and promotion vouchers.</p>
+                      </div>
                       <button type="button" onClick={() => setSelectedPermissionOwnerId(null)} className="text-xs font-medium text-neutral-600 hover:text-black">Back</button>
                     </div>
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                      {permissionOptions.map(({ key, label }) => (
-                        <label key={key} className="flex cursor-pointer items-center gap-3 rounded-lg border border-neutral-200 px-3 py-2.5 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={permissions[key]}
-                            disabled={pending}
-                            onChange={(event) => {
-                              const next = { ...permissions, [key]: event.target.checked };
-                              setPermissionState((current) => ({ ...current, [owner.id]: next }));
-                              startTransition(async () => {
-                                const result = await updateOwnerPermissions(owner.id, next);
-                                if (result && "error" in result && result.error) {
-                                  setPermissionState((current) => ({ ...current, [owner.id]: permissions }));
-                                  setNotice(result.error);
-                                  return;
-                                }
-                                setNotice(null);
-                              });
-                            }}
-                            className="size-4 accent-black"
-                          />
-                          {label}
-                        </label>
+                    <div className="grid gap-3 lg:grid-cols-3">
+                      {permissionGroups.map((group) => (
+                        <div key={group.title} className="rounded-xl border border-indigo-100 bg-white p-3 sm:p-4">
+                          <div className="mb-3 flex items-start gap-3">
+                            <span className="mt-0.5 text-indigo-900">
+                              <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                {group.icon === "inventory" ? <><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" /><path d="m4.5 7.7 7.5 4.4 7.5-4.4M12 12v9" /></> : null}
+                                {group.icon === "operations" ? <><path d="M6 8V3h12v5M6 17H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><path d="M6 14h12v7H6zM17 11h.01" /></> : null}
+                                {group.icon === "customer" ? <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM19 8v6M22 11h-6" /></> : null}
+                              </svg>
+                            </span>
+                            <div>
+                              <h3 className="text-sm font-semibold text-indigo-950">{group.title}</h3>
+                              <p className="mt-0.5 text-[11px] leading-4 text-neutral-500">{group.description}</p>
+                            </div>
+                          </div>
+                          <div className="divide-y divide-neutral-100">
+                            {group.permissions.map(({ key, label }) => (
+                              <label key={key} className="flex min-h-9 cursor-pointer items-center justify-between gap-3 py-1.5 text-xs text-neutral-700">
+                                <span>{label}</span>
+                                <span className="relative inline-flex shrink-0 items-center">
+                                  <input
+                                    type="checkbox"
+                                    role="switch"
+                                    aria-label={label}
+                                    checked={permissions[key]}
+                                    disabled={pending}
+                                    onChange={(event) => updatePermission(key, event.target.checked)}
+                                    className="peer sr-only"
+                                  />
+                                  <span className="h-5 w-10 rounded-full bg-slate-300 transition peer-checked:bg-indigo-600 peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-300 peer-disabled:opacity-50" />
+                                  <span className="pointer-events-none absolute left-0.5 size-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-5" />
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
                       ))}
                     </div>
-                    <div className="space-y-3 border-t border-neutral-200 pt-4">
+                  </section>
+                  <section className="space-y-3 rounded-2xl border border-indigo-100 bg-white p-4 shadow-sm sm:p-5">
                       <div>
-                        <h3 className="text-sm font-semibold">Generate promo vouchers</h3>
+                        <h3 className="text-sm font-semibold text-indigo-950">Generate promo vouchers</h3>
                         <p className="text-xs text-neutral-500">Each voucher can only be redeemed once. Add a prefix, then the system generates a unique 6-character suffix.</p>
                       </div>
                       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1.4fr_auto]">
@@ -925,45 +982,47 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                             }
                             setNotice(`${generatedPromos.length} promo voucher(s) generated.`);
                           })}
-                          className="rounded-full bg-black px-4 py-2 text-xs font-medium text-white disabled:opacity-40"
+                          className="rounded-full bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-40"
                         >Generate vouchers</button>
                       </div>
-                      <div className="divide-y divide-neutral-100 rounded-xl border border-neutral-200">
-                        {(promoCodeRecords[owner.id] ?? []).length === 0 ? (
-                          <p className="p-3 text-xs text-neutral-500">No promo vouchers generated.</p>
-                        ) : (promoCodeRecords[owner.id] ?? []).map((promo) => (
-                          <div key={promo.code} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
-                            <span className="font-mono font-semibold tracking-widest">{promo.code}</span>
-                            <span>{promo.discountType === "item" ? `${promo.discountValue || 1} free item${(promo.discountValue || 1) === 1 ? "" : "s"}` : promo.discountType === "percent" ? `${promo.discountValue}% off` : `₱${promo.discountValue} off`}</span>
-                            <span className={promo.redeemedAt ? "text-neutral-400" : "text-emerald-700"}>{promo.redeemedAt ? "Used" : "Unused"}</span>
-                            <button
-                              type="button"
-                              aria-label={`Delete promo voucher ${promo.code}`}
-                              disabled={pending}
-                              onClick={() => {
-                                if (!window.confirm(`Delete promo voucher ${promo.code}?`)) return;
-                                startTransition(async () => {
-                                  const result = await deleteOwnerPromotionCode(owner.id, promo.code);
-                                  if ("error" in result && result.error) {
-                                    setNotice(result.error);
-                                    return;
-                                  }
-                                  setPromoCodeRecords((current) => ({
-                                    ...current,
-                                    [owner.id]: (current[owner.id] ?? []).filter((entry) => entry.code !== promo.code),
-                                  }));
-                                  setNotice(`Promo voucher ${promo.code} deleted.`);
-                                });
-                              }}
-                              className="rounded-full border border-neutral-300 px-3 py-1 text-xs font-medium text-red-600 hover:border-red-300 hover:bg-red-50 disabled:opacity-40"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        ))}
-                      </div>
+                  </section>
+                  <section className="space-y-3 rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5">
+                    <h3 className="text-sm font-semibold text-indigo-950">Promo vouchers</h3>
+                    <div className="overflow-x-auto rounded-xl border border-slate-100">
+                      <table className="w-full min-w-[680px] text-left text-xs">
+                        <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                          <tr><th className="px-3 py-2.5">Voucher</th><th className="px-3 py-2.5">Prefix</th><th className="px-3 py-2.5">Discount</th><th className="px-3 py-2.5">Total items</th><th className="px-3 py-2.5">Status</th><th className="px-3 py-2.5 text-right">Actions</th></tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {(promoCodeRecords[owner.id] ?? []).length === 0 ? (
+                            <tr><td colSpan={6} className="px-3 py-5 text-center text-neutral-500">No promo vouchers generated.</td></tr>
+                          ) : (promoCodeRecords[owner.id] ?? []).map((promo) => {
+                            const [prefix] = promo.code.split("-");
+                            const used = Boolean(promo.redeemedAt);
+                            return (
+                              <tr key={promo.code}>
+                                <td className="whitespace-nowrap px-3 py-3 font-mono font-semibold">{promo.code}</td>
+                                <td className="px-3 py-3 text-slate-600">{promo.code.includes("-") ? prefix : "-"}</td>
+                                <td className="px-3 py-3">{promo.discountType === "item" ? "Free item" : promo.discountType === "percent" ? `${promo.discountValue}% off` : `PHP ${promo.discountValue} off`}</td>
+                                <td className="px-3 py-3">{promo.discountType === "item" ? `${promo.discountValue || 1} free item${(promo.discountValue || 1) === 1 ? "" : "s"}` : "-"}</td>
+                                <td className="px-3 py-3"><span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${used ? "bg-slate-100 text-slate-500" : "bg-emerald-50 text-emerald-700"}`}>{used ? "Used" : "Active"}</span></td>
+                                <td className="px-3 py-3 text-right"><button type="button" aria-label={`Delete promo voucher ${promo.code}`} disabled={pending} onClick={() => {
+                                  if (!window.confirm(`Delete promo voucher ${promo.code}?`)) return;
+                                  startTransition(async () => {
+                                    const result = await deleteOwnerPromotionCode(owner.id, promo.code);
+                                    if ("error" in result && result.error) { setNotice(result.error); return; }
+                                    setPromoCodeRecords((current) => ({ ...current, [owner.id]: (current[owner.id] ?? []).filter((entry) => entry.code !== promo.code) }));
+                                    setNotice(`Promo voucher ${promo.code} deleted.`);
+                                  });
+                                }} className="rounded-full border border-rose-200 px-3 py-1 text-[10px] font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-40">Delete</button></td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   </section>
+                  </>
                 );
               })()}
           </>

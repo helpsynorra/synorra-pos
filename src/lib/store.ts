@@ -148,6 +148,7 @@ export async function deleteOwnerAccountAndData(ownerId: string): Promise<void> 
     "void_requests",
     "off_requests",
     "login_activity",
+    "promotions",
     "order_items",
     "orders",
     "recipes",
