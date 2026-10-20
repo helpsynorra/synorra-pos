@@ -43,7 +43,7 @@ type UserManagerProps = {
   showLoginLinksTab?: boolean;
   showPrintButtonToggle?: boolean;
   showViewPermissionsButton?: boolean;
-  adminLoginPath?: string;
+  adminLoginPath: string;
 };
 
 type SubTab = "staff" | "inout" | "off" | "gates" | "settings";
@@ -65,7 +65,7 @@ const permissionOptions: { key: PermissionFlag; label: string }[] = [
   { key: "promotionsEnabled", label: "Promotions enabled" },
 ];
 
-export function UserManager({ users, session, loginActivity, offRequests, showShiftTabs = true, showAdminRole = true, showOwnerRole = true, showBaristaRole = true, showBaristasOnly = false, showEditStaffButton = true, showDeleteStaffButton = true, baristaOnlyStaffActions = false, showLoginLinksTab = true, showPrintButtonToggle = true, showViewPermissionsButton = true, adminLoginPath = "mouna1234" }: UserManagerProps) {
+export function UserManager({ users, session, loginActivity, offRequests, showShiftTabs = true, showAdminRole = true, showOwnerRole = true, showBaristaRole = true, showBaristasOnly = false, showEditStaffButton = true, showDeleteStaffButton = true, baristaOnlyStaffActions = false, showLoginLinksTab = true, showPrintButtonToggle = true, showViewPermissionsButton = true, adminLoginPath }: UserManagerProps) {
   const [tab, setTab] = useState<SubTab>("staff");
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
   const [name, setName] = useState("");

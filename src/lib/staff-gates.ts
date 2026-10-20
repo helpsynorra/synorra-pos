@@ -2,7 +2,7 @@ export type LoginGates = {
   admin: string;
 };
 
-export const ADMIN_LOGIN_GATE = "mouna1234";
+export const ADMIN_LOGIN_GATE = process.env.SYNORRA_LOCAL_ADMIN_GATE?.trim() ?? "";
 export const OWNER_LOGIN_GATE = "back-office";
 
 export const DEFAULT_LOGIN_GATES: LoginGates = {

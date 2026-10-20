@@ -212,13 +212,23 @@ export async function login(
 
   const store = await getFreshStore();
   const lowerUsername = username.toLowerCase();
-  const user = store.users.find(
-    (entry) =>
-      selectedRole === "cashier"
-        ? entry.email?.trim().toLowerCase() === email
-        : entry.username.trim().toLowerCase() === lowerUsername ||
-          entry.name.trim().toLowerCase() === lowerUsername,
-  );
+  const user =
+    selectedRole === "cashier"
+      ? store.users.find(
+          (entry) =>
+            entry.role === "cashier" &&
+            entry.email?.trim().toLowerCase() === email,
+        )
+      : store.users.find(
+          (entry) =>
+            entry.role === "admin" &&
+            entry.username.trim().toLowerCase() === lowerUsername,
+        ) ??
+        store.users.find(
+          (entry) =>
+            entry.role === "admin" &&
+            entry.name.trim().toLowerCase() === lowerUsername,
+        );
 
   if (!user || !user.password) {
     return { error: "Invalid username or password." };

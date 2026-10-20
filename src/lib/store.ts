@@ -254,6 +254,12 @@ function resolveSupabaseKey(): string {
 }
 
 export function isRealSupabaseConfigured(): boolean {
+  if (
+    process.env.NODE_ENV === "development" &&
+    env("SYNORRA_LOCAL_DEMO_MODE")?.toLowerCase() === "true"
+  ) {
+    return false;
+  }
   const url = resolveSupabaseUrl();
   const key = resolveSupabaseKey();
   return Boolean(url && key && /^https:\/\/[^/]+\.supabase\.co$/.test(url));
@@ -287,6 +293,11 @@ const DEFAULT_INVENTORY: InventoryItem[] = [];
 const DEFAULT_RECIPES: Record<string, RecipeIngredient[]> = {};
 
 function emptyStore(): StoreData {
+  const localAdminGate =
+    process.env.NODE_ENV === "development" &&
+    env("SYNORRA_LOCAL_DEMO_MODE")?.toLowerCase() === "true"
+      ? env("SYNORRA_LOCAL_ADMIN_GATE")
+      : undefined;
   return {
     pos: { isOpen: false, openedAt: null, openedBy: null, inventoryFeaturesEnabled: true, printButtonHidden: false },
     orders: [],
@@ -303,7 +314,9 @@ function emptyStore(): StoreData {
     loginActivity: [],
     offRequests: [],
     voidRequests: [],
-    loginGates: { ...DEFAULT_LOGIN_GATES },
+    loginGates: localAdminGate
+      ? normalizeLoginGates({ admin: localAdminGate })
+      : { ...DEFAULT_LOGIN_GATES },
   };
 }
 
@@ -988,6 +1001,9 @@ export async function getAdminLedgerEntries(): Promise<{
   credits: AdminLedgerEntry[];
   error?: string;
 }> {
+  if (!isRealSupabaseConfigured()) {
+    return { expenses: [], credits: [] };
+  }
   const supabase = supabaseAdmin();
   const ownerId = await activeOwnerId() ?? POS_STATE_ID;
   const entries: AdminLedgerEntry[] = [];
