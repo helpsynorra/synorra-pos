@@ -22,6 +22,10 @@ export default async function AdminPage() {
       <AdminShell session={session} users={store.users.map(publicUser)} store={store}>
         <AdminDashboard
           store={store}
+          showPromoVoucher={
+            session.permissions?.promotionsEnabled === true &&
+            session.permissions?.promotionDiscount === true
+          }
           initialExpenses={ledger.expenses}
           initialCredits={ledger.credits}
           initialLedgerError={ledger.error ?? null}

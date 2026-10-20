@@ -90,9 +90,10 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const store = await getFreshStore({ ownerId: claims.role === "cashier" ? claims.userId : await legacyOwnerId() });
-    const ownerAccount = claims.role === "cashier"
-      ? (await getOwnerAccounts()).find((user) => user.id === claims.userId)
+    const posOwnerId = claims.role === "cashier" ? claims.userId : await legacyOwnerId();
+    const store = await getFreshStore({ ownerId: posOwnerId });
+    const ownerAccount = posOwnerId
+      ? (await getOwnerAccounts()).find((user) => user.id === posOwnerId)
       : undefined;
     if (claims.role === "cashier") {
       const cashier = ownerAccount ?? store.users.find((user) => user.id === claims.userId);
@@ -495,9 +496,7 @@ export async function POST(req: NextRequest) {
         );
       }
       const store = await getFreshStore({ ownerId: claims.role === "cashier" ? claims.userId : undefined });
-      const ownerAccount = claims.role === "cashier"
-        ? (await getOwnerAccounts()).find((user) => user.id === claims.userId)
-        : undefined;
+      const ownerAccount = (await getOwnerAccounts()).find((user) => user.id === tenantId);
       const existingOrder = store.orders.find((o) => o.id === rawOrder.id);
       if (existingOrder) {
         return NextResponse.json(

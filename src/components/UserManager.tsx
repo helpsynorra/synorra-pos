@@ -826,18 +826,18 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                     </div>
                     <div className="space-y-3 border-t border-neutral-200 pt-4">
                       <div>
-                        <h3 className="text-sm font-semibold">Generate promotion codes</h3>
-                        <p className="text-xs text-neutral-500">Each code can only be redeemed once. Add a prefix, then the system generates a unique 6-character suffix.</p>
+                        <h3 className="text-sm font-semibold">Generate promo vouchers</h3>
+                        <p className="text-xs text-neutral-500">Each voucher can only be redeemed once. Add a prefix, then the system generates a unique 6-character suffix.</p>
                       </div>
                       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1.4fr_auto]">
                         <label className="block text-xs font-medium text-neutral-600">
-                          <span className="sr-only">Code prefix</span>
+                          <span className="sr-only">Voucher prefix</span>
                           <input
-                            aria-label="Promotion code prefix"
+                            aria-label="Promo voucher prefix"
                             type="text"
                             value={promoPrefixDrafts[owner.id] ?? "SYNORRA"}
                             maxLength={16}
-                            placeholder="Code prefix"
+                            placeholder="Voucher prefix"
                             onChange={(event) => setPromoPrefixDrafts((current) => ({ ...current, [owner.id]: event.target.value.toUpperCase() }))}
                             className={field}
                           />
@@ -867,7 +867,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                           <label className="block text-xs font-medium text-neutral-600">
                             <span className="mb-1 block">Free item quantity</span>
                             <input
-                              aria-label="Number of free items per code"
+                              aria-label="Number of free items per voucher"
                               type="number"
                               min="1"
                               max="99"
@@ -880,20 +880,20 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                         )}
                         <div className="flex gap-2">
                           <select
-                            aria-label="Number of promotion codes"
+                            aria-label="Number of promo vouchers"
                             value={promoCountModes[owner.id] ?? "5"}
                             onChange={(event) => setPromoCountModes((current) => ({ ...current, [owner.id]: event.target.value }))}
                             className={field}
                           >
-                            <option value="1">1 code</option>
-                            <option value="5">5 codes</option>
-                            <option value="10">10 codes</option>
-                            <option value="20">20 codes</option>
+                            <option value="1">1 voucher</option>
+                            <option value="5">5 vouchers</option>
+                            <option value="10">10 vouchers</option>
+                            <option value="20">20 vouchers</option>
                             <option value="custom">Custom</option>
                           </select>
                           {(promoCountModes[owner.id] ?? "5") === "custom" ? (
                             <input
-                              aria-label="Custom number of promotion codes"
+                              aria-label="Custom number of promo vouchers"
                               type="number"
                               min="1"
                               max="100"
@@ -920,17 +920,17 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                               }));
                             }
                             if ("error" in result && result.error) {
-                              setNotice(generatedPromos.length ? `${result.error} ${generatedPromos.length} code(s) were created.` : result.error);
+                              setNotice(generatedPromos.length ? `${result.error} ${generatedPromos.length} voucher(s) were created.` : result.error);
                               return;
                             }
-                            setNotice(`${generatedPromos.length} promotion code(s) generated.`);
+                            setNotice(`${generatedPromos.length} promo voucher(s) generated.`);
                           })}
                           className="rounded-full bg-black px-4 py-2 text-xs font-medium text-white disabled:opacity-40"
-                        >Generate codes</button>
+                        >Generate vouchers</button>
                       </div>
                       <div className="divide-y divide-neutral-100 rounded-xl border border-neutral-200">
                         {(promoCodeRecords[owner.id] ?? []).length === 0 ? (
-                          <p className="p-3 text-xs text-neutral-500">No promotion codes generated.</p>
+                          <p className="p-3 text-xs text-neutral-500">No promo vouchers generated.</p>
                         ) : (promoCodeRecords[owner.id] ?? []).map((promo) => (
                           <div key={promo.code} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
                             <span className="font-mono font-semibold tracking-widest">{promo.code}</span>
@@ -938,10 +938,10 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                             <span className={promo.redeemedAt ? "text-neutral-400" : "text-emerald-700"}>{promo.redeemedAt ? "Used" : "Unused"}</span>
                             <button
                               type="button"
-                              aria-label={`Delete promotion code ${promo.code}`}
+                              aria-label={`Delete promo voucher ${promo.code}`}
                               disabled={pending}
                               onClick={() => {
-                                if (!window.confirm(`Delete promotion code ${promo.code}?`)) return;
+                                if (!window.confirm(`Delete promo voucher ${promo.code}?`)) return;
                                 startTransition(async () => {
                                   const result = await deleteOwnerPromotionCode(owner.id, promo.code);
                                   if ("error" in result && result.error) {
@@ -952,7 +952,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                                     ...current,
                                     [owner.id]: (current[owner.id] ?? []).filter((entry) => entry.code !== promo.code),
                                   }));
-                                  setNotice(`Promotion code ${promo.code} deleted.`);
+                                  setNotice(`Promo voucher ${promo.code} deleted.`);
                                 });
                               }}
                               className="rounded-full border border-neutral-300 px-3 py-1 text-xs font-medium text-red-600 hover:border-red-300 hover:bg-red-50 disabled:opacity-40"

@@ -216,6 +216,10 @@ class PosController extends ChangeNotifier {
       promoLabel = saved['promoLabel'] as String?;
       promoItemIndex = (saved['promoItemIndex'] as num?)?.toInt();
       promoItemQty = (saved['promoItemQty'] as num?)?.toInt() ?? (promoItemIndex == null ? null : 1);
+      if (promoLabel != null) {
+        paymentMethod = 'gcash';
+        tenderedAmount = total;
+      }
       pendingCartVoidRequestId = saved['pendingVoidRequestId'] as String?;
       if (cart.isEmpty) unawaited(localStorage.clearActiveCheckout());
     } catch (_) {
@@ -420,13 +424,13 @@ class PosController extends ChangeNotifier {
       return 'Promotions are not enabled for this Owner.';
     }
     if (!RegExp(r'^(?:[A-Z0-9]{6}|[A-Z0-9]{1,16}-[A-Z0-9]{6})$').hasMatch(code)) {
-      return 'Invalid promotion code.';
+      return 'Invalid promo voucher.';
     }
     final promo = syncService.promotionCodes.where(
       (entry) => entry['code']?.toString().trim().toUpperCase() == code,
     ).firstOrNull;
-    if (promo == null || code.isEmpty) return 'Invalid promotion code.';
-    if (promo['redeemedAt'] != null) return 'The promotion code already used.';
+    if (promo == null || code.isEmpty) return 'Invalid promo voucher.';
+    if (_isPromotionRedeemed(promo)) return 'Promo voucher already used.';
     final value = (promo['discountValue'] as num?)?.toDouble() ?? 0;
     final isFreeItem = promo['discountType'] == 'item';
     final freeItemQty = value.round().clamp(1, 99).toInt();
@@ -441,15 +445,13 @@ class PosController extends ChangeNotifier {
     if (!isFreeItem && (amount <= 0 || subtotal <= 0)) {
       return 'Add items before applying a promotion.';
     }
-    final previousTotal = total;
     promoId = code;
     promoLabel = code;
     promoItemIndex = isFreeItem ? itemIndex : null;
     promoItemQty = isFreeItem ? itemQty : null;
     discountAmount = amount.clamp(0, subtotal).roundToDouble();
-    if (paymentMethod != 'cash' || tenderedAmount == 0 || tenderedAmount == previousTotal) {
-      tenderedAmount = total;
-    }
+    paymentMethod = 'gcash';
+    tenderedAmount = total;
     _persistActiveCheckout();
     notifyListeners();
     return null;
@@ -462,7 +464,7 @@ class PosController extends ChangeNotifier {
       (entry) => entry['code']?.toString().trim().toUpperCase() == code,
     ).firstOrNull;
     if (promo == null ||
-        promo['redeemedAt'] != null ||
+        _isPromotionRedeemed(promo) ||
         !syncService.hasPermission('promotionsEnabled') ||
         !syncService.hasPermission('promotionDiscount')) {
       promoId = null;
@@ -470,6 +472,8 @@ class PosController extends ChangeNotifier {
       discountAmount = 0;
       return;
     }
+    paymentMethod = 'gcash';
+    tenderedAmount = total;
     if (promo['discountType'] == 'item') {
       if (promoItemIndex == null || promoItemIndex! < 0 || promoItemIndex! >= cart.length || promoItemQty == null || promoItemQty! > cart[promoItemIndex!].qty) {
         clearPromotion();
@@ -482,6 +486,9 @@ class PosController extends ChangeNotifier {
     final amount = promo['discountType'] == 'amount' ? value : subtotal * value / 100;
     discountAmount = amount.clamp(0, subtotal).roundToDouble();
   }
+
+  bool _isPromotionRedeemed(Map<String, dynamic> promo) =>
+      promo['redeemedAt'] != null || promo['redeemed_at'] != null;
 
   void clearPromotion() {
     final previousTotal = total;
@@ -597,6 +604,7 @@ class PosController extends ChangeNotifier {
   }
 
   void setPaymentMethod(String method) {
+    if (promoLabel != null && method != 'gcash') return;
     paymentMethod = method;
     if (method != 'cash') {
       tenderedAmount = total;

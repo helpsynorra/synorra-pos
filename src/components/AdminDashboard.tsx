@@ -166,11 +166,13 @@ function entryInPeriod(dateStr: string, start: Date, end: Date) {
 
 export function AdminDashboard({
   store,
+  showPromoVoucher,
   initialExpenses,
   initialCredits,
   initialLedgerError,
 }: {
   store: StoreData;
+  showPromoVoucher: boolean;
   initialExpenses: AdminLedgerEntry[];
   initialCredits: AdminLedgerEntry[];
   initialLedgerError: string | null;
@@ -1158,13 +1160,14 @@ export function AdminDashboard({
             </p>
           ) : (
           <div className="mt-4">
-            <div className="hidden grid-cols-9 gap-x-4 border-b border-neutral-200 pb-2 text-xs text-neutral-500 lg:grid">
+            <div className={`hidden gap-x-4 border-b border-neutral-200 pb-2 text-xs text-neutral-500 lg:grid ${showPromoVoucher ? "lg:grid-cols-10" : "lg:grid-cols-9"}`}>
               <p className="min-w-0">Time</p>
               <p className="min-w-0">Owner</p>
               <p className="min-w-0">Order ID</p>
               <p className="min-w-0">Items</p>
               <p className="min-w-0">Status</p>
               <p className="min-w-0">Reason</p>
+              {showPromoVoucher ? <p className="min-w-0">Promo voucher</p> : null}
               <p className="min-w-0">Payment</p>
               <p className="min-w-0">Service</p>
               <p className="min-w-0 text-right">Total</p>
@@ -1173,7 +1176,7 @@ export function AdminDashboard({
               {latest.map((order: Order, ordIdx: number) => (
                 <div
                   key={`${order.id}-${ordIdx}`}
-                  className="grid grid-cols-1 gap-2 py-3 lg:grid-cols-9 lg:items-start lg:gap-x-4"
+                  className={`grid grid-cols-1 gap-2 py-3 lg:items-start lg:gap-x-4 ${showPromoVoucher ? "lg:grid-cols-10" : "lg:grid-cols-9"}`}
                 >
                   <div className="min-w-0">
                     <p className="text-sm leading-5 text-neutral-700">
@@ -1225,6 +1228,12 @@ export function AdminDashboard({
                     <span className="lg:hidden">Reason: </span>
                     {isVoided(order) ? order.voidReason?.trim() || "—" : "—"}
                   </p>
+                  {showPromoVoucher ? (
+                    <p className="min-w-0 break-words text-xs text-neutral-500 lg:text-sm">
+                      <span className="lg:hidden">Promo voucher: </span>
+                      {order.promoLabel?.trim() || "—"}
+                    </p>
+                  ) : null}
                   <p className="min-w-0 text-xs text-neutral-500 lg:text-sm">
                     <span className="lg:hidden">Payment: </span>
                     {paymentLabel(order.paymentMethod)}

@@ -495,16 +495,16 @@ export function PosClient({
   function applyPromotionCode() {
     const code = promoDraft.trim().toUpperCase();
     if (!/^(?:[A-Z0-9]{6}|[A-Z0-9]{1,16}-[A-Z0-9]{6})$/.test(code)) {
-      setMessage("Enter a valid promotion code.");
+      setMessage("Enter a valid promo voucher.");
       return;
     }
     const promo = session.permissions?.promoCodes?.find((entry) => entry.code.toUpperCase() === code);
     if (!session.permissions?.promotionsEnabled || !session.permissions?.promotionDiscount || !promo) {
-      setMessage("Invalid promotion code.");
+      setMessage("Invalid promo voucher.");
       return;
     }
     if (promo.redeemedAt) {
-      setMessage("The promotion code already used.");
+      setMessage("Promo voucher already used.");
       return;
     }
     setPromoCode(code);
@@ -1789,7 +1789,7 @@ export function PosClient({
                   {promoCode && selectedPromo ? (
                     <>
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-medium">{selectedPromo.discountType === "item" ? `${Math.max(1, Math.floor(selectedPromo.discountValue || 1))} free item${Math.max(1, Math.floor(selectedPromo.discountValue || 1)) === 1 ? "" : "s"}` : `Promo ${promoCode}`}</span>
+                        <span className="font-medium">{selectedPromo.discountType === "item" ? `${Math.max(1, Math.floor(selectedPromo.discountValue || 1))} free item${Math.max(1, Math.floor(selectedPromo.discountValue || 1)) === 1 ? "" : "s"}` : `Promo voucher ${promoCode}`}</span>
                         <button type="button" onClick={() => { setPromoCode(""); setPromoDraft(""); setPromoItemIndex(null); setPromoItemQty(null); }} className="underline">Remove</button>
                       </div>
                       {selectedPromo.discountType === "item" ? (
@@ -1814,10 +1814,10 @@ export function PosClient({
                   ) : (
                     <div className="flex gap-1.5">
                       <input
-                        aria-label="Promotion code"
+                        aria-label="Promo voucher"
                         value={promoDraft}
                         onChange={(event) => setPromoDraft(event.target.value.toUpperCase())}
-                        placeholder="Promotion code"
+                        placeholder="Promo voucher"
                         maxLength={23}
                         className="min-w-0 flex-1 rounded-md border border-neutral-300 px-2 py-1.5 uppercase"
                       />

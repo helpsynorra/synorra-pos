@@ -152,7 +152,7 @@ class _PromotionCodeDialogState extends State<_PromotionCodeDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Promotion code'),
+      title: const Text('Promo voucher'),
       content: TextField(
         controller: _inputController,
         autofocus: true,
@@ -163,7 +163,7 @@ class _PromotionCodeDialogState extends State<_PromotionCodeDialog> {
         inputFormatters: [
           FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9-]')),
         ],
-        decoration: const InputDecoration(hintText: 'Enter code'),
+        decoration: const InputDecoration(hintText: 'Enter voucher'),
         onSubmitted: (value) => Navigator.pop(context, value),
       ),
       actions: [
@@ -191,6 +191,23 @@ class _CartPanelState extends State<CartPanel> {
   String? _selectedPreset;
   String _splitDigitalMethod = 'gcash';
 
+  Future<void> _showPromotionError(String message) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Promo voucher'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _showPromotionDialog() async {
     final code = await showDialog<String>(
       context: context,
@@ -202,6 +219,11 @@ class _CartPanelState extends State<CartPanel> {
       (entry) => entry['code']?.toString().trim().toUpperCase() == normalizedCode,
     );
     final promo = matchingPromotions.isEmpty ? null : matchingPromotions.first;
+    if (promo != null &&
+        (promo['redeemedAt'] != null || promo['redeemed_at'] != null)) {
+      await _showPromotionError('Promo voucher already used.');
+      return;
+    }
     int? itemIndex;
     int? itemQty;
     if (promo?['discountType'] == 'item') {
@@ -211,8 +233,8 @@ class _CartPanelState extends State<CartPanel> {
           if (widget.controller.cart[index].qty >= freeItemQty) index,
       ];
       if (eligibleIndexes.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Add an item with quantity $freeItemQty or more.')),
+        await _showPromotionError(
+          'Add an item with quantity $freeItemQty or more.',
         );
         return;
       }
@@ -234,7 +256,7 @@ class _CartPanelState extends State<CartPanel> {
     }
     final error = widget.controller.applyPromotionCode(code, itemIndex: itemIndex, itemQty: itemQty);
     if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+      await _showPromotionError(error);
     } else {
       final messenger = ScaffoldMessenger.of(context);
       messenger
@@ -297,6 +319,7 @@ class _CartPanelState extends State<CartPanel> {
     final isCashPayment = controller.paymentMethod == 'cash';
     final isSplitPayment = controller.paymentMethod.startsWith('split');
     final acceptsCash = isCashPayment || isSplitPayment;
+    final promoApplied = controller.promoLabel != null;
 
     return Container(
       width: widget.isFullWidth ? double.infinity : widget.panelWidth,
@@ -527,7 +550,7 @@ class _CartPanelState extends State<CartPanel> {
                             ? TextButton.icon(
                                 onPressed: _showPromotionDialog,
                                 icon: const Icon(Icons.local_offer_outlined, size: 17),
-                                label: const Text('Apply promotion code'),
+                                label: const Text('Apply promo voucher'),
                               )
                             : Row(
                                 children: [
@@ -775,6 +798,7 @@ class _CartPanelState extends State<CartPanel> {
                       label: 'Cash',
                       isSelected: controller.paymentMethod == 'cash',
                       isCompact: keyboardOpen,
+                      isEnabled: !promoApplied,
                       onTap: () {
                         controller.setPaymentMethod('cash');
                         setState(() {
@@ -791,6 +815,7 @@ class _CartPanelState extends State<CartPanel> {
                       label: 'GCash',
                       isSelected: controller.paymentMethod == 'gcash',
                       isCompact: keyboardOpen,
+                      isEnabled: true,
                       onTap: () {
                         _amountFocusNode.unfocus();
                         controller.setPaymentMethod('gcash');
@@ -806,6 +831,7 @@ class _CartPanelState extends State<CartPanel> {
                       label: 'Maya',
                       isSelected: controller.paymentMethod == 'maya',
                       isCompact: keyboardOpen,
+                      isEnabled: !promoApplied,
                       onTap: () {
                         _amountFocusNode.unfocus();
                         controller.setPaymentMethod('maya');
@@ -821,6 +847,7 @@ class _CartPanelState extends State<CartPanel> {
                       label: 'Split',
                       isSelected: isSplitPayment,
                       isCompact: keyboardOpen,
+                      isEnabled: !promoApplied,
                       onTap: () {
                         _amountFocusNode.unfocus();
                         controller.setPaymentMethod('split');
@@ -1112,6 +1139,7 @@ class _CartPanelState extends State<CartPanel> {
     required String label,
     required bool isSelected,
     required bool isCompact,
+    required bool isEnabled,
     required VoidCallback onTap,
   }) {
     final icon = label == 'Cash'
@@ -1119,7 +1147,7 @@ class _CartPanelState extends State<CartPanel> {
         : Icons.account_balance_wallet_outlined;
     return Expanded(
       child: InkWell(
-        onTap: onTap,
+        onTap: isEnabled ? onTap : null,
         borderRadius: BorderRadius.circular(10),
         child: Container(
           padding: EdgeInsets.symmetric(
@@ -1137,16 +1165,22 @@ class _CartPanelState extends State<CartPanel> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon,
-                    size: widget.isFullWidth ? 19 : 15,
-                    color: isSelected ? Colors.white : _muted),
+                Icon(
+                  icon,
+                  size: widget.isFullWidth ? 19 : 15,
+                  color: isSelected
+                      ? Colors.white
+                      : (isEnabled ? _muted : const Color(0xFFD1D5DB)),
+                ),
                 const SizedBox(width: 6),
                 Text(
                   label,
                   style: TextStyle(
                     fontSize: widget.isFullWidth ? 14 : 11,
                     fontWeight: FontWeight.w600,
-                    color: isSelected ? Colors.white : _ink,
+                    color: isSelected
+                        ? Colors.white
+                        : (isEnabled ? _ink : const Color(0xFF9CA3AF)),
                   ),
                 ),
               ],
