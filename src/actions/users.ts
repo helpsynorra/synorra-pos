@@ -13,6 +13,7 @@ import {
   deleteOwnerAccountAndData,
   deleteLoginActivityRecords,
   deleteOffRequestRecord,
+  deleteOwnerPromotionRecord,
   deleteStaffUserRecord,
   getFreshStore,
   getOwnerAccounts,
@@ -299,30 +300,67 @@ export async function updateOwnerPermissions(userId: string, permissions: StaffP
 
 export async function generateOwnerPromotionCode(
   userId: string,
-  discountType: "percent" | "amount",
+  discountType: "percent" | "amount" | "item",
   discountValue: number,
+  count = 1,
+  prefix = "SYNORRA",
 ) {
   await requireAdmin();
-  if (discountType !== "percent" && discountType !== "amount") {
+  if (discountType !== "percent" && discountType !== "amount" && discountType !== "item") {
     return { error: "Choose a valid promotion discount type." };
   }
   const store = await getFreshStore({ ownerId: userId });
   const owner = store.users.find((entry) => entry.id === userId && entry.role === "cashier");
   if (!owner) return { error: "Owner account not found." };
   if (owner.permissions?.promotionsEnabled !== true) return { error: "Enable promotions for this Owner first." };
+  const codeCount = Number(count);
+  if (!Number.isInteger(codeCount) || codeCount < 1 || codeCount > 100) {
+    return { error: "Choose between 1 and 100 promotion codes." };
+  }
+  const normalizedPrefix = prefix.trim().toUpperCase();
+  if (!/^[A-Z0-9]{1,16}$/.test(normalizedPrefix)) {
+    return { error: "Enter a code prefix with 1 to 16 letters or numbers." };
+  }
   const value = Number(discountValue);
-  if (!Number.isFinite(value) || value <= 0 || (discountType === "percent" && value > 100)) {
+  if (discountType === "item" && (!Number.isInteger(value) || value < 1 || value > 99)) {
+    return { error: "Choose between 1 and 99 free items." };
+  }
+  if (discountType !== "item" && (!Number.isFinite(value) || value <= 0 || (discountType === "percent" && value > 100))) {
     return { error: "Enter a valid promotion discount." };
   }
+  const promos: Awaited<ReturnType<typeof insertOwnerPromotionRecord>>[] = [];
   try {
-    const promo = await insertOwnerPromotionRecord(userId, {
-      discountType,
-      discountValue: Math.round(value * 100) / 100,
-    });
+    for (let index = 0; index < codeCount; index += 1) {
+      promos.push(await insertOwnerPromotionRecord(
+        userId,
+        { discountType, discountValue: Math.round(value * 100) / 100 },
+        normalizedPrefix,
+      ));
+    }
     refresh();
-    return { ok: true, promo };
+    return { ok: true, promo: promos[0], promos };
   } catch (error) {
-    return { error: error instanceof Error ? error.message : "Could not generate a promotion code." };
+    refresh();
+    return {
+      error: error instanceof Error ? error.message : "Could not generate a promotion code.",
+      promos,
+    };
+  }
+}
+
+export async function deleteOwnerPromotionCode(userId: string, code: string) {
+  await requireAdmin();
+  const normalizedCode = code.trim().toUpperCase();
+  if (!/^(?:[A-Z0-9]{6}|[A-Z0-9]{1,16}-[A-Z0-9]{6})$/.test(normalizedCode)) return { error: "Invalid promotion code." };
+  const store = await getFreshStore({ ownerId: userId });
+  const owner = store.users.find((entry) => entry.id === userId && entry.role === "cashier");
+  if (!owner) return { error: "Owner account not found." };
+  try {
+    await deleteOwnerPromotionRecord(userId, normalizedCode);
+    refresh();
+    return { ok: true };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Could not delete promotion code." };
   }
 }
 

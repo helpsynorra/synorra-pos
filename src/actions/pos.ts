@@ -311,6 +311,9 @@ export async function createOrder(
   paymentMethod?: string | null,
   tendered?: number | null,
   serviceMode?: "dine-in" | "take-out",
+  promoCode?: string | null,
+  promoItemIndex?: number | null,
+  promoItemQty?: number | null,
 ) {
   const session = await requireCashier();
 
@@ -339,8 +342,41 @@ export async function createOrder(
     });
   }
 
-  const subtotal = priced.reduce((sum, item) => sum + item.price * item.qty, 0);
-  const total = subtotal;
+  const subtotal = priced.reduce(
+    (sum, item) => sum + (item.price + (item.addons ?? []).reduce((addonSum, addon) => addonSum + addon.price * addon.qty, 0)) * item.qty,
+    0,
+  );
+  let discount = 0;
+  let normalizedPromoCode: string | undefined;
+  let selectedPromoItemIndex: number | undefined;
+  let selectedPromoItemQty: number | undefined;
+  if (promoCode?.trim()) {
+    normalizedPromoCode = promoCode.trim().toUpperCase();
+    const owner = store.users.find((user) => user.id === session.userId && user.role === "cashier");
+    const permissions = owner?.permissions;
+    const promo = permissions?.promoCodes?.find((entry) => entry.code.toUpperCase() === normalizedPromoCode);
+    if (!owner || permissions?.promotionsEnabled !== true || permissions.promotionDiscount !== true || !promo) {
+      return { ok: false as const, error: "Invalid promotion code." };
+    }
+    if (promo.redeemedAt) return { ok: false as const, error: "The promotion code already used." };
+    if (promo.discountType === "item") {
+      const freeItemQty = Math.max(1, Math.floor(promo.discountValue || 1));
+      if (!Number.isInteger(promoItemIndex) || promoItemIndex! < 0 || promoItemIndex! >= priced.length) {
+        return { ok: false as const, error: `Choose an item with quantity ${freeItemQty} or more to make free.` };
+      }
+      const selectedItem = priced[promoItemIndex!];
+      const selectedQty = Number(promoItemQty);
+      if (!Number.isInteger(selectedQty) || selectedQty !== freeItemQty || selectedQty > selectedItem.qty) {
+        return { ok: false as const, error: `Select ${freeItemQty} unit(s) of the chosen item to make free.` };
+      }
+      discount = Math.round((selectedItem.price + (selectedItem.addons ?? []).reduce((sum, addon) => sum + addon.price * addon.qty, 0)) * selectedQty);
+      selectedPromoItemIndex = promoItemIndex!;
+      selectedPromoItemQty = selectedQty;
+    } else {
+      discount = Math.min(subtotal, Math.round(promo.discountType === "amount" ? promo.discountValue : subtotal * promo.discountValue / 100));
+    }
+  }
+  const total = Math.max(0, subtotal - discount);
   const method = parsePayment(paymentMethod);
   const cashIn = method === "cash" ? Math.max(0, Math.round(Number(tendered) || 0)) : total;
   if (method === "cash" && cashIn < total) {
@@ -386,7 +422,10 @@ export async function createOrder(
     baristaUserId: session.userId,
     items: priced,
     subtotal,
-    discount: 0,
+    discount,
+    promoLabel: normalizedPromoCode,
+    promoItemIndex: selectedPromoItemIndex,
+    promoItemQty: selectedPromoItemQty,
     total,
     paymentMethod: method,
     serviceMode: serviceMode === "take-out" ? "take-out" : "dine-in",

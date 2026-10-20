@@ -52,6 +52,8 @@ class PosController extends ChangeNotifier {
   String serviceMode = 'dine-in';
   String? promoId;
   String? promoLabel;
+  int? promoItemIndex;
+  int? promoItemQty;
   double discountAmount = 0.0;
 
   Order? lastCompletedOrder;
@@ -212,6 +214,8 @@ class PosController extends ChangeNotifier {
       }
       promoId = saved['promoId'] as String?;
       promoLabel = saved['promoLabel'] as String?;
+      promoItemIndex = (saved['promoItemIndex'] as num?)?.toInt();
+      promoItemQty = (saved['promoItemQty'] as num?)?.toInt() ?? (promoItemIndex == null ? null : 1);
       pendingCartVoidRequestId = saved['pendingVoidRequestId'] as String?;
       if (cart.isEmpty) unawaited(localStorage.clearActiveCheckout());
     } catch (_) {
@@ -221,6 +225,8 @@ class PosController extends ChangeNotifier {
       discountAmount = 0;
       promoId = null;
       promoLabel = null;
+      promoItemIndex = null;
+      promoItemQty = null;
       pendingCartVoidRequestId = null;
       unawaited(localStorage.clearActiveCheckout());
     }
@@ -236,6 +242,8 @@ class PosController extends ChangeNotifier {
         discountAmount: discountAmount,
         promoId: promoId,
         promoLabel: promoLabel,
+        promoItemIndex: promoItemIndex,
+        promoItemQty: promoItemQty,
         pendingVoidRequestId: pendingCartVoidRequestId,
       ),
     );
@@ -405,13 +413,13 @@ class PosController extends ChangeNotifier {
   double get total =>
       (subtotal - discountAmount) > 0 ? (subtotal - discountAmount) : 0.0;
 
-  String? applyPromotionCode(String rawCode) {
+  String? applyPromotionCode(String rawCode, {int? itemIndex, int? itemQty}) {
     final code = rawCode.trim().toUpperCase();
     if (!syncService.hasPermission('promotionsEnabled') ||
         !syncService.hasPermission('promotionDiscount')) {
       return 'Promotions are not enabled for this Owner.';
     }
-    if (!RegExp(r'^[A-Z0-9]{6}$').hasMatch(code)) {
+    if (!RegExp(r'^(?:[A-Z0-9]{6}|[A-Z0-9]{1,16}-[A-Z0-9]{6})$').hasMatch(code)) {
       return 'Invalid promotion code.';
     }
     final promo = syncService.promotionCodes.where(
@@ -420,13 +428,24 @@ class PosController extends ChangeNotifier {
     if (promo == null || code.isEmpty) return 'Invalid promotion code.';
     if (promo['redeemedAt'] != null) return 'The promotion code already used.';
     final value = (promo['discountValue'] as num?)?.toDouble() ?? 0;
-    final amount = promo['discountType'] == 'amount'
-        ? value
-        : subtotal * value / 100;
-    if (amount <= 0 || subtotal <= 0) return 'Add items before applying a promotion.';
+    final isFreeItem = promo['discountType'] == 'item';
+    final freeItemQty = value.round().clamp(1, 99).toInt();
+    if (isFreeItem && (itemIndex == null || itemIndex < 0 || itemIndex >= cart.length || itemQty != freeItemQty || itemQty! > cart[itemIndex].qty)) {
+      return 'Choose an item with quantity $freeItemQty or more.';
+    }
+    final amount = isFreeItem
+        ? (cart[itemIndex!].unitPrice * itemQty!).roundToDouble()
+        : promo['discountType'] == 'amount'
+            ? value
+            : subtotal * value / 100;
+    if (!isFreeItem && (amount <= 0 || subtotal <= 0)) {
+      return 'Add items before applying a promotion.';
+    }
     final previousTotal = total;
     promoId = code;
     promoLabel = code;
+    promoItemIndex = isFreeItem ? itemIndex : null;
+    promoItemQty = isFreeItem ? itemQty : null;
     discountAmount = amount.clamp(0, subtotal).roundToDouble();
     if (paymentMethod != 'cash' || tenderedAmount == 0 || tenderedAmount == previousTotal) {
       tenderedAmount = total;
@@ -451,6 +470,14 @@ class PosController extends ChangeNotifier {
       discountAmount = 0;
       return;
     }
+    if (promo['discountType'] == 'item') {
+      if (promoItemIndex == null || promoItemIndex! < 0 || promoItemIndex! >= cart.length || promoItemQty == null || promoItemQty! > cart[promoItemIndex!].qty) {
+        clearPromotion();
+        return;
+      }
+      discountAmount = (cart[promoItemIndex!].unitPrice * promoItemQty!).roundToDouble();
+      return;
+    }
     final value = (promo['discountValue'] as num?)?.toDouble() ?? 0;
     final amount = promo['discountType'] == 'amount' ? value : subtotal * value / 100;
     discountAmount = amount.clamp(0, subtotal).roundToDouble();
@@ -460,6 +487,8 @@ class PosController extends ChangeNotifier {
     final previousTotal = total;
     promoId = null;
     promoLabel = null;
+    promoItemIndex = null;
+    promoItemQty = null;
     discountAmount = 0;
     if (paymentMethod != 'cash' || tenderedAmount == 0 || tenderedAmount == previousTotal) {
       tenderedAmount = total;
@@ -518,6 +547,11 @@ class PosController extends ChangeNotifier {
     if (index >= 0 && index < cart.length) {
       final previousTotal = total;
       if (newQty <= 0) {
+        if (promoItemIndex == index) {
+          clearPromotion();
+        } else if (promoItemIndex != null && promoItemIndex! > index) {
+          promoItemIndex = promoItemIndex! - 1;
+        }
         cart.removeAt(index);
       } else {
         cart[index].qty = newQty;
@@ -535,6 +569,11 @@ class PosController extends ChangeNotifier {
 
   void removeFromCart(int index) {
     if (index >= 0 && index < cart.length) {
+      if (promoItemIndex == index) {
+        clearPromotion();
+      } else if (promoItemIndex != null && promoItemIndex! > index) {
+        promoItemIndex = promoItemIndex! - 1;
+      }
       cart.removeAt(index);
       _refreshPromotionDiscount();
       if (paymentMethod != 'cash') {
@@ -551,6 +590,8 @@ class PosController extends ChangeNotifier {
     discountAmount = 0.0;
     promoId = null;
     promoLabel = null;
+    promoItemIndex = null;
+    promoItemQty = null;
     _persistActiveCheckout();
     notifyListeners();
   }
@@ -615,6 +656,8 @@ class PosController extends ChangeNotifier {
         subtotal: subtotal,
         discount: discountAmount,
         promoLabel: promoLabel,
+        promoItemIndex: promoItemIndex,
+        promoItemQty: promoItemQty,
         total: total,
         paymentMethod: paymentMethod,
         serviceMode: serviceMode,

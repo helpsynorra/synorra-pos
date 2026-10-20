@@ -93,6 +93,9 @@ type SavedCheckout = {
   paymentMethod: PaymentMethod;
   serviceMode: "dine-in" | "take-out";
   voidRequestId: string | null;
+  promoCode?: string;
+  promoItemIndex?: number | null;
+  promoItemQty?: number | null;
 };
 
 function readCheckout(userId: string, menu: MenuItem[]): SavedCheckout | null {
@@ -130,6 +133,9 @@ function readCheckout(userId: string, menu: MenuItem[]): SavedCheckout | null {
       serviceMode: saved.serviceMode === "take-out" ? "take-out" : "dine-in",
       voidRequestId:
         typeof saved.voidRequestId === "string" ? saved.voidRequestId : null,
+      promoCode: typeof saved.promoCode === "string" ? saved.promoCode : "",
+      promoItemIndex: Number.isInteger(saved.promoItemIndex) ? saved.promoItemIndex : null,
+      promoItemQty: Number.isInteger(saved.promoItemQty) ? saved.promoItemQty : Number.isInteger(saved.promoItemIndex) ? 1 : null,
     };
   } catch {
     return null;
@@ -158,6 +164,10 @@ export function PosClient({
   const [tendered, setTendered] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [serviceMode, setServiceMode] = useState<"dine-in" | "take-out">("dine-in");
+  const [promoDraft, setPromoDraft] = useState("");
+  const [promoCode, setPromoCode] = useState("");
+  const [promoItemIndex, setPromoItemIndex] = useState<number | null>(null);
+  const [promoItemQty, setPromoItemQty] = useState<number | null>(null);
   const [voidModalOpen, setVoidModalOpen] = useState(false);
   const [voidUsername, setVoidUsername] = useState("");
   const [voidPassword, setVoidPassword] = useState("");
@@ -273,6 +283,10 @@ export function PosClient({
         setPaymentMethod(saved.paymentMethod);
         setServiceMode(saved.serviceMode);
         setActiveVoidRequestId(saved.voidRequestId);
+        setPromoCode(saved.promoCode ?? "");
+        setPromoDraft(saved.promoCode ?? "");
+        setPromoItemIndex(saved.promoItemIndex ?? null);
+        setPromoItemQty(saved.promoItemQty ?? null);
       }
       setCheckoutReady(true);
     });
@@ -290,8 +304,11 @@ export function PosClient({
       paymentMethod,
       serviceMode,
       voidRequestId: activeVoidRequestId,
+      promoCode,
+      promoItemIndex,
+      promoItemQty,
     });
-  }, [checkoutReady, session.userId, cart, tendered, paymentMethod, serviceMode, activeVoidRequestId]);
+  }, [checkoutReady, session.userId, cart, tendered, paymentMethod, serviceMode, activeVoidRequestId, promoCode, promoItemIndex, promoItemQty]);
 
   useEffect(() => {
     document.body.style.overflow = menuOpen ? "hidden" : "";
@@ -310,7 +327,21 @@ export function PosClient({
   }, [menuOpen]);
 
   const subtotal = cart.reduce((sum, item) => sum + cartLineUnitPrice(item) * item.qty, 0);
-  const total = subtotal;
+  const selectedPromo = session.permissions?.promoCodes?.find((entry) => entry.code.toUpperCase() === promoCode);
+  const promoDiscount = !selectedPromo
+    ? 0
+    : selectedPromo.discountType === "item"
+      ? promoItemIndex != null && cart[promoItemIndex] && promoItemQty != null
+        ? Math.round(cartLineUnitPrice(cart[promoItemIndex]) * promoItemQty)
+        : 0
+      : Math.min(subtotal, Math.round(selectedPromo.discountType === "amount" ? selectedPromo.discountValue : subtotal * selectedPromo.discountValue / 100));
+  const total = Math.max(0, subtotal - promoDiscount);
+  const promoReady = !promoCode || Boolean(
+    selectedPromo &&
+    session.permissions?.promotionsEnabled &&
+    session.permissions?.promotionDiscount &&
+    (selectedPromo.discountType !== "item" || (promoItemIndex != null && Boolean(cart[promoItemIndex]) && promoItemQty != null && promoItemQty === Math.max(1, Math.floor(selectedPromo.discountValue || 1)) && promoItemQty <= (cart[promoItemIndex]?.qty ?? 0))),
+  );
   const isCash = paymentMethod === "cash";
   const paid = isCash ? Number(tendered) || 0 : total;
   const change = isCash && paid >= total ? paid - total : 0;
@@ -346,6 +377,7 @@ export function PosClient({
     !voidRequestPending &&
     pos.isOpen &&
     cart.length > 0 &&
+    promoReady &&
     (!isCash || paid >= total);
   const appliedVoidRequestId = useRef<string | null>(null);
   const lastOrderIdRef = useRef(lastOrderId);
@@ -444,6 +476,10 @@ export function PosClient({
     }
     const nextLine = { productId: id, name, qty: 1, price, style, addons };
     const nextKey = cartLineKey(nextLine);
+    setPromoCode("");
+    setPromoDraft("");
+    setPromoItemIndex(null);
+    setPromoItemQty(null);
     setCart((current) => {
       const existing = current.find((item) => cartLineKey(item) === nextKey);
       if (existing) {
@@ -456,7 +492,32 @@ export function PosClient({
     setMessage(null);
   }
 
+  function applyPromotionCode() {
+    const code = promoDraft.trim().toUpperCase();
+    if (!/^(?:[A-Z0-9]{6}|[A-Z0-9]{1,16}-[A-Z0-9]{6})$/.test(code)) {
+      setMessage("Enter a valid promotion code.");
+      return;
+    }
+    const promo = session.permissions?.promoCodes?.find((entry) => entry.code.toUpperCase() === code);
+    if (!session.permissions?.promotionsEnabled || !session.permissions?.promotionDiscount || !promo) {
+      setMessage("Invalid promotion code.");
+      return;
+    }
+    if (promo.redeemedAt) {
+      setMessage("The promotion code already used.");
+      return;
+    }
+    setPromoCode(code);
+    setPromoItemIndex(null);
+    setPromoItemQty(null);
+    setMessage(promo.discountType === "item" ? `Choose an item with quantity ${Math.max(1, Math.floor(promo.discountValue || 1))} or more.` : "Promotion applied.");
+  }
+
   function changeCartQuantity(key: string, delta: number) {
+    setPromoCode("");
+    setPromoDraft("");
+    setPromoItemIndex(null);
+    setPromoItemQty(null);
     setCart((current) => current.flatMap((item) => {
       if (cartLineKey(item) !== key) return [item];
       const qty = Math.max(0, Math.min(99, item.qty + delta));
@@ -1680,13 +1741,13 @@ export function PosClient({
                   No items yet.
                 </li>
               ) : (
-                cart.map((item) => (
+                cart.map((item, itemIndex) => (
                   <li
                     key={cartLineKey(item)}
                     className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-2 border-b border-neutral-100 py-1.5 last:border-none"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-xs">{drinkDisplayName(item)}</p>
+                      <p className="truncate text-xs">{drinkDisplayName(item)}{promoItemIndex === itemIndex ? <span className="ml-1 font-semibold text-emerald-700">· {promoItemQty ?? 1} free</span> : null}</p>
                       {orderLineOptionsLabel(item) ? (
                         <p className="text-[10px] leading-4 text-neutral-600">
                           {orderLineOptionsLabel(item)}
@@ -1714,7 +1775,7 @@ export function PosClient({
                       </button>
                     </div>
                     <span className="w-16 text-right text-xs">
-                      {formatMoney(cartLineUnitPrice(item) * item.qty)}
+                      {formatMoney(cartLineUnitPrice(item) * item.qty - (promoItemIndex === itemIndex ? promoDiscount : 0))}
                     </span>
                   </li>
                 ))
@@ -1723,6 +1784,47 @@ export function PosClient({
 
             {/* Scrollable / Compact Bottom Controls */}
             <div className="shrink-0 max-h-[60vh] overflow-y-auto space-y-2 border-t border-neutral-200 px-3 py-3 text-xs">
+              {cart.length > 0 && session.permissions?.promotionsEnabled && session.permissions?.promotionDiscount ? (
+                <div className="space-y-1.5 rounded-lg border border-neutral-200 p-2">
+                  {promoCode && selectedPromo ? (
+                    <>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium">{selectedPromo.discountType === "item" ? `${Math.max(1, Math.floor(selectedPromo.discountValue || 1))} free item${Math.max(1, Math.floor(selectedPromo.discountValue || 1)) === 1 ? "" : "s"}` : `Promo ${promoCode}`}</span>
+                        <button type="button" onClick={() => { setPromoCode(""); setPromoDraft(""); setPromoItemIndex(null); setPromoItemQty(null); }} className="underline">Remove</button>
+                      </div>
+                      {selectedPromo.discountType === "item" ? (
+                        <select
+                          aria-label="Choose item to make free"
+                          value={promoItemIndex ?? ""}
+                          onChange={(event) => {
+                            const index = event.target.value === "" ? null : Number(event.target.value);
+                            setPromoItemIndex(index);
+                            setPromoItemQty(index == null ? null : Math.max(1, Math.floor(selectedPromo.discountValue || 1)));
+                          }}
+                          className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5"
+                        >
+                          <option value="">Choose an item to make free</option>
+                          {cart.map((item, index) => <option key={`${cartLineKey(item)}-${index}`} value={index} disabled={item.qty < Math.max(1, Math.floor(selectedPromo.discountValue || 1))}>{drinkDisplayName(item)} · qty {item.qty}</option>)}
+                        </select>
+                        <p className="text-[11px] text-neutral-500">Select a cart item with enough quantity; {Math.max(1, Math.floor(selectedPromo.discountValue || 1))} unit(s) will be free.</p>
+                      ) : null}
+                    </>
+                  ) : (
+                    <div className="flex gap-1.5">
+                      <input
+                        aria-label="Promotion code"
+                        value={promoDraft}
+                        onChange={(event) => setPromoDraft(event.target.value.toUpperCase())}
+                        placeholder="Promotion code"
+                        maxLength={23}
+                        className="min-w-0 flex-1 rounded-md border border-neutral-300 px-2 py-1.5 uppercase"
+                      />
+                      <button type="button" onClick={applyPromotionCode} className="rounded-md border border-neutral-300 px-2.5 py-1.5 font-medium">Apply</button>
+                    </div>
+                  )}
+                  {promoDiscount > 0 ? <div className="flex justify-between text-emerald-700"><span>Promotion discount</span><span>−{formatMoney(promoDiscount)}</span></div> : null}
+                </div>
+              ) : null}
               <div>
                 <p className="mb-1 text-xs text-neutral-500">Pay with</p>
                 <div className="grid grid-cols-3 gap-1.5">
@@ -1834,6 +1936,9 @@ export function PosClient({
                       paymentMethod,
                       paid,
                       serviceMode,
+                      promoCode,
+                      promoItemIndex,
+                      promoItemQty,
                     );
                     if (!result.ok) {
                       setMessage(result.error);
@@ -1853,6 +1958,10 @@ export function PosClient({
                     setTendered("");
                     setPaymentMethod("cash");
                     setServiceMode("dine-in");
+                    setPromoCode("");
+                    setPromoDraft("");
+                    setPromoItemIndex(null);
+                    setPromoItemQty(null);
                     setMessage(
                       `Paid ${formatMoney(result.total ?? 0)}. Tap Print for labels and receipt.`,
                     );

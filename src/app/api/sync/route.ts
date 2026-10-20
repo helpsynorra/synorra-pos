@@ -506,7 +506,7 @@ export async function POST(req: NextRequest) {
         : "";
       const requestedDiscount = Math.round(Number(rawOrder.discount) || 0);
       if (requestedPromoCode || requestedDiscount > 0) {
-        if (!/^[A-Z0-9]{6}$/.test(requestedPromoCode)) {
+        if (!/^(?:[A-Z0-9]{6}|[A-Z0-9]{1,16}-[A-Z0-9]{6})$/.test(requestedPromoCode)) {
           return NextResponse.json({ ok: false, error: "Invalid promotion code." }, { status: 400, headers: corsHeaders });
         }
         const owner = store.users.find((user) => user.id === claims.userId && user.role === "cashier");
@@ -521,10 +521,24 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ ok: false, error: "The promotion code already used." }, { status: 409, headers: corsHeaders });
         }
         const subtotal = Number(rawOrder.subtotal) || 0;
-        const rawExpectedDiscount = promo.discountType === "amount"
-          ? promo.discountValue
-          : subtotal * promo.discountValue / 100;
-        const expectedDiscount = Math.min(subtotal, Math.round(rawExpectedDiscount));
+        const promoItemIndex = typeof rawOrder.promoItemIndex === "number" && Number.isInteger(rawOrder.promoItemIndex)
+          ? rawOrder.promoItemIndex
+          : null;
+        const promoItemQty = typeof rawOrder.promoItemQty === "number" && Number.isInteger(rawOrder.promoItemQty)
+          ? rawOrder.promoItemQty
+          : 1;
+        const selectedItem = promoItemIndex != null ? orderItems[promoItemIndex] : undefined;
+        const freeItemQty = Math.max(1, Math.floor(promo.discountValue || 1));
+        const rawExpectedDiscount = promo.discountType === "item"
+          ? selectedItem && promoItemQty === freeItemQty && promoItemQty <= selectedItem.qty
+            ? (selectedItem.price + (selectedItem.addons ?? []).reduce((sum, addon) => sum + addon.price * addon.qty, 0)) * freeItemQty
+            : -1
+          : promo.discountType === "amount"
+            ? promo.discountValue
+            : subtotal * promo.discountValue / 100;
+        const expectedDiscount = promo.discountType === "item"
+          ? Math.round(rawExpectedDiscount)
+          : Math.min(subtotal, Math.round(rawExpectedDiscount));
         if (requestedDiscount !== expectedDiscount) {
           return NextResponse.json({ ok: false, error: "Promotion discount does not match this code." }, { status: 400, headers: corsHeaders });
         }
@@ -544,6 +558,12 @@ export async function POST(req: NextRequest) {
         subtotal: Number(rawOrder.subtotal) || 0,
         discount: Number(rawOrder.discount) || 0,
         promoLabel: typeof rawOrder.promoLabel === "string" ? rawOrder.promoLabel : undefined,
+        promoItemIndex: typeof rawOrder.promoItemIndex === "number" && Number.isInteger(rawOrder.promoItemIndex)
+          ? rawOrder.promoItemIndex
+          : undefined,
+        promoItemQty: typeof rawOrder.promoItemQty === "number" && Number.isInteger(rawOrder.promoItemQty)
+          ? rawOrder.promoItemQty
+          : undefined,
         total: Number(rawOrder.total) || 0,
         paymentMethod: parsePayment(rawOrder.paymentMethod),
         serviceMode,

@@ -26,7 +26,7 @@ export type StaffPermissions = {
 
 export type PromotionCode = {
   code: string;
-  discountType: "percent" | "amount";
+  discountType: "percent" | "amount" | "item";
   discountValue: number;
   redeemedAt?: string;
   redeemedOrderId?: string;
@@ -105,6 +105,8 @@ export type Order = {
   subtotal?: number;
   discount?: number;
   promoLabel?: string;
+  promoItemIndex?: number;
+  promoItemQty?: number;
   paymentMethod?: PaymentMethod;
   serviceMode?: "dine-in" | "take-out";
   ticketNo?: string;

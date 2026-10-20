@@ -5,6 +5,7 @@ import {
   createOffRequest,
   createStaffUser,
   deleteOffRequest,
+  deleteOwnerPromotionCode,
   deleteStaffUser,
   punchStaff,
   setOffRequestStatus,
@@ -83,6 +84,10 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
   );
   const [promoValueDrafts, setPromoValueDrafts] = useState<Record<string, number>>({});
   const [promoTypeDrafts, setPromoTypeDrafts] = useState<Record<string, PromotionCode["discountType"]>>({});
+  const [promoItemCountDrafts, setPromoItemCountDrafts] = useState<Record<string, number>>({});
+  const [promoPrefixDrafts, setPromoPrefixDrafts] = useState<Record<string, string>>({});
+  const [promoCountModes, setPromoCountModes] = useState<Record<string, string>>({});
+  const [promoCustomCounts, setPromoCustomCounts] = useState<Record<string, string>>({});
   const [pending, startTransition] = useTransition();
   const [punchUserId, setPunchUserId] = useState("");
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
@@ -821,10 +826,22 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                     </div>
                     <div className="space-y-3 border-t border-neutral-200 pt-4">
                       <div>
-                        <h3 className="text-sm font-semibold">Generate a promotion code</h3>
-                        <p className="text-xs text-neutral-500">Admin-generated codes are 6 characters and can only be redeemed once.</p>
+                        <h3 className="text-sm font-semibold">Generate promotion codes</h3>
+                        <p className="text-xs text-neutral-500">Each code can only be redeemed once. Add a prefix, then the system generates a unique 6-character suffix.</p>
                       </div>
-                      <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1.4fr_auto]">
+                        <label className="block text-xs font-medium text-neutral-600">
+                          <span className="sr-only">Code prefix</span>
+                          <input
+                            aria-label="Promotion code prefix"
+                            type="text"
+                            value={promoPrefixDrafts[owner.id] ?? "SYNORRA"}
+                            maxLength={16}
+                            placeholder="Code prefix"
+                            onChange={(event) => setPromoPrefixDrafts((current) => ({ ...current, [owner.id]: event.target.value.toUpperCase() }))}
+                            className={field}
+                          />
+                        </label>
                         <select
                           aria-label="Promotion discount type"
                           value={promoTypeDrafts[owner.id] ?? "percent"}
@@ -833,33 +850,83 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                         >
                           <option value="percent">Percent discount</option>
                           <option value="amount">Peso discount</option>
+                          <option value="item">Free item(s)</option>
                         </select>
-                        <input
-                          aria-label="Promotion discount value"
-                          type="number"
-                          min="0.01"
-                          max={(promoTypeDrafts[owner.id] ?? "percent") === "percent" ? 100 : undefined}
-                          step="0.01"
-                          value={promoValueDrafts[owner.id] ?? "10"}
-                          onChange={(event) => setPromoValueDrafts((current) => ({ ...current, [owner.id]: Number(event.target.value) }))}
-                          className={field}
-                        />
+                        {(promoTypeDrafts[owner.id] ?? "percent") !== "item" ? (
+                          <input
+                            aria-label="Promotion discount value"
+                            type="number"
+                            min="0.01"
+                            max={(promoTypeDrafts[owner.id] ?? "percent") === "percent" ? 100 : undefined}
+                            step="0.01"
+                            value={promoValueDrafts[owner.id] ?? "10"}
+                            onChange={(event) => setPromoValueDrafts((current) => ({ ...current, [owner.id]: Number(event.target.value) }))}
+                            className={field}
+                          />
+                        ) : (
+                          <label className="block text-xs font-medium text-neutral-600">
+                            <span className="mb-1 block">Free item quantity</span>
+                            <input
+                              aria-label="Number of free items per code"
+                              type="number"
+                              min="1"
+                              max="99"
+                              step="1"
+                              value={promoItemCountDrafts[owner.id] ?? 1}
+                              onChange={(event) => setPromoItemCountDrafts((current) => ({ ...current, [owner.id]: Number(event.target.value) }))}
+                              className={field}
+                            />
+                          </label>
+                        )}
+                        <div className="flex gap-2">
+                          <select
+                            aria-label="Number of promotion codes"
+                            value={promoCountModes[owner.id] ?? "5"}
+                            onChange={(event) => setPromoCountModes((current) => ({ ...current, [owner.id]: event.target.value }))}
+                            className={field}
+                          >
+                            <option value="1">1 code</option>
+                            <option value="5">5 codes</option>
+                            <option value="10">10 codes</option>
+                            <option value="20">20 codes</option>
+                            <option value="custom">Custom</option>
+                          </select>
+                          {(promoCountModes[owner.id] ?? "5") === "custom" ? (
+                            <input
+                              aria-label="Custom number of promotion codes"
+                              type="number"
+                              min="1"
+                              max="100"
+                              step="1"
+                              value={promoCustomCounts[owner.id] ?? "25"}
+                              onChange={(event) => setPromoCustomCounts((current) => ({ ...current, [owner.id]: event.target.value }))}
+                              className={`${field} max-w-24`}
+                            />
+                          ) : null}
+                        </div>
                         <button
                           type="button"
-                          disabled={pending || !permissions.promotionsEnabled}
+                          disabled={pending || !permissions.promotionsEnabled || !/^[A-Z0-9]{1,16}$/.test(promoPrefixDrafts[owner.id] ?? "SYNORRA") || ((promoTypeDrafts[owner.id] ?? "percent") === "item" && (!Number.isInteger(promoItemCountDrafts[owner.id] ?? 1) || (promoItemCountDrafts[owner.id] ?? 1) < 1 || (promoItemCountDrafts[owner.id] ?? 1) > 99)) || ((promoCountModes[owner.id] ?? "5") === "custom" && (!/^\d+$/.test(promoCustomCounts[owner.id] ?? "25") || Number(promoCustomCounts[owner.id] ?? "25") < 1 || Number(promoCustomCounts[owner.id] ?? "25") > 100))}
                           onClick={() => startTransition(async () => {
-                            const result = await generateOwnerPromotionCode(owner.id, promoTypeDrafts[owner.id] ?? "percent", promoValueDrafts[owner.id] ?? 10);
+                            const type = promoTypeDrafts[owner.id] ?? "percent";
+                            const countMode = promoCountModes[owner.id] ?? "5";
+                            const count = countMode === "custom" ? Number(promoCustomCounts[owner.id] ?? "25") : Number(countMode);
+                            const result = await generateOwnerPromotionCode(owner.id, type, type === "item" ? promoItemCountDrafts[owner.id] ?? 1 : promoValueDrafts[owner.id] ?? 10, count, promoPrefixDrafts[owner.id] ?? "SYNORRA");
+                            if ("promos" in result && result.promos.length > 0) {
+                              setPromoCodeRecords((current) => ({
+                                ...current,
+                                [owner.id]: [...result.promos, ...(current[owner.id] ?? [])],
+                              }));
+                            }
                             if (result && "error" in result) {
-                              setNotice(result.error);
+                              const partialPromos = "promos" in result ? result.promos : [];
+                              setNotice(partialPromos.length ? `${result.error} ${partialPromos.length} code(s) were created.` : result.error);
                               return;
                             }
-                            if ("promo" in result) {
-                              setPromoCodeRecords((current) => ({ ...current, [owner.id]: [...(current[owner.id] ?? []), result.promo] }));
-                            }
-                            setNotice("Promotion code generated.");
+                            setNotice(`${result.promos.length} promotion code(s) generated.`);
                           })}
                           className="rounded-full bg-black px-4 py-2 text-xs font-medium text-white disabled:opacity-40"
-                        >Generate code</button>
+                        >Generate codes</button>
                       </div>
                       <div className="divide-y divide-neutral-100 rounded-xl border border-neutral-200">
                         {(promoCodeRecords[owner.id] ?? []).length === 0 ? (
@@ -867,8 +934,31 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                         ) : (promoCodeRecords[owner.id] ?? []).map((promo) => (
                           <div key={promo.code} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
                             <span className="font-mono font-semibold tracking-widest">{promo.code}</span>
-                            <span>{promo.discountType === "percent" ? `${promo.discountValue}% off` : `₱${promo.discountValue} off`}</span>
+                            <span>{promo.discountType === "item" ? `${promo.discountValue || 1} free item${(promo.discountValue || 1) === 1 ? "" : "s"}` : promo.discountType === "percent" ? `${promo.discountValue}% off` : `₱${promo.discountValue} off`}</span>
                             <span className={promo.redeemedAt ? "text-neutral-400" : "text-emerald-700"}>{promo.redeemedAt ? "Used" : "Unused"}</span>
+                            <button
+                              type="button"
+                              aria-label={`Delete promotion code ${promo.code}`}
+                              disabled={pending}
+                              onClick={() => {
+                                if (!window.confirm(`Delete promotion code ${promo.code}?`)) return;
+                                startTransition(async () => {
+                                  const result = await deleteOwnerPromotionCode(owner.id, promo.code);
+                                  if ("error" in result) {
+                                    setNotice(result.error);
+                                    return;
+                                  }
+                                  setPromoCodeRecords((current) => ({
+                                    ...current,
+                                    [owner.id]: (current[owner.id] ?? []).filter((entry) => entry.code !== promo.code),
+                                  }));
+                                  setNotice(`Promotion code ${promo.code} deleted.`);
+                                });
+                              }}
+                              className="rounded-full border border-neutral-300 px-3 py-1 text-xs font-medium text-red-600 hover:border-red-300 hover:bg-red-50 disabled:opacity-40"
+                            >
+                              Delete
+                            </button>
                           </div>
                         ))}
                       </div>

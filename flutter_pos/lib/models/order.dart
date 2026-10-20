@@ -9,6 +9,8 @@ class Order {
   final double subtotal;
   final double discount;
   final String? promoLabel;
+  final int? promoItemIndex;
+  final int? promoItemQty;
   final double total;
   final String paymentMethod; // 'cash', 'gcash', 'maya'
   final String serviceMode;
@@ -29,6 +31,8 @@ class Order {
     required this.subtotal,
     this.discount = 0.0,
     this.promoLabel,
+    this.promoItemIndex,
+    this.promoItemQty,
     required this.total,
     this.paymentMethod = 'cash',
     this.serviceMode = 'dine-in',
@@ -59,6 +63,8 @@ class Order {
       subtotal: (json['subtotal'] as num?)?.toDouble() ?? 0.0,
       discount: (json['discount'] as num?)?.toDouble() ?? 0.0,
       promoLabel: json['promoLabel'] as String? ?? json['promo_label'] as String?,
+      promoItemIndex: (json['promoItemIndex'] as num?)?.toInt() ?? (json['promo_item_index'] as num?)?.toInt(),
+      promoItemQty: (json['promoItemQty'] as num?)?.toInt() ?? (json['promo_item_qty'] as num?)?.toInt(),
       total: (json['total'] as num?)?.toDouble() ?? 0.0,
       paymentMethod: json['paymentMethod'] as String? ?? json['payment_method'] as String? ?? 'cash',
       serviceMode: json['serviceMode'] as String? ?? json['service_mode'] as String? ?? (parsedItems.isNotEmpty ? parsedItems.first.serviceMode ?? 'dine-in' : 'dine-in'),
@@ -81,6 +87,8 @@ class Order {
     'subtotal': subtotal,
     'discount': discount,
     if (promoLabel != null) 'promoLabel': promoLabel,
+    if (promoItemIndex != null) 'promoItemIndex': promoItemIndex,
+    if (promoItemQty != null) 'promoItemQty': promoItemQty,
     'total': total,
     'paymentMethod': paymentMethod,
     'serviceMode': serviceMode,

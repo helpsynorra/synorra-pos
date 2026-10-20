@@ -192,6 +192,8 @@ class LocalStorageService {
     required double discountAmount,
     String? promoId,
     String? promoLabel,
+    int? promoItemIndex,
+    int? promoItemQty,
     String? pendingVoidRequestId,
   }) async {
     if (items.isEmpty) {
@@ -208,6 +210,8 @@ class LocalStorageService {
         'discountAmount': discountAmount,
         'promoId': promoId,
         'promoLabel': promoLabel,
+        'promoItemIndex': promoItemIndex,
+        'promoItemQty': promoItemQty,
         'pendingVoidRequestId': pendingVoidRequestId,
       }),
     );

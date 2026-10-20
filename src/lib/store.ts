@@ -1214,12 +1214,20 @@ export async function createOrderAtomic(input: {
           return { ok: false, error: "Invalid promotion code." };
         }
         if (promoEntry.redeemedAt) return { ok: false, error: "The promotion code already used." };
-        const expectedDiscount = Math.min(
-          order.subtotal ?? order.total,
-          Math.round(promoEntry.discountType === "amount"
-            ? promoEntry.discountValue
-            : (order.subtotal ?? order.total) * promoEntry.discountValue / 100),
-        );
+        const selectedLine = Number.isInteger(order.promoItemIndex)
+          ? order.items[order.promoItemIndex!]
+          : undefined;
+        const freeItemQty = Math.max(1, Math.floor(promoEntry.discountValue || 1));
+        const expectedDiscount = promoEntry.discountType === "item"
+          ? selectedLine && order.promoItemQty === freeItemQty && freeItemQty <= selectedLine.qty
+            ? Math.round((selectedLine.price + (selectedLine.addons ?? []).reduce((sum, addon) => sum + addon.price * addon.qty, 0)) * freeItemQty)
+            : -1
+          : Math.min(
+              order.subtotal ?? order.total,
+              Math.round(promoEntry.discountType === "amount"
+                ? promoEntry.discountValue
+                : (order.subtotal ?? order.total) * promoEntry.discountValue / 100),
+            );
         if ((order.discount ?? 0) !== expectedDiscount) {
           return { ok: false, error: "Promotion discount does not match this code." };
         }
@@ -1289,7 +1297,9 @@ export async function createOrderAtomic(input: {
       p_void_reason: order.voidReason ?? null,
       p_voided_by: input.voidedBy ?? null,
     };
-    const promoRpcArgs = order.promoLabel ? { p_promo_code: order.promoLabel } : {};
+    const promoRpcArgs = order.promoLabel
+      ? { p_promo_code: order.promoLabel, p_promo_item_index: order.promoItemIndex ?? null }
+      : {};
     const rpcName = order.promoLabel ? "create_order_with_promo_for_owner_atomic" : "create_order_for_owner_atomic";
     let { data, error } = await supabase.rpc(rpcName, { p_owner_id: ownerId, ...promoRpcArgs, ...rpcArgs });
     if (
@@ -1907,9 +1917,11 @@ export async function setMenuItemAvailableRecord(
 export async function insertOwnerPromotionRecord(
   ownerId: string,
   input: Pick<PromotionCode, "discountType" | "discountValue">,
+  prefix = "",
 ): Promise<PromotionCode> {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  const makeCode = () => Array.from({ length: 6 }, () => alphabet[randomInt(alphabet.length)]).join("");
+  const normalizedPrefix = prefix.trim().toUpperCase();
+  const makeCode = () => `${normalizedPrefix ? `${normalizedPrefix}-` : ""}${Array.from({ length: 6 }, () => alphabet[randomInt(alphabet.length)]).join("")}`;
   if (!isRealSupabaseConfigured()) {
     if (!memoryStore) memoryStore = normalizeStore(emptyStore());
     const owner = memoryStore.users.find((entry) => entry.id === ownerId && entry.role === "cashier");
@@ -1935,6 +1947,26 @@ export async function insertOwnerPromotionRecord(
     if (error.code !== "23505") throw new Error(`Could not generate promotion code: ${error.message}`);
   }
   throw new Error("Could not generate a unique promotion code. Please try again.");
+}
+
+export async function deleteOwnerPromotionRecord(ownerId: string, code: string): Promise<void> {
+  await enqueue(async () => {
+    if (!isRealSupabaseConfigured()) {
+      if (!memoryStore) return;
+      const owner = memoryStore.users.find((entry) => entry.id === ownerId && entry.role === "cashier");
+      if (owner?.permissions?.promoCodes) {
+        owner.permissions.promoCodes = owner.permissions.promoCodes.filter((promo) => promo.code !== code);
+      }
+      return;
+    }
+
+    const { error } = await supabaseAdmin()
+      .from("promotions")
+      .delete()
+      .eq("owner_id", ownerId)
+      .eq("code", code);
+    if (error) throw new Error(`Could not delete promotion code: ${error.message}`);
+  });
 }
 
 export async function upsertStaffUserRecord(user: StaffUser): Promise<void> {

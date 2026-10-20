@@ -695,6 +695,8 @@ class SupabaseService {
           'subtotal': order.subtotal.round(),
           'discount': order.discount.round(),
           'promoLabel': order.promoLabel,
+          'promoItemIndex': order.promoItemIndex,
+          'promoItemQty': order.promoItemQty,
           'total': order.total.round(),
           'paymentMethod': order.paymentMethod,
           'serviceMode': order.serviceMode,

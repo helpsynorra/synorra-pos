@@ -164,7 +164,42 @@ class _CartPanelState extends State<CartPanel> {
     );
     input.dispose();
     if (code == null || !mounted) return;
-    final error = widget.controller.applyPromotionCode(code);
+    final normalizedCode = code.trim().toUpperCase();
+    final matchingPromotions = widget.controller.syncService.promotionCodes.where(
+      (entry) => entry['code']?.toString().trim().toUpperCase() == normalizedCode,
+    );
+    final promo = matchingPromotions.isEmpty ? null : matchingPromotions.first;
+    int? itemIndex;
+    int? itemQty;
+    if (promo?['discountType'] == 'item') {
+      final freeItemQty = ((promo?['discountValue'] as num?)?.toInt() ?? 1).clamp(1, 99).toInt();
+      final eligibleIndexes = [
+        for (var index = 0; index < widget.controller.cart.length; index++)
+          if (widget.controller.cart[index].qty >= freeItemQty) index,
+      ];
+      if (eligibleIndexes.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Add an item with quantity $freeItemQty or more.')),
+        );
+        return;
+      }
+      itemIndex = await showDialog<int>(
+        context: context,
+        builder: (dialogContext) => SimpleDialog(
+          title: Text('Choose $freeItemQty item(s) to make free'),
+          children: [
+            for (final index in eligibleIndexes)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(dialogContext, index),
+                child: Text('${widget.controller.cart[index].name}  ×${widget.controller.cart[index].qty} · $freeItemQty free'),
+              ),
+          ],
+        ),
+      );
+      if (itemIndex == null || !mounted) return;
+      itemQty = freeItemQty;
+    }
+    final error = widget.controller.applyPromotionCode(code, itemIndex: itemIndex, itemQty: itemQty);
     if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
     }
@@ -450,7 +485,7 @@ class _CartPanelState extends State<CartPanel> {
                                 icon: const Icon(Icons.local_offer_outlined, size: 17),
                                 label: const Text('Apply promotion code'),
                               )
-                            : Text('Promo ${controller.promoLabel}  −₱${currency.format(controller.discountAmount)}',
+                            : Text('Promo ${controller.promoLabel}${controller.promoItemIndex != null ? ' · ${controller.promoItemQty ?? 1} × ${controller.cart[controller.promoItemIndex!].name} free' : ''}  −₱${currency.format(controller.discountAmount)}',
                                 style: const TextStyle(fontSize: 12, color: _ink)),
                       ),
                       if (controller.promoLabel != null)
