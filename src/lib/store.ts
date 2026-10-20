@@ -168,6 +168,17 @@ export async function deleteOwnerAccountAndData(ownerId: string): Promise<void> 
     }
   }
 
+  // Release the globally unique email before deleting the Owner rows. This
+  // also frees it if a legacy FK or orphaned relation prevents a staff row
+  // from being removed by the delete below.
+  const { error: emailReleaseError } = await db
+    .from("staff_users")
+    .update({ email: null })
+    .in("id", staffIds);
+  if (emailReleaseError) {
+    throw new Error(`Unable to release the deleted Owner email: ${emailReleaseError.message}`);
+  }
+
   const { error: staffError } = await db
     .from("staff_users")
     .delete()
