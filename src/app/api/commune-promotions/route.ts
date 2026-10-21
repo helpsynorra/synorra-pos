@@ -96,13 +96,14 @@ export async function POST(request: NextRequest) {
           paymentStatus: row.payment_status === "paid" ? "paid" : "not_paid",
         }));
       const hostCounts = new Map<string, { availableCount: number; redeemedCount: number }>();
-      const eventHostStates = new Map<string, { batchCount: number; endedBatchCount: number; startsOn: string; expiresOn: string }>();
+      const eventHostStates = new Map<string, { batchCount: number; paidBatchCount: number; endedBatchCount: number; startsOn: string; expiresOn: string }>();
       for (const row of batchRows ?? []) {
         const name = String(row.event_host ?? "").trim() || "No host assigned";
         const startsOn = manilaDateOnly(String(row.created_at));
         const expiresOn = manilaDateOnly(String(row.expires_at));
-        const state = eventHostStates.get(name) ?? { batchCount: 0, endedBatchCount: 0, startsOn, expiresOn };
+        const state = eventHostStates.get(name) ?? { batchCount: 0, paidBatchCount: 0, endedBatchCount: 0, startsOn, expiresOn };
         state.batchCount += 1;
+        if (row.payment_status === "paid") state.paidBatchCount += 1;
         if (row.event_ended_at) state.endedBatchCount += 1;
         if (startsOn && (!state.startsOn || startsOn < state.startsOn)) state.startsOn = startsOn;
         if (expiresOn > state.expiresOn) state.expiresOn = expiresOn;
@@ -111,6 +112,10 @@ export async function POST(request: NextRequest) {
       const eventStatusForHost = (name: string): "ongoing" | "ended" => {
         const state = eventHostStates.get(name);
         return state && state.batchCount > 0 && state.endedBatchCount === state.batchCount ? "ended" : "ongoing";
+      };
+      const paymentStatusForHost = (name: string): "paid" | "not_paid" => {
+        const state = eventHostStates.get(name);
+        return state && state.batchCount > 0 && state.paidBatchCount === state.batchCount ? "paid" : "not_paid";
       };
       const expirationGroups = new Map<string, Map<string, { availableCount: number; redeemedCount: number }>>();
       for (const row of hostRows.data ?? []) {
@@ -141,6 +146,7 @@ export async function POST(request: NextRequest) {
             name,
             ...counts,
             eventStatus: eventStatusForHost(name),
+            paymentStatus: paymentStatusForHost(name),
           }));
           return {
             expiresOn,
@@ -149,7 +155,7 @@ export async function POST(request: NextRequest) {
             eventHosts,
           };
         });
-      const eventHostSummaries = new Map<string, { name: string; availableCount: number; redeemedCount: number; startsOn: string; expiresOn: string; eventStatus: "ongoing" | "ended" }>();
+      const eventHostSummaries = new Map<string, { name: string; availableCount: number; redeemedCount: number; startsOn: string; expiresOn: string; eventStatus: "ongoing" | "ended"; paymentStatus: "paid" | "not_paid" }>();
       for (const [name, counts] of hostCounts) {
         const state = eventHostStates.get(name);
         eventHostSummaries.set(name, {
@@ -158,11 +164,12 @@ export async function POST(request: NextRequest) {
           startsOn: state?.startsOn ?? "",
           expiresOn: state?.expiresOn ?? "",
           eventStatus: eventStatusForHost(name),
+          paymentStatus: paymentStatusForHost(name),
         });
       }
       for (const [name, state] of eventHostStates) {
         if (state.batchCount > 0 && state.endedBatchCount === state.batchCount && !eventHostSummaries.has(name)) {
-          eventHostSummaries.set(name, { name, availableCount: 0, redeemedCount: 0, startsOn: state.startsOn, expiresOn: state.expiresOn, eventStatus: "ended" });
+          eventHostSummaries.set(name, { name, availableCount: 0, redeemedCount: 0, startsOn: state.startsOn, expiresOn: state.expiresOn, eventStatus: "ended", paymentStatus: paymentStatusForHost(name) });
         }
       }
       return NextResponse.json({
