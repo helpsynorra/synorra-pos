@@ -30,21 +30,36 @@ export async function POST(request: NextRequest) {
     if (action === "admin_summary") {
       const db = supabaseAdmin();
       const now = new Date().toISOString();
-      const [available, redeemed] = await Promise.all([
+      const [available, hostRows, redeemed] = await Promise.all([
         db.from("commune_promotions")
           .select("code", { count: "exact", head: true })
           .is("redeemed_at", null)
           .gt("expires_at", now),
+        db.from("commune_promotions")
+          .select("event_host,expires_at,redeemed_at"),
         db.from("commune_promotions")
           .select("code,event_host,redeemed_at,redeemed_order_id")
           .not("redeemed_at", "is", null)
           .order("redeemed_at", { ascending: false }),
       ]);
       if (available.error) throw available.error;
+      if (hostRows.error) throw hostRows.error;
       if (redeemed.error) throw redeemed.error;
+      const hostCounts = new Map<string, { availableCount: number; redeemedCount: number }>();
+      for (const row of hostRows.data ?? []) {
+        const name = String(row.event_host ?? "").trim() || "No host assigned";
+        const counts = hostCounts.get(name) ?? { availableCount: 0, redeemedCount: 0 };
+        if (row.redeemed_at) {
+          counts.redeemedCount += 1;
+        } else if (Date.parse(String(row.expires_at)) > Date.now()) {
+          counts.availableCount += 1;
+        }
+        hostCounts.set(name, counts);
+      }
       return NextResponse.json({
         ok: true,
         availableCount: available.count ?? 0,
+        eventHosts: [...hostCounts].map(([name, counts]) => ({ name, ...counts })),
         redeemed: (redeemed.data ?? []).map((row) => ({
           code: String(row.code),
           eventHost: String(row.event_host ?? ""),
