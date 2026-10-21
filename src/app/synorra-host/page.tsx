@@ -50,7 +50,6 @@ export default async function SynorraHostPage() {
       <UserManager
         users={staff}
         session={session}
-        orders={store.orders}
         loginActivity={store.loginActivity ?? []}
         offRequests={store.offRequests ?? []}
         showShiftTabs={false}

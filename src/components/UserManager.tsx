@@ -13,6 +13,7 @@ import {
   updateStaffSessionTimes,
   deleteStaffSession,
   generateCommunePromotionCodes,
+  getCommunePromotionDiscountSummary,
   updateCommunePromotionBatchPaymentStatus,
   updateOwnerPermissions,
   generateOwnerPromotionCode,
@@ -35,7 +36,6 @@ const adminField =
 type UserManagerProps = {
   users: PublicStaffUser[];
   session: Session;
-  orders?: Order[];
   loginActivity: LoginActivity[];
   offRequests: OffRequest[];
   showShiftTabs?: boolean;
@@ -105,7 +105,7 @@ const adminPermissionGroups: {
   },
 ];
 
-export function UserManager({ users, session, orders = [], loginActivity, offRequests, showShiftTabs = true, showAdminRole = true, showOwnerRole = true, showBaristaRole = true, showBaristasOnly = false, showEditStaffButton = true, showDeleteStaffButton = true, baristaOnlyStaffActions = false, showLoginLinksTab = true, showPrintButtonToggle = true, showViewPermissionsButton = true, adminLoginPath }: UserManagerProps) {
+export function UserManager({ users, session, loginActivity, offRequests, showShiftTabs = true, showAdminRole = true, showOwnerRole = true, showBaristaRole = true, showBaristasOnly = false, showEditStaffButton = true, showDeleteStaffButton = true, baristaOnlyStaffActions = false, showLoginLinksTab = true, showPrintButtonToggle = true, showViewPermissionsButton = true, adminLoginPath }: UserManagerProps) {
   const [tab, setTab] = useState<SubTab>("staff");
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
   const [name, setName] = useState("");
@@ -121,6 +121,12 @@ export function UserManager({ users, session, orders = [], loginActivity, offReq
   const [selectedPermissionOwnerId, setSelectedPermissionOwnerId] = useState<string | null>(null);
   const [communePromoCodes, setCommunePromoCodes] = useState<PromotionCode[]>([]);
   const [showVoucherTotals, setShowVoucherTotals] = useState(false);
+  const [communeDiscountSummary, setCommuneDiscountSummary] = useState<{
+    totalDiscountGiven: number;
+    orders: Pick<Order, "id" | "ticketNo" | "promoLabel" | "discount" | "createdAt" | "items">[];
+  } | null>(null);
+  const [communeDiscountSummaryError, setCommuneDiscountSummaryError] = useState<string | null>(null);
+  const [communeDiscountSummaryLoading, setCommuneDiscountSummaryLoading] = useState(false);
   const [promoCodeRecords, setPromoCodeRecords] = useState<Record<string, PromotionCode[]>>(
     () => Object.fromEntries(users.map((user) => [user.id, user.permissions?.promoCodes ?? []])),
   );
@@ -158,6 +164,31 @@ export function UserManager({ users, session, orders = [], loginActivity, offReq
     });
     return () => { cancelled = true; };
   }, [session.role]);
+
+  useEffect(() => {
+    if (session.role !== "admin") return;
+    let cancelled = false;
+    setCommuneDiscountSummaryLoading(true);
+    void getCommunePromotionDiscountSummary()
+      .then((result) => {
+        if (cancelled) return;
+        if ("error" in result) {
+          setCommuneDiscountSummaryError(result.error);
+          setCommuneDiscountSummary(null);
+        } else {
+          setCommuneDiscountSummaryError(null);
+          setCommuneDiscountSummary(result);
+        }
+        setCommuneDiscountSummaryLoading(false);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setCommuneDiscountSummaryError(error instanceof Error ? error.message : "Could not load Commune's promo discount total.");
+        setCommuneDiscountSummary(null);
+        setCommuneDiscountSummaryLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [session.role]);
   
   // Global filter/display date state for In / Out
   const [selectedDate, setSelectedDate] = useState(phDateString());
@@ -175,39 +206,21 @@ export function UserManager({ users, session, orders = [], loginActivity, offReq
   const ownerUsers = visibleUsers.filter((user) => user.role === "cashier");
   const isAdminConsole = session.role === "admin";
   const communeVoucherOrderBreakdown = useMemo(() => {
-    const today = phDateString();
-    const activeRedeemedPromos = communePromoCodes.filter(
-      (promo) => promo.redeemedAt && (!promo.expiresAt || phDateString(promo.expiresAt) >= today),
-    );
-    const redeemedVoucherByCode = new Map(activeRedeemedPromos.map((promo) => [promo.code.trim().toUpperCase(), promo] as const));
-    const normalizeOrderId = (value: string) => value.trim().replace(/^#/, "").toUpperCase();
-    const redeemedVoucherByOrderId = new Map(
-      activeRedeemedPromos.flatMap((promo) => promo.redeemedOrderId
-        ? [[normalizeOrderId(promo.redeemedOrderId), promo] as const]
-        : []),
-    );
-    return orders
-      .flatMap((order) => {
-        if (order.voided || order.voidReason?.trim() || order.deletedAt || order.recordType === "Purchase") return [];
-        const promo = (order.promoLabel ? redeemedVoucherByCode.get(order.promoLabel.trim().toUpperCase()) : undefined) ??
-          redeemedVoucherByOrderId.get(normalizeOrderId(order.id)) ??
-          (order.ticketNo ? redeemedVoucherByOrderId.get(normalizeOrderId(order.ticketNo)) : undefined);
-        if (!promo) return [];
+    return (communeDiscountSummary?.orders ?? []).map((order) => {
         const items = order.items.map((item) => {
           const addonsTotal = (item.addons ?? []).reduce((sum, addon) => sum + addon.price * Math.max(1, Number(addon.qty) || 1), 0);
           return { ...item, lineTotal: item.qty * (item.price + addonsTotal) };
         });
-        return [{
+        return {
           order,
-          voucherCode: promo.code,
+          voucherCode: order.promoLabel!,
           items,
           itemsTotal: items.reduce((sum, item) => sum + item.lineTotal, 0),
-        }];
-      })
-      .sort((left, right) => right.order.createdAt.localeCompare(left.order.createdAt));
-  }, [communePromoCodes, orders]);
+        };
+      });
+  }, [communeDiscountSummary]);
   const totalCommuneVoucherItems = communeVoucherOrderBreakdown.reduce((sum, entry) => sum + entry.itemsTotal, 0);
-  const totalCommuneVoucherDiscount = communeVoucherOrderBreakdown.reduce((sum, entry) => sum + (entry.order.discount ?? 0), 0);
+  const totalCommuneVoucherDiscount = communeDiscountSummary?.totalDiscountGiven ?? 0;
   const editing = visibleUsers.find((user) => user.id === editingId) ?? null;
   const floorStaff = visibleUsers.filter((user) =>
     baristaOnlyStaffActions ? user.role === "barista" : user.role !== "admin",
@@ -620,10 +633,10 @@ export function UserManager({ users, session, orders = [], loginActivity, offReq
                   <div className="flex flex-col gap-4 rounded-xl border border-[#e3eaf4] bg-[#f8faff] p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <p className="text-xs font-medium text-[#7587a3]">Total discounts given</p>
-                      <p className="mt-1 text-2xl font-bold text-emerald-700">{formatMoney(totalCommuneVoucherDiscount)}</p>
-                      <p className="mt-1 text-xs text-[#8091ab]">From redeemed voucher orders that were not voided.</p>
+                      <p className="mt-1 text-2xl font-bold text-emerald-700">{communeDiscountSummaryLoading ? "Loading…" : communeDiscountSummaryError ? "Unavailable" : formatMoney(totalCommuneVoucherDiscount)}</p>
+                      <p className="mt-1 text-xs text-[#8091ab]">{communeDiscountSummaryError ?? "Live total from Commune Admin's non-voided promo orders."}</p>
                     </div>
-                    <button type="button" onClick={() => setShowVoucherTotals(true)} disabled={!communeVoucherOrderBreakdown.length} className="rounded-lg border border-emerald-200 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50">View Total</button>
+                    <button type="button" onClick={() => setShowVoucherTotals(true)} disabled={communeDiscountSummaryLoading || !communeDiscountSummary || !communeVoucherOrderBreakdown.length} className="rounded-lg border border-emerald-200 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50">View Total</button>
                   </div>
 
                   {showVoucherTotals ? (

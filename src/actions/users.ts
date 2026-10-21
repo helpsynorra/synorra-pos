@@ -44,7 +44,7 @@ import {
   toSession,
 } from "@/lib/users";
 import { sanitizeLoginGate } from "@/lib/staff-gates";
-import type { LoginActivity, OffRequest, PromotionCode, Role, StaffPermissions, StaffUser, StoreData } from "@/lib/types";
+import type { LoginActivity, OffRequest, Order, PromotionCode, Role, StaffPermissions, StaffUser, StoreData } from "@/lib/types";
 
 async function requireAdmin() {
   const session = await getSession();
@@ -487,6 +487,35 @@ export async function updateCommunePromotionBatchPaymentStatus(
     return { ok: true as const, batchId: normalizedBatchId, paymentStatus };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Could not update the payment status." };
+  }
+}
+
+export async function getCommunePromotionDiscountSummary(): Promise<
+  | { totalDiscountGiven: number; orders: Pick<Order, "id" | "ticketNo" | "promoLabel" | "discount" | "createdAt" | "items">[] }
+  | { error: string }
+> {
+  await requireAdmin();
+  const secret = process.env.COMMUNE_PROMOTION_SHARED_SECRET?.trim();
+  if (!secret) return { error: "Commune promotion integration is not configured." };
+  const reportUrl = process.env.COMMUNE_PROMOTION_REPORT_URL?.trim() ||
+    "https://commune-staging.vercel.app/api/synorra-promo-summary";
+  try {
+    const response = await fetch(reportUrl, {
+      headers: { "x-commune-promotion-secret": secret },
+      cache: "no-store",
+      signal: AbortSignal.timeout(8000),
+    });
+    const payload = await response.json() as Record<string, unknown>;
+    const totalDiscountGiven = Number(payload.totalDiscountGiven);
+    if (!response.ok || !Number.isFinite(totalDiscountGiven) || !Array.isArray(payload.orders)) {
+      return { error: typeof payload.error === "string" ? payload.error : "Could not load Commune's promo discount total." };
+    }
+    return {
+      totalDiscountGiven,
+      orders: payload.orders as Pick<Order, "id" | "ticketNo" | "promoLabel" | "discount" | "createdAt" | "items">[],
+    };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Could not load Commune's promo discount total." };
   }
 }
 
