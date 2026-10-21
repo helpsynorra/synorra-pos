@@ -505,7 +505,13 @@ export async function getCommunePromotionDiscountSummary(): Promise<
       cache: "no-store",
       signal: AbortSignal.timeout(8000),
     });
-    const payload = await response.json() as Record<string, unknown>;
+    const responseText = await response.text();
+    let payload: Record<string, unknown>;
+    try {
+      payload = JSON.parse(responseText) as Record<string, unknown>;
+    } catch {
+      return { error: `Commune report endpoint returned a non-JSON response (HTTP ${response.status}). Deploy /api/synorra-promo-summary on Commune and check COMMUNE_PROMOTION_REPORT_URL.` };
+    }
     const totalDiscountGiven = Number(payload.totalDiscountGiven);
     if (!response.ok || !Number.isFinite(totalDiscountGiven) || !Array.isArray(payload.orders)) {
       return { error: typeof payload.error === "string" ? payload.error : "Could not load Commune's promo discount total." };
