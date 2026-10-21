@@ -492,6 +492,10 @@ export function AdminDashboard({
       return orderTime >= startOfPeriod.getTime() && orderTime <= now.getTime();
     })
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const recentOrderTotal = (order: Order) =>
+    typeof order.subtotal === "number" && Number.isFinite(order.subtotal)
+      ? Math.max(0, order.subtotal - (order.discount ?? 0))
+      : order.total;
   const pendingVoidRequests: typeof store.voidRequests = [];
 
   const createEntry = async (
@@ -1244,7 +1248,7 @@ export function AdminDashboard({
                   </p>
                   <p className="min-w-0 text-sm font-semibold lg:text-right">
                     <span className="font-normal text-neutral-500 lg:hidden">Total: </span>
-                    {formatMoney(order.total)}
+                    {formatMoney(recentOrderTotal(order))}
                   </p>
                 </div>
               ))}

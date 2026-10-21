@@ -27,6 +27,31 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as Record<string, unknown>;
     const action = String(body.action ?? "");
+    if (action === "admin_summary") {
+      const db = supabaseAdmin();
+      const now = new Date().toISOString();
+      const [available, redeemed] = await Promise.all([
+        db.from("commune_promotions")
+          .select("code", { count: "exact", head: true })
+          .is("redeemed_at", null)
+          .gt("expires_at", now),
+        db.from("commune_promotions")
+          .select("code,redeemed_at,redeemed_order_id")
+          .not("redeemed_at", "is", null)
+          .order("redeemed_at", { ascending: false }),
+      ]);
+      if (available.error) throw available.error;
+      if (redeemed.error) throw redeemed.error;
+      return NextResponse.json({
+        ok: true,
+        availableCount: available.count ?? 0,
+        redeemed: (redeemed.data ?? []).map((row) => ({
+          code: String(row.code),
+          redeemedAt: String(row.redeemed_at),
+          orderId: String(row.redeemed_order_id ?? ""),
+        })),
+      }, { headers: { "Cache-Control": "no-store" } });
+    }
     const code = String(body.code ?? "").replace(/\s+/g, "").toUpperCase();
     if (!/^(?:[A-Z0-9]{6}|[A-Z0-9]{1,16}-[A-Z0-9]{6})$/.test(code)) {
       return responseError("Enter a valid promotion voucher.", 400);
