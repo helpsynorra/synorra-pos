@@ -108,6 +108,10 @@ export async function POST(request: NextRequest) {
         if (expiresOn > state.expiresOn) state.expiresOn = expiresOn;
         eventHostStates.set(name, state);
       }
+      const eventStatusForHost = (name: string): "ongoing" | "ended" => {
+        const state = eventHostStates.get(name);
+        return state && state.batchCount > 0 && state.endedBatchCount === state.batchCount ? "ended" : "ongoing";
+      };
       const expirationGroups = new Map<string, Map<string, { availableCount: number; redeemedCount: number }>>();
       for (const row of hostRows.data ?? []) {
         if (Date.parse(String(row.expires_at)) <= Date.now()) continue;
@@ -133,7 +137,11 @@ export async function POST(request: NextRequest) {
       const expirationSummaries = [...expirationGroups]
         .sort(([left], [right]) => left.localeCompare(right))
         .map(([expiresOn, hostMap]) => {
-          const eventHosts = [...hostMap].map(([name, counts]) => ({ name, ...counts }));
+          const eventHosts = [...hostMap].map(([name, counts]) => ({
+            name,
+            ...counts,
+            eventStatus: eventStatusForHost(name),
+          }));
           return {
             expiresOn,
             availableCount: eventHosts.reduce((sum, host) => sum + host.availableCount, 0),
@@ -149,7 +157,7 @@ export async function POST(request: NextRequest) {
           ...counts,
           startsOn: state?.startsOn ?? "",
           expiresOn: state?.expiresOn ?? "",
-          eventStatus: state && state.endedBatchCount === state.batchCount ? "ended" : "ongoing",
+          eventStatus: eventStatusForHost(name),
         });
       }
       for (const [name, state] of eventHostStates) {
