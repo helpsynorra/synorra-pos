@@ -75,17 +75,46 @@ export async function POST(request: NextRequest) {
 
     let expectedDiscount: number;
     if (promotion.discountType === "item") {
-      const index = Number.isInteger(order.promoItemIndex) ? Number(order.promoItemIndex) : -1;
-      const quantity = Number.isInteger(order.promoItemQty) ? Number(order.promoItemQty) : 0;
       const freeQuantity = Math.max(1, Math.floor(promotion.discountValue));
-      const selected = items[index];
-      if (!selected || quantity !== freeQuantity || Number(selected.qty) < freeQuantity) {
+      const rawSelections = Array.isArray(order.promoItemSelections)
+        ? order.promoItemSelections
+        : [{ index: order.promoItemIndex, qty: order.promoItemQty }];
+      const selections = rawSelections.map((selection) => {
+        if (!selection || typeof selection !== "object") return null;
+        const value = selection as Record<string, unknown>;
+        return {
+          index: value.index,
+          qty: value.qty,
+        };
+      });
+      const validSelections = selections.every((selection) =>
+        selection !== null &&
+        Number.isInteger(selection.index) &&
+        Number.isInteger(selection.qty) &&
+        Number(selection.index) >= 0 &&
+        Number(selection.index) < items.length &&
+        Number(selection.qty) > 0,
+      );
+      const selectedQuantity = selections.reduce((sum, selection) =>
+        sum + (selection ? Number(selection.qty) : 0), 0);
+      const indices = selections.map((selection) => selection?.index);
+      const uniqueIndices = new Set(indices).size === indices.length;
+      if (!validSelections || !uniqueIndices || selectedQuantity !== freeQuantity || selectedQuantity > 3 || selectedQuantity < 1) {
         return responseError("Select a valid quantity for the free item promotion.", 400);
       }
-      const addons = Array.isArray(selected.addons) ? selected.addons as Record<string, unknown>[] : [];
-      const unitPrice = Number(selected.price) + addons.reduce((sum, addon) =>
-        sum + (Number(addon.price) || 0) * Math.max(1, Number(addon.qty) || 1), 0);
-      expectedDiscount = Math.round(unitPrice * freeQuantity);
+      expectedDiscount = selections.reduce((discountTotal, selection) => {
+        if (!selection) return discountTotal;
+        const selected = items[Number(selection.index)];
+        const lineQuantity = Number(selected.qty);
+        if (!Number.isInteger(lineQuantity) || lineQuantity < Number(selection.qty)) return Number.NaN;
+        const addons = Array.isArray(selected.addons) ? selected.addons as Record<string, unknown>[] : [];
+        const unitPrice = Number(selected.price) + addons.reduce((sum, addon) =>
+          sum + (Number(addon.price) || 0) * Math.max(1, Number(addon.qty) || 1), 0);
+        return discountTotal + Math.round(unitPrice * Number(selection.qty));
+      }, 0);
+      if (!Number.isFinite(expectedDiscount)) {
+        return responseError("Select a valid quantity for the free item promotion.", 400);
+      }
     } else {
       expectedDiscount = Math.min(subtotal, Math.round(
         promotion.discountType === "amount"
