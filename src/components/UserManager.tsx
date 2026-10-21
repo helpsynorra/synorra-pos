@@ -5,6 +5,7 @@ import {
   createOffRequest,
   createStaffUser,
   deleteCommunePromotionCode,
+  endCommunePromotionEvent,
   deleteOffRequest,
   deleteOwnerPromotionCode,
   deleteStaffUser,
@@ -120,7 +121,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
   );
   const [selectedPermissionOwnerId, setSelectedPermissionOwnerId] = useState<string | null>(null);
   const [communePromoCodes, setCommunePromoCodes] = useState<PromotionCode[]>([]);
-  const [showVoucherTotals, setShowVoucherTotals] = useState(false);
+  const [selectedVoucherHost, setSelectedVoucherHost] = useState<string | null>(null);
   const [communeDiscountSummary, setCommuneDiscountSummary] = useState<{
     totalDiscountGiven: number;
     orders: Pick<Order, "id" | "ticketNo" | "promoLabel" | "discount" | "createdAt" | "items">[];
@@ -219,8 +220,6 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
         };
       });
   }, [communeDiscountSummary]);
-  const totalCommuneVoucherItems = communeVoucherOrderBreakdown.reduce((sum, entry) => sum + entry.itemsTotal, 0);
-  const totalCommuneVoucherDiscount = communeDiscountSummary?.totalDiscountGiven ?? 0;
   const editing = visibleUsers.find((user) => user.id === editingId) ?? null;
   const floorStaff = visibleUsers.filter((user) =>
     baristaOnlyStaffActions ? user.role === "barista" : user.role !== "admin",
@@ -553,6 +552,35 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                 batches: [...batches].map(([, batchPromos]) => ({ batchId: batchPromos[0]?.batchId ?? null, promos: batchPromos })),
               };
             });
+          const hostVoucherGroups = hostGroups.map((group) => {
+            const voucherCodes = new Set(group.hostPromos.map((promo) => promo.code.trim().toUpperCase()));
+            const orders = communeVoucherOrderBreakdown.filter(({ voucherCode }) => voucherCodes.has(voucherCode.trim().toUpperCase()));
+            return {
+              ...group,
+              orders,
+              totalDiscountGiven: orders.reduce((sum, { order }) => sum + (order.discount ?? 0), 0),
+              hasActiveVouchers: group.hostPromos.some((promo) => !promo.redeemedAt && !isPromotionExpired(promo)),
+            };
+          });
+          const matchedVoucherCodes = new Set(promos.map((promo) => promo.code.trim().toUpperCase()));
+          const unassignedOrders = communeVoucherOrderBreakdown.filter(({ voucherCode }) => !matchedVoucherCodes.has(voucherCode.trim().toUpperCase()));
+          if (unassignedOrders.length) {
+            const unassignedGroup = hostVoucherGroups.find((group) => group.host === "No host assigned");
+            if (unassignedGroup) {
+              unassignedGroup.orders.push(...unassignedOrders);
+              unassignedGroup.totalDiscountGiven += unassignedOrders.reduce((sum, { order }) => sum + (order.discount ?? 0), 0);
+            } else {
+              hostVoucherGroups.push({
+                host: "No host assigned",
+                hostPromos: [],
+                batches: [],
+                orders: unassignedOrders,
+                totalDiscountGiven: unassignedOrders.reduce((sum, { order }) => sum + (order.discount ?? 0), 0),
+                hasActiveVouchers: false,
+              });
+            }
+          }
+          const selectedVoucherHostGroup = hostVoucherGroups.find((group) => group.host === selectedVoucherHost) ?? null;
           const canGenerate = Boolean(
               !pending &&
               expiry &&
@@ -630,27 +658,18 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-4 rounded-xl border border-[#e3eaf4] bg-[#f8faff] p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-xs font-medium text-[#7587a3]">Total discounts given</p>
-                      <p className="mt-1 text-2xl font-bold text-emerald-700">{communeDiscountSummaryLoading ? "Loading…" : communeDiscountSummaryError ? "Unavailable" : formatMoney(totalCommuneVoucherDiscount)}</p>
-                      <p className="mt-1 text-xs text-[#8091ab]">{communeDiscountSummaryError ?? "Live total from Commune Admin's non-voided promo orders."}</p>
-                    </div>
-                    <button type="button" onClick={() => setShowVoucherTotals(true)} disabled={communeDiscountSummaryLoading || !communeDiscountSummary || !communeVoucherOrderBreakdown.length} className="rounded-lg border border-emerald-200 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50">View Total</button>
-                  </div>
-
-                  {showVoucherTotals ? (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#17243e]/50 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowVoucherTotals(false); }}>
-                      <section role="dialog" aria-modal="true" aria-labelledby="commune-voucher-total-title" className="max-h-[85vh] w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-xl">
-                        <header className="flex items-start justify-between gap-4 border-b border-[#e3eaf4] px-6 py-5">
+                  {selectedVoucherHostGroup ? (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#17243e]/50 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedVoucherHost(null); }}>
+                      <section role="dialog" aria-modal="true" aria-labelledby="commune-voucher-total-title" className="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
+                        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-[#e3eaf4] px-6 py-5">
                           <div>
-                            <h2 id="commune-voucher-total-title" className="text-lg font-bold text-[#17243e]">Voucher order item totals</h2>
-                            <p className="mt-1 text-sm text-[#7587a3]">Items from redeemed voucher orders that were not voided.</p>
+                            <h2 id="commune-voucher-total-title" className="text-lg font-bold text-[#17243e]">{selectedVoucherHostGroup.host} · Voucher order item totals</h2>
+                            <p className="mt-1 text-sm text-[#7587a3]">Redeemed voucher orders for this event host that were not voided.</p>
                           </div>
-                          <button type="button" onClick={() => setShowVoucherTotals(false)} className="rounded-lg px-3 py-1.5 text-sm font-semibold text-[#536783] hover:bg-[#f3f6fb]">Close</button>
+                          <button type="button" onClick={() => setSelectedVoucherHost(null)} className="rounded-lg px-3 py-1.5 text-sm font-semibold text-[#536783] hover:bg-[#f3f6fb]">Close</button>
                         </header>
-                        <div className="max-h-[calc(85vh-150px)] space-y-4 overflow-y-auto p-6">
-                          {communeVoucherOrderBreakdown.length ? communeVoucherOrderBreakdown.map(({ order, voucherCode, items, itemsTotal }) => (
+                        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-6">
+                          {selectedVoucherHostGroup.orders.length ? selectedVoucherHostGroup.orders.map(({ order, voucherCode, items, itemsTotal }) => (
                             <article key={order.id} className="overflow-hidden rounded-xl border border-[#e3eaf4]">
                               <div className="flex flex-wrap items-center justify-between gap-2 bg-[#f8faff] px-4 py-3 text-sm">
                                 <div className="space-x-2"><span className="font-bold text-[#17243e]">Order {order.ticketNo || order.id}</span><span className="text-[#7587a3]">ID: {order.id}</span></div>
@@ -669,27 +688,16 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                             </article>
                           )) : <p className="text-sm text-[#7587a3]">No redeemed voucher orders that were not voided.</p>}
                         </div>
-                        <footer className="space-y-2 border-t border-[#e3eaf4] bg-[#f8faff] px-6 py-4 font-bold text-[#17243e]">
-                          <div className="flex justify-between"><span>Total discounts to pay Commune</span><span className="text-emerald-700">{formatMoney(totalCommuneVoucherDiscount)}</span></div>
-                          <div className="flex justify-between text-sm text-[#536783]"><span>Total value of items ordered</span><span>{formatMoney(totalCommuneVoucherItems)}</span></div>
-                        </footer>
-                      </section>
-                    </div>
-                  ) : null}
-
-                  <div className="space-y-4">
-                    {promos.length === 0 ? <p className="p-4 text-sm text-neutral-500">No Commune website vouchers generated.</p> : hostGroups.map(({ host, hostPromos, batches }) => (
-                      <section key={host} aria-label={`Commune vouchers for ${host}`} className="overflow-hidden rounded-xl border border-[#e3eaf4] bg-white">
-                        <div className="bg-[#f8faff] px-4 py-3 text-sm font-semibold text-[#172849]">{host}<span className="ml-2 text-xs font-medium text-[#8091ab]">{hostPromos.length} voucher{hostPromos.length === 1 ? "" : "s"}</span></div>
-                        <div className="hidden grid-cols-[1.2fr_0.75fr_0.75fr_0.9fr_1.1fr_1fr_0.9fr_0.8fr_auto] gap-3 border-t border-[#e3eaf4] bg-[#f5f8fc] px-4 py-2.5 text-[10px] font-semibold tracking-wide text-[#7587a3] uppercase sm:grid"><span>Code</span><span>Discount</span><span>Prefix</span><span>Total items</span><span>Event Host</span><span>Expires</span><span>Approval</span><span>Status</span><span className="text-right">Actions</span></div>
-                        {batches.map(({ batchId, promos: batchPromos }) => (
-                          <div key={batchId ?? batchPromos[0]?.code} className="border-t border-[#edf1f7] first:border-t-0">
-                            <div className="flex flex-wrap items-center justify-between gap-3 bg-[#fbfcff] px-4 py-2.5">
-                              <span className="text-xs font-semibold text-[#536783]">Promo batch · {batchPromos.length} voucher{batchPromos.length === 1 ? "" : "s"}</span>
-                              <label className="flex items-center gap-2 text-xs font-medium text-[#586b89]">
-                                <span>Payment Status</span>
+                        <footer className="shrink-0 space-y-2 border-t border-[#e3eaf4] bg-[#f8faff] px-6 py-4 font-bold text-[#17243e]">
+                          <div className="flex justify-between"><span>Total discounts to pay Commune · {selectedVoucherHostGroup.host}</span><span className="text-emerald-700">{formatMoney(selectedVoucherHostGroup.totalDiscountGiven)}</span></div>
+                          <div className="flex justify-between text-sm text-[#536783]"><span>Total value of items ordered</span><span>{formatMoney(selectedVoucherHostGroup.orders.reduce((sum, entry) => sum + entry.itemsTotal, 0))}</span></div>
+                          <div className="max-h-[24vh] space-y-3 overflow-y-auto border-t border-[#e3eaf4] pt-3">
+                            <p className="text-sm font-semibold text-[#17243e]">Payment Status · {selectedVoucherHostGroup.host}</p>
+                            {selectedVoucherHostGroup.batches.map(({ batchId, promos: batchPromos }) => (
+                              <div key={batchId ?? batchPromos[0]?.code} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#e3eaf4] bg-white px-3 py-2.5">
+                                <span className="text-sm font-medium text-[#536783]">{batchPromos.length} voucher{batchPromos.length === 1 ? "" : "s"}</span>
                                 <select
-                                  aria-label={`Payment status for ${host} batch ${batchId ?? "legacy"}`}
+                                  aria-label={`Payment status for ${selectedVoucherHostGroup.host} batch ${batchId ?? "legacy"}`}
                                   value={batchPromos[0]?.paymentStatus === "paid" ? "paid" : "not_paid"}
                                   disabled={!batchId || pending}
                                   onChange={(event) => {
@@ -699,15 +707,53 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                                       const result = await updateCommunePromotionBatchPaymentStatus(batchId, nextStatus);
                                       if ("error" in result && result.error) { setNotice(result.error); return; }
                                       setCommunePromoCodes((current) => current.map((promo) => promo.batchId === batchId ? { ...promo, paymentStatus: nextStatus } : promo));
-                                      setNotice(`${host} promotion payment status updated to ${nextStatus === "paid" ? "Paid" : "Not Paid"}.`);
+                                      setNotice(`${selectedVoucherHostGroup.host} promotion payment status updated to ${nextStatus === "paid" ? "Paid" : "Not Paid"}.`);
                                     });
                                   }}
-                                  className="h-9 rounded-lg border border-[#dce6f4] bg-white px-3 text-xs text-[#243a5e] outline-none focus:border-[#5363ff] disabled:opacity-60"
+                                  className="h-9 rounded-lg border border-[#dce6f4] bg-white px-3 text-xs font-medium text-[#243a5e] outline-none focus:border-[#5363ff] disabled:opacity-60"
                                 >
                                   <option value="not_paid">Not Paid</option>
                                   <option value="paid">Paid</option>
                                 </select>
-                              </label>
+                              </div>
+                            ))}
+                            {!selectedVoucherHostGroup.batches.length ? <p className="text-xs font-normal text-[#8091ab]">No promo batches available.</p> : null}
+                          </div>
+                        </footer>
+                      </section>
+                    </div>
+                  ) : null}
+
+                  <div className="space-y-4">
+                    {promos.length === 0 ? <p className="p-4 text-sm text-neutral-500">No Commune website vouchers generated.</p> : hostVoucherGroups.map(({ host, hostPromos, batches, totalDiscountGiven, hasActiveVouchers }) => (
+                      <section key={host} aria-label={`Commune vouchers for ${host}`} className="overflow-hidden rounded-xl border border-[#e3eaf4] bg-white">
+                        <div className="flex flex-wrap items-center justify-between gap-4 bg-[#f8faff] px-4 py-3">
+                          <div className="text-sm font-semibold text-[#172849]">{host}<span className="ml-2 text-xs font-medium text-[#8091ab]">{hostPromos.length} voucher{hostPromos.length === 1 ? "" : "s"}</span></div>
+                          <div className="flex items-center gap-4">
+                            <div className="text-right">
+                              <p className="text-xs font-medium text-[#7587a3]">Total discounts given</p>
+                              <p className="text-lg font-bold text-emerald-700">{communeDiscountSummaryLoading ? "Loading…" : communeDiscountSummaryError ? "Unavailable" : formatMoney(totalDiscountGiven)}</p>
+                              {communeDiscountSummaryError ? <p className="text-xs text-rose-600">{communeDiscountSummaryError}</p> : null}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button type="button" onClick={() => setSelectedVoucherHost(host)} disabled={communeDiscountSummaryLoading || !communeDiscountSummary} className="rounded-lg border border-emerald-200 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50">View Total</button>
+                              <button type="button" disabled={pending || !hasActiveVouchers || host === "No host assigned"} title={!hasActiveVouchers ? "There are no unused active vouchers for this event." : undefined} onClick={() => {
+                                if (!window.confirm(`End the event for ${host}? All unused vouchers for this event will expire immediately. Redeemed vouchers and order history will remain.`)) return;
+                                startTransition(async () => {
+                                  const result = await endCommunePromotionEvent(host);
+                                  if (!result.ok) { setNotice(result.error); return; }
+                                  setCommunePromoCodes((current) => current.map((promo) => promo.eventHost?.trim() === host && !promo.redeemedAt && promo.expiresAt && Date.parse(promo.expiresAt) > Date.parse(result.endedAt) ? { ...promo, expiresAt: result.endedAt } : promo));
+                                  setNotice(`${host} event ended. ${result.affectedCount} unused voucher(s) expired.`);
+                                });
+                              }} className="rounded-lg border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50">End Event</button>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="hidden grid-cols-[1.2fr_0.75fr_0.75fr_0.9fr_1.1fr_1fr_0.9fr_0.8fr_auto] gap-3 border-t border-[#e3eaf4] bg-[#f5f8fc] px-4 py-2.5 text-[10px] font-semibold tracking-wide text-[#7587a3] uppercase sm:grid"><span>Code</span><span>Discount</span><span>Prefix</span><span>Total items</span><span>Event Host</span><span>Expires</span><span>Approval</span><span>Status</span><span className="text-right">Actions</span></div>
+                        {batches.map(({ batchId, promos: batchPromos }) => (
+                          <div key={batchId ?? batchPromos[0]?.code} className="border-t border-[#edf1f7] first:border-t-0">
+                            <div className="flex flex-wrap items-center justify-between gap-3 bg-[#fbfcff] px-4 py-2.5">
+                              <span className="text-xs font-semibold text-[#536783]">Promo batch · {batchPromos.length} voucher{batchPromos.length === 1 ? "" : "s"}</span>
                             </div>
                             <div className="divide-y divide-[#edf1f7]">{batchPromos.map((promo) => (
                       <div key={promo.code} className="grid grid-cols-2 gap-2 border-t border-[#edf1f7] px-4 py-3 text-xs text-[#405475] sm:grid-cols-[1.2fr_0.75fr_0.75fr_0.9fr_1.1fr_1fr_0.9fr_0.8fr_auto] sm:items-center sm:gap-3">

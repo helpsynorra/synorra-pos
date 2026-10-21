@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
         return `${part("year")}-${part("month")}-${part("day")}`;
       };
       const { data: batchRows, error: batchError } = await db.from("commune_promotion_batches")
-        .select("batch_id,event_host,created_at,expires_at,discount_type,discount_value,voucher_count,payment_status,approval_status,reviewed_at")
+        .select("batch_id,event_host,created_at,expires_at,discount_type,discount_value,voucher_count,payment_status,approval_status,reviewed_at,event_ended_at")
         .eq("ready", true)
         .gt("voucher_count", 0)
         .order("created_at", { ascending: true });
@@ -96,6 +96,18 @@ export async function POST(request: NextRequest) {
           paymentStatus: row.payment_status === "paid" ? "paid" : "not_paid",
         }));
       const hostCounts = new Map<string, { availableCount: number; redeemedCount: number }>();
+      const eventHostStates = new Map<string, { batchCount: number; endedBatchCount: number; startsOn: string; expiresOn: string }>();
+      for (const row of batchRows ?? []) {
+        const name = String(row.event_host ?? "").trim() || "No host assigned";
+        const startsOn = manilaDateOnly(String(row.created_at));
+        const expiresOn = manilaDateOnly(String(row.expires_at));
+        const state = eventHostStates.get(name) ?? { batchCount: 0, endedBatchCount: 0, startsOn, expiresOn };
+        state.batchCount += 1;
+        if (row.event_ended_at) state.endedBatchCount += 1;
+        if (startsOn && (!state.startsOn || startsOn < state.startsOn)) state.startsOn = startsOn;
+        if (expiresOn > state.expiresOn) state.expiresOn = expiresOn;
+        eventHostStates.set(name, state);
+      }
       const expirationGroups = new Map<string, Map<string, { availableCount: number; redeemedCount: number }>>();
       for (const row of hostRows.data ?? []) {
         if (Date.parse(String(row.expires_at)) <= Date.now()) continue;
@@ -129,10 +141,26 @@ export async function POST(request: NextRequest) {
             eventHosts,
           };
         });
+      const eventHostSummaries = new Map<string, { name: string; availableCount: number; redeemedCount: number; startsOn: string; expiresOn: string; eventStatus: "ongoing" | "ended" }>();
+      for (const [name, counts] of hostCounts) {
+        const state = eventHostStates.get(name);
+        eventHostSummaries.set(name, {
+          name,
+          ...counts,
+          startsOn: state?.startsOn ?? "",
+          expiresOn: state?.expiresOn ?? "",
+          eventStatus: state && state.endedBatchCount === state.batchCount ? "ended" : "ongoing",
+        });
+      }
+      for (const [name, state] of eventHostStates) {
+        if (state.batchCount > 0 && state.endedBatchCount === state.batchCount && !eventHostSummaries.has(name)) {
+          eventHostSummaries.set(name, { name, availableCount: 0, redeemedCount: 0, startsOn: state.startsOn, expiresOn: state.expiresOn, eventStatus: "ended" });
+        }
+      }
       return NextResponse.json({
         ok: true,
         availableCount: available.count ?? 0,
-        eventHosts: [...hostCounts].map(([name, counts]) => ({ name, ...counts })),
+        eventHosts: [...eventHostSummaries.values()],
         expirationSummaries,
         pendingBatches,
         approvalHistory,

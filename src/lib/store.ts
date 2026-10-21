@@ -2143,6 +2143,27 @@ export async function setCommunePromotionBatchPaymentStatus(
   if (!Number(data)) throw new Error("Commune voucher batch was not found or is not ready yet.");
 }
 
+export async function endCommunePromotionEventRecord(eventHost: string): Promise<{ endedAt: string; affectedCount: number }> {
+  const normalizedHost = eventHost.trim();
+  if (!normalizedHost) throw new Error("Event host is required to end the event.");
+  const endedAt = new Date().toISOString();
+  if (!isRealSupabaseConfigured()) {
+    let affectedCount = 0;
+    memoryCommunePromotions = memoryCommunePromotions.map((promo) => {
+      if (promo.eventHost?.trim() !== normalizedHost || promo.redeemedAt || !promo.expiresAt || Date.parse(promo.expiresAt) <= Date.parse(endedAt)) return promo;
+      affectedCount += 1;
+      return { ...promo, expiresAt: endedAt };
+    });
+    return { endedAt, affectedCount };
+  }
+  const { data, error } = await supabaseAdmin().rpc("end_commune_promotion_event", {
+    p_event_host: normalizedHost,
+    p_ended_at: endedAt,
+  });
+  if (error) throw new Error(`Could not end Commune promotion event: ${error.message}`);
+  return { endedAt, affectedCount: Number(data) || 0 };
+}
+
 export async function deleteCommunePromotionRecord(code: string): Promise<void> {
   if (!isRealSupabaseConfigured()) {
     const existing = memoryCommunePromotions.find((promo) => promo.code === code);

@@ -16,6 +16,7 @@ import {
   deleteOffRequestRecord,
   deleteOwnerPromotionRecord,
   deleteCommunePromotionRecord,
+  endCommunePromotionEventRecord,
   deleteStaffUserRecord,
   getFreshStore,
   getOwnerAccounts,
@@ -487,6 +488,19 @@ export async function updateCommunePromotionBatchPaymentStatus(
     return { ok: true as const, batchId: normalizedBatchId, paymentStatus };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Could not update the payment status." };
+  }
+}
+
+export async function endCommunePromotionEvent(eventHost: string) {
+  await requireAdmin();
+  const normalizedHost = eventHost.trim();
+  if (!normalizedHost || normalizedHost.length > 120) return { ok: false as const, error: "Enter a valid event host." };
+  try {
+    const result = await endCommunePromotionEventRecord(normalizedHost);
+    refresh();
+    return { ok: true as const, ...result };
+  } catch (error) {
+    return { ok: false as const, error: error instanceof Error ? error.message : "Could not end the Commune promotion event." };
   }
 }
 
