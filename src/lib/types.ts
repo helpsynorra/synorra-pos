@@ -26,6 +26,9 @@ export type StaffPermissions = {
 
 export type PromotionCode = {
   code: string;
+  batchId?: string;
+  approvalStatus?: "pending" | "approved" | "declined";
+  createdAt?: string;
   discountType: "percent" | "amount" | "item";
   discountValue: number;
   eventHost?: string;

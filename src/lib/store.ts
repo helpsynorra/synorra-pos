@@ -2010,6 +2010,9 @@ export async function deleteOwnerPromotionRecord(ownerId: string, code: string):
 function communePromotionFromRow(row: Record<string, unknown>): PromotionCode {
   return {
     code: String(row.code),
+    batchId: typeof row.batch_id === "string" ? row.batch_id : undefined,
+    approvalStatus: row.approval_status === "pending" || row.approval_status === "declined" ? row.approval_status : "approved",
+    createdAt: typeof row.created_at === "string" ? row.created_at : undefined,
     discountType: row.discount_type as PromotionCode["discountType"],
     discountValue: Number(row.discount_value),
     eventHost: typeof row.event_host === "string" ? row.event_host : undefined,
@@ -2023,7 +2026,7 @@ export async function getCommunePromotionRecords(): Promise<PromotionCode[]> {
   if (!isRealSupabaseConfigured()) return [...memoryCommunePromotions];
   const { data, error } = await supabaseAdmin()
     .from("commune_promotions")
-    .select("code,discount_type,discount_value,event_host,expires_at,redeemed_at,redeemed_order_id")
+    .select("code,batch_id,approval_status,created_at,discount_type,discount_value,event_host,expires_at,redeemed_at,redeemed_order_id")
     .order("created_at", { ascending: false });
   if (error) throw new Error(`Unable to read Commune promotion codes: ${error.message}`);
   return (data ?? []).map((row) => communePromotionFromRow(row));
@@ -2032,21 +2035,25 @@ export async function getCommunePromotionRecords(): Promise<PromotionCode[]> {
 export async function insertCommunePromotionRecord(
   input: Pick<PromotionCode, "discountType" | "discountValue" | "eventHost" | "expiresAt">,
   prefix: string,
+  batchId: string,
 ): Promise<PromotionCode> {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const makeCode = () => `${prefix}-${Array.from({ length: 6 }, () => alphabet[randomInt(alphabet.length)]).join("")}`;
   if (!isRealSupabaseConfigured()) {
     let promo: PromotionCode;
-    do { promo = { code: makeCode(), ...input }; }
+    do { promo = { code: makeCode(), batchId, approvalStatus: "pending", createdAt: new Date().toISOString(), ...input }; }
     while (memoryCommunePromotions.some((entry) => entry.code === promo.code));
     memoryCommunePromotions = [promo, ...memoryCommunePromotions];
     return promo;
   }
 
   for (let attempt = 0; attempt < 12; attempt += 1) {
-    const promo: PromotionCode = { code: makeCode(), ...input };
+    const promo: PromotionCode = { code: makeCode(), batchId, approvalStatus: "pending", ...input };
     const { error } = await supabaseAdmin().from("commune_promotions").insert({
       code: promo.code,
+      batch_id: batchId,
+      batch_ready: false,
+      approval_status: "pending",
       discount_type: promo.discountType,
       discount_value: promo.discountValue,
       event_host: promo.eventHost ?? "",
@@ -2056,6 +2063,16 @@ export async function insertCommunePromotionRecord(
     if (error.code !== "23505") throw new Error(`Could not generate Commune voucher: ${error.message}`);
   }
   throw new Error("Could not generate a unique Commune voucher. Please try again.");
+}
+
+export async function markCommunePromotionBatchReady(batchId: string): Promise<void> {
+  if (!isRealSupabaseConfigured()) return;
+  const { error } = await supabaseAdmin()
+    .from("commune_promotions")
+    .update({ batch_ready: true })
+    .eq("batch_id", batchId)
+    .eq("approval_status", "pending");
+  if (error) throw new Error(`Could not finish Commune voucher batch: ${error.message}`);
 }
 
 export async function deleteCommunePromotionRecord(code: string): Promise<void> {

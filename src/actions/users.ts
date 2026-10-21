@@ -3,6 +3,7 @@
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { randomUUID } from "node:crypto";
 import {
   SESSION_COOKIE,
   encodeSession,
@@ -23,6 +24,7 @@ import {
   initializeOwnerStore,
   insertOwnerPromotionRecord,
   insertCommunePromotionRecord,
+  markCommunePromotionBatchReady,
   isRealSupabaseConfigured,
   insertLoginActivityRecord,
   insertOffRequestRecord,
@@ -435,6 +437,7 @@ export async function generateCommunePromotionCodes(
   }
 
   const expiresAt = new Date(`${expiresOn}T23:59:59.999+08:00`).toISOString();
+  const batchId = randomUUID();
   const promos: PromotionCode[] = [];
   try {
     for (let index = 0; index < codeCount; index += 1) {
@@ -443,11 +446,13 @@ export async function generateCommunePromotionCodes(
         discountValue: Math.round(value * 100) / 100,
         eventHost: normalizedEventHost,
         expiresAt,
-      }, normalizedPrefix));
+      }, normalizedPrefix, batchId));
     }
+    await markCommunePromotionBatchReady(batchId);
     refresh();
     return { ok: true, promos };
   } catch (error) {
+    try { await markCommunePromotionBatchReady(batchId); } catch { /* Keep the original generation error. */ }
     refresh();
     return {
       error: error instanceof Error ? error.message : "Could not generate Commune vouchers.",

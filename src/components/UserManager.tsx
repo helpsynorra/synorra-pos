@@ -561,15 +561,16 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                   </div>
 
                   <div className="overflow-hidden rounded-xl border border-[#e3eaf4]">
-                    <div className="hidden grid-cols-[1.2fr_0.75fr_0.75fr_0.9fr_1.1fr_1fr_0.8fr_auto] gap-3 bg-[#f5f8fc] px-4 py-2.5 text-[10px] font-semibold tracking-wide text-[#7587a3] uppercase sm:grid"><span>Code</span><span>Discount</span><span>Prefix</span><span>Total items</span><span>Event Host</span><span>Expires</span><span>Status</span><span className="text-right">Actions</span></div>
+                    <div className="hidden grid-cols-[1.2fr_0.75fr_0.75fr_0.9fr_1.1fr_1fr_0.9fr_0.8fr_auto] gap-3 bg-[#f5f8fc] px-4 py-2.5 text-[10px] font-semibold tracking-wide text-[#7587a3] uppercase sm:grid"><span>Code</span><span>Discount</span><span>Prefix</span><span>Total items</span><span>Event Host</span><span>Expires</span><span>Approval</span><span>Status</span><span className="text-right">Actions</span></div>
                     {promos.length === 0 ? <p className="p-4 text-sm text-neutral-500">No Commune website vouchers generated.</p> : promos.map((promo) => (
-                      <div key={promo.code} className="grid grid-cols-2 gap-2 border-t border-[#edf1f7] px-4 py-3 text-xs text-[#405475] sm:grid-cols-[1.2fr_0.75fr_0.75fr_0.9fr_1.1fr_1fr_0.8fr_auto] sm:items-center sm:gap-3">
+                      <div key={promo.code} className="grid grid-cols-2 gap-2 border-t border-[#edf1f7] px-4 py-3 text-xs text-[#405475] sm:grid-cols-[1.2fr_0.75fr_0.75fr_0.9fr_1.1fr_1fr_0.9fr_0.8fr_auto] sm:items-center sm:gap-3">
                         <span className="font-mono font-semibold tracking-widest">{promo.code}</span>
                         <span>{promo.discountType === "item" ? `${promo.discountValue || 1} free item${(promo.discountValue || 1) === 1 ? "" : "s"}` : promo.discountType === "percent" ? `${promo.discountValue}% off` : `PHP ${promo.discountValue} off`}</span>
                         <span>{promo.code.includes("-") ? promo.code.split("-").slice(0, -1).join("-") : "—"}</span>
                         <span>{promo.discountType === "item" ? `${promo.discountValue || 1} free item${(promo.discountValue || 1) === 1 ? "" : "s"}` : "-"}</span>
                         <span>{promo.eventHost?.trim() || "—"}</span>
                         <span>{promo.expiresAt ? phDateString(promo.expiresAt) : "No expiry"}</span>
+                        <span className={promo.approvalStatus === "pending" ? "font-semibold text-amber-700" : promo.approvalStatus === "declined" ? "font-semibold text-rose-700" : "font-semibold text-emerald-700"}>{promo.approvalStatus === "pending" ? "Pending" : promo.approvalStatus === "declined" ? "Declined" : "Approved"}</span>
                         <span className={promo.redeemedAt ? "text-neutral-400" : isPromotionExpired(promo) ? "text-amber-700" : "text-emerald-700"}>{promo.redeemedAt ? "Used" : isPromotionExpired(promo) ? "Expired" : "Active"}</span>
                         <button type="button" aria-label={`Delete Commune voucher ${promo.code}`} disabled={pending} onClick={() => {
                           if (!window.confirm(`Delete promo voucher ${promo.code}?`)) return;
