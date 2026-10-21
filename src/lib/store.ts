@@ -2012,6 +2012,7 @@ function communePromotionFromRow(row: Record<string, unknown>): PromotionCode {
     code: String(row.code),
     discountType: row.discount_type as PromotionCode["discountType"],
     discountValue: Number(row.discount_value),
+    eventHost: typeof row.event_host === "string" ? row.event_host : undefined,
     expiresAt: typeof row.expires_at === "string" ? row.expires_at : undefined,
     redeemedAt: typeof row.redeemed_at === "string" ? row.redeemed_at : undefined,
     redeemedOrderId: typeof row.redeemed_order_id === "string" ? row.redeemed_order_id : undefined,
@@ -2022,14 +2023,14 @@ export async function getCommunePromotionRecords(): Promise<PromotionCode[]> {
   if (!isRealSupabaseConfigured()) return [...memoryCommunePromotions];
   const { data, error } = await supabaseAdmin()
     .from("commune_promotions")
-    .select("code,discount_type,discount_value,expires_at,redeemed_at,redeemed_order_id")
+    .select("code,discount_type,discount_value,event_host,expires_at,redeemed_at,redeemed_order_id")
     .order("created_at", { ascending: false });
   if (error) throw new Error(`Unable to read Commune promotion codes: ${error.message}`);
   return (data ?? []).map((row) => communePromotionFromRow(row));
 }
 
 export async function insertCommunePromotionRecord(
-  input: Pick<PromotionCode, "discountType" | "discountValue" | "expiresAt">,
+  input: Pick<PromotionCode, "discountType" | "discountValue" | "eventHost" | "expiresAt">,
   prefix: string,
 ): Promise<PromotionCode> {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -2048,6 +2049,7 @@ export async function insertCommunePromotionRecord(
       code: promo.code,
       discount_type: promo.discountType,
       discount_value: promo.discountValue,
+      event_host: promo.eventHost ?? "",
       expires_at: promo.expiresAt,
     });
     if (!error) return promo;

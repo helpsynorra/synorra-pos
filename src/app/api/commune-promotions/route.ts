@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
           .is("redeemed_at", null)
           .gt("expires_at", now),
         db.from("commune_promotions")
-          .select("code,redeemed_at,redeemed_order_id")
+          .select("code,event_host,redeemed_at,redeemed_order_id")
           .not("redeemed_at", "is", null)
           .order("redeemed_at", { ascending: false }),
       ]);
@@ -47,6 +47,7 @@ export async function POST(request: NextRequest) {
         availableCount: available.count ?? 0,
         redeemed: (redeemed.data ?? []).map((row) => ({
           code: String(row.code),
+          eventHost: String(row.event_host ?? ""),
           redeemedAt: String(row.redeemed_at),
           orderId: String(row.redeemed_order_id ?? ""),
         })),
@@ -59,7 +60,7 @@ export async function POST(request: NextRequest) {
 
     const { data: row, error: readError } = await supabaseAdmin()
       .from("commune_promotions")
-      .select("code,discount_type,discount_value,expires_at,redeemed_at")
+      .select("code,discount_type,discount_value,event_host,expires_at,redeemed_at")
       .eq("code", code)
       .maybeSingle();
     if (readError) throw readError;
@@ -68,11 +69,13 @@ export async function POST(request: NextRequest) {
       code: String(row.code),
       discountType: String(row.discount_type),
       discountValue: Number(row.discount_value),
+      eventHost: String(row.event_host ?? ""),
       expiresAt: String(row.expires_at),
       redeemedAt: row.redeemed_at ? String(row.redeemed_at) : null,
     };
     if (promotion.redeemedAt) return responseError("Commune promotion voucher already used.", 409);
-    if (Date.parse(promotion.expiresAt) <= Date.now()) {
+    const expiryTime = Date.parse(promotion.expiresAt);
+    if (!Number.isFinite(expiryTime) || expiryTime <= Date.now()) {
       return responseError("Promotion voucher has expired.", 409);
     }
 
@@ -83,6 +86,7 @@ export async function POST(request: NextRequest) {
           code: promotion.code,
           discountType: promotion.discountType,
           discountValue: promotion.discountValue,
+          eventHost: promotion.eventHost,
           expiresAt: promotion.expiresAt,
         },
       }, { headers: { "Cache-Control": "no-store" } });
@@ -160,8 +164,18 @@ export async function POST(request: NextRequest) {
       .gt("expires_at", redeemedAt)
       .select("code")
       .maybeSingle();
-    if (error) throw error;
-    if (!data) return responseError("Promotion voucher is no longer available.", 409);
+    if (error) {
+      if (error.message.includes("PROMO_EXPIRED")) {
+        return responseError("Promotion voucher has expired.", 409);
+      }
+      throw error;
+    }
+    if (!data) {
+      if (Date.parse(promotion.expiresAt) <= Date.now()) {
+        return responseError("Promotion voucher has expired.", 409);
+      }
+      return responseError("Promotion voucher is no longer available.", 409);
+    }
 
     return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {

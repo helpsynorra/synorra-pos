@@ -56,6 +56,12 @@ type StaffRole = "Admin" | "Barista" | "Owner";
 
 type PermissionFlag = Exclude<keyof StaffPermissions, "promoCodes">;
 
+function isPromotionExpired(promo: PromotionCode): boolean {
+  if (!promo.expiresAt) return false;
+  const expiry = Date.parse(promo.expiresAt);
+  return !Number.isFinite(expiry) || expiry <= Date.now();
+}
+
 const permissionOptions: { key: PermissionFlag; label: string }[] = [
   { key: "stockInventory", label: "Stock inventory" },
   { key: "restockInventory", label: "Restock inventory" },
@@ -118,6 +124,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
   const [promoTypeDrafts, setPromoTypeDrafts] = useState<Record<string, PromotionCode["discountType"]>>({});
   const [promoItemCountDrafts, setPromoItemCountDrafts] = useState<Record<string, number>>({});
   const [promoPrefixDrafts, setPromoPrefixDrafts] = useState<Record<string, string>>({});
+  const [communeEventHost, setCommuneEventHost] = useState("");
   const [promoExpiryDrafts, setPromoExpiryDrafts] = useState<Record<string, string>>({});
   const [promoCountModes, setPromoCountModes] = useState<Record<string, string>>({});
   const [promoCustomCounts, setPromoCustomCounts] = useState<Record<string, string>>({});
@@ -499,7 +506,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                       <h2 className="text-sm font-semibold text-[#172849]">Generate voucher codes</h2>
                       <p className="mt-1 text-xs text-[#8091ab]">Each code can be redeemed once and expires at the end of the selected date.</p>
                     </div>
-                    <div className={`grid gap-3 sm:grid-cols-2 ${promoType === "item" ? "xl:grid-cols-[minmax(150px,1fr)_minmax(170px,1fr)_140px_minmax(170px,1fr)_minmax(170px,1fr)_auto]" : "xl:grid-cols-[minmax(150px,1fr)_minmax(170px,1fr)_minmax(140px,1fr)_minmax(170px,1fr)_minmax(170px,1fr)_auto]"}`}>
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(130px,1fr)_minmax(150px,1.1fr)_minmax(130px,1fr)_minmax(140px,1fr)_minmax(140px,1fr)_minmax(150px,1fr)_auto]">
                       <label className="block min-w-0 space-y-1.5 text-xs font-medium text-[#586b89]">
                         <span>Prefix</span>
                         <input aria-label="Commune voucher prefix" value={prefix} maxLength={16} onChange={(event) => setPromoPrefixDrafts((current) => ({ ...current, [communeDraftId]: event.target.value.toUpperCase() }))} className={adminField} />
@@ -534,12 +541,16 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                         <span>Expires on</span>
                         <input aria-label="Commune voucher expiration date" type="date" min={phDateString()} value={expiry} onChange={(event) => setPromoExpiryDrafts((current) => ({ ...current, [communeDraftId]: event.target.value }))} className={adminField} />
                       </label>
+                      <label className="block min-w-0 space-y-1.5 text-xs font-medium text-[#586b89]">
+                        <span>Event Host</span>
+                        <input aria-label="Event Host" type="text" maxLength={120} value={communeEventHost} onChange={(event) => setCommuneEventHost(event.target.value)} placeholder="Enter event host" className={adminField} />
+                      </label>
                       <button
                         type="button"
                         disabled={!canGenerate}
                         onClick={() => startTransition(async () => {
                           const count = countMode === "custom" ? Number(customCount) : Number(countMode);
-                          const result = await generateCommunePromotionCodes(promoType, promoType === "item" ? itemCount : value, count, prefix, expiry);
+                          const result = await generateCommunePromotionCodes(promoType, promoType === "item" ? itemCount : value, count, prefix, communeEventHost, expiry);
                           const generatedPromos = result.promos ?? [];
                           if (generatedPromos.length) setCommunePromoCodes((current) => [...generatedPromos, ...current]);
                           setNotice("error" in result && result.error ? (generatedPromos.length ? `${result.error} ${generatedPromos.length} voucher(s) were created.` : result.error) : `${generatedPromos.length} Commune voucher(s) generated.`);
@@ -550,15 +561,16 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                   </div>
 
                   <div className="overflow-hidden rounded-xl border border-[#e3eaf4]">
-                    <div className="hidden grid-cols-[1.35fr_0.8fr_0.8fr_1fr_1fr_0.8fr_auto] gap-3 bg-[#f5f8fc] px-4 py-2.5 text-[10px] font-semibold tracking-wide text-[#7587a3] uppercase sm:grid"><span>Code</span><span>Discount</span><span>Prefix</span><span>Total items</span><span>Expires</span><span>Status</span><span className="text-right">Actions</span></div>
+                    <div className="hidden grid-cols-[1.2fr_0.75fr_0.75fr_0.9fr_1.1fr_1fr_0.8fr_auto] gap-3 bg-[#f5f8fc] px-4 py-2.5 text-[10px] font-semibold tracking-wide text-[#7587a3] uppercase sm:grid"><span>Code</span><span>Discount</span><span>Prefix</span><span>Total items</span><span>Event Host</span><span>Expires</span><span>Status</span><span className="text-right">Actions</span></div>
                     {promos.length === 0 ? <p className="p-4 text-sm text-neutral-500">No Commune website vouchers generated.</p> : promos.map((promo) => (
-                      <div key={promo.code} className="grid grid-cols-2 gap-2 border-t border-[#edf1f7] px-4 py-3 text-xs text-[#405475] sm:grid-cols-[1.35fr_0.8fr_0.8fr_1fr_1fr_0.8fr_auto] sm:items-center sm:gap-3">
+                      <div key={promo.code} className="grid grid-cols-2 gap-2 border-t border-[#edf1f7] px-4 py-3 text-xs text-[#405475] sm:grid-cols-[1.2fr_0.75fr_0.75fr_0.9fr_1.1fr_1fr_0.8fr_auto] sm:items-center sm:gap-3">
                         <span className="font-mono font-semibold tracking-widest">{promo.code}</span>
                         <span>{promo.discountType === "item" ? `${promo.discountValue || 1} free item${(promo.discountValue || 1) === 1 ? "" : "s"}` : promo.discountType === "percent" ? `${promo.discountValue}% off` : `PHP ${promo.discountValue} off`}</span>
                         <span>{promo.code.includes("-") ? promo.code.split("-").slice(0, -1).join("-") : "—"}</span>
                         <span>{promo.discountType === "item" ? `${promo.discountValue || 1} free item${(promo.discountValue || 1) === 1 ? "" : "s"}` : "-"}</span>
+                        <span>{promo.eventHost?.trim() || "—"}</span>
                         <span>{promo.expiresAt ? phDateString(promo.expiresAt) : "No expiry"}</span>
-                        <span className={promo.redeemedAt ? "text-neutral-400" : promo.expiresAt && Date.parse(promo.expiresAt) <= Date.now() ? "text-amber-700" : "text-emerald-700"}>{promo.redeemedAt ? "Used" : promo.expiresAt && Date.parse(promo.expiresAt) <= Date.now() ? "Expired" : "Active"}</span>
+                        <span className={promo.redeemedAt ? "text-neutral-400" : isPromotionExpired(promo) ? "text-amber-700" : "text-emerald-700"}>{promo.redeemedAt ? "Used" : isPromotionExpired(promo) ? "Expired" : "Active"}</span>
                         <button type="button" aria-label={`Delete Commune voucher ${promo.code}`} disabled={pending} onClick={() => {
                           if (!window.confirm(`Delete promo voucher ${promo.code}?`)) return;
                           startTransition(async () => {

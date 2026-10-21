@@ -398,6 +398,7 @@ export async function generateCommunePromotionCodes(
   discountValue: number,
   count: number,
   prefix: string,
+  eventHost: string,
   expiresOn: string,
 ) {
   await requireAdmin();
@@ -411,6 +412,10 @@ export async function generateCommunePromotionCodes(
   const normalizedPrefix = prefix.trim().toUpperCase();
   if (!/^[A-Z0-9]{1,16}$/.test(normalizedPrefix)) {
     return { error: "Enter a prefix with 1 to 16 letters or numbers." };
+  }
+  const normalizedEventHost = eventHost.trim();
+  if (normalizedEventHost.length > 120) {
+    return { error: "Event Host must be 120 characters or fewer." };
   }
   const expiryDay = new Date(`${expiresOn}T00:00:00.000Z`);
   if (
@@ -436,6 +441,7 @@ export async function generateCommunePromotionCodes(
       promos.push(await insertCommunePromotionRecord({
         discountType,
         discountValue: Math.round(value * 100) / 100,
+        eventHost: normalizedEventHost,
         expiresAt,
       }, normalizedPrefix));
     }
