@@ -28,6 +28,7 @@ export type PromotionCode = {
   code: string;
   batchId?: string;
   approvalStatus?: "pending" | "approved" | "declined";
+  paymentStatus?: "not_paid" | "paid";
   createdAt?: string;
   discountType: "percent" | "amount" | "item";
   discountValue: number;

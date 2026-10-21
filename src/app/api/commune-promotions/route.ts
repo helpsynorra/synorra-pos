@@ -61,29 +61,17 @@ export async function POST(request: NextRequest) {
         const part = (type: string) => parts.find((entry) => entry.type === type)?.value ?? "";
         return `${part("year")}-${part("month")}-${part("day")}`;
       };
-      const { data: pendingRows, error: pendingError } = await db.from("commune_promotions")
-        .select("batch_id,code,event_host,created_at,expires_at,discount_type,discount_value")
-        .eq("approval_status", "pending")
-        .eq("batch_ready", true)
-        .not("batch_id", "is", null)
+      const { data: batchRows, error: batchError } = await db.from("commune_promotion_batches")
+        .select("batch_id,event_host,created_at,expires_at,discount_type,discount_value,voucher_count,payment_status,approval_status,reviewed_at")
+        .eq("ready", true)
+        .gt("voucher_count", 0)
         .order("created_at", { ascending: true });
-      if (pendingError) throw pendingError;
-      const pendingBatches = new Map<string, {
-        batchId: string;
-        voucherCount: number;
-        eventHost: string;
-        createdAt: string;
-        expiresAt: string;
-        expiresOn: string;
-        discount: number;
-        discountType: string;
-        discountValue: number;
-      }>();
-      for (const row of pendingRows ?? []) {
-        const batchId = String(row.batch_id);
-        const batch = pendingBatches.get(batchId) ?? {
-          batchId,
-          voucherCount: 0,
+      if (batchError) throw batchError;
+      const pendingBatches = (batchRows ?? [])
+        .filter((row) => row.approval_status === "pending")
+        .map((row) => ({
+          batchId: String(row.batch_id),
+          voucherCount: Number(row.voucher_count),
           eventHost: String(row.event_host ?? "").trim() || "No host assigned",
           createdAt: String(row.created_at),
           expiresAt: String(row.expires_at),
@@ -91,10 +79,22 @@ export async function POST(request: NextRequest) {
           discount: Number(row.discount_value),
           discountType: String(row.discount_type),
           discountValue: Number(row.discount_value),
-        };
-        batch.voucherCount += 1;
-        pendingBatches.set(batchId, batch);
-      }
+          paymentStatus: row.payment_status === "paid" ? "paid" : "not_paid",
+        }));
+      const approvalHistory = (batchRows ?? [])
+        .filter((row) => (row.approval_status === "approved" || row.approval_status === "declined") && row.reviewed_at)
+        .map((row) => ({
+          batchId: String(row.batch_id),
+          voucherCount: Number(row.voucher_count),
+          eventHost: String(row.event_host ?? "").trim() || "No host assigned",
+          discountType: String(row.discount_type),
+          discountValue: Number(row.discount_value),
+          startsOn: "",
+          expiresOn: manilaDateOnly(String(row.expires_at)),
+          decision: String(row.approval_status),
+          reviewedAt: String(row.reviewed_at),
+          paymentStatus: row.payment_status === "paid" ? "paid" : "not_paid",
+        }));
       const hostCounts = new Map<string, { availableCount: number; redeemedCount: number }>();
       const expirationGroups = new Map<string, Map<string, { availableCount: number; redeemedCount: number }>>();
       for (const row of hostRows.data ?? []) {
@@ -134,7 +134,8 @@ export async function POST(request: NextRequest) {
         availableCount: available.count ?? 0,
         eventHosts: [...hostCounts].map(([name, counts]) => ({ name, ...counts })),
         expirationSummaries,
-        pendingBatches: [...pendingBatches.values()],
+        pendingBatches,
+        approvalHistory,
         redeemed: (redeemed.data ?? []).map((row) => ({
           code: String(row.code),
           eventHost: String(row.event_host ?? ""),
@@ -159,6 +160,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, batchId, status, voucherCount: Number(data) }, {
         headers: { "Cache-Control": "no-store" },
       });
+    }
+    if (action === "set_payment_status") {
+      const batchId = typeof body.batchId === "string" ? body.batchId.trim() : "";
+      const paymentStatus = body.paymentStatus === "paid" ? "paid" : body.paymentStatus === "not_paid" ? "not_paid" : null;
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(batchId)) {
+        return responseError("Enter a valid promotion batch ID.", 400);
+      }
+      if (!paymentStatus) return responseError("Choose Not Paid or Paid.", 400);
+      const { data, error } = await supabaseAdmin().rpc("set_commune_promotion_batch_payment_status", {
+        p_batch_id: batchId,
+        p_payment_status: paymentStatus,
+      });
+      if (error) throw error;
+      if (!Number(data)) return responseError("This batch was not found or is not ready yet.", 409);
+      return NextResponse.json({ ok: true, batchId, paymentStatus }, { headers: { "Cache-Control": "no-store" } });
     }
     const code = String(body.code ?? "").replace(/\s+/g, "").toUpperCase();
     if (!/^(?:[A-Z0-9]{6}|[A-Z0-9]{1,16}-[A-Z0-9]{6})$/.test(code)) {

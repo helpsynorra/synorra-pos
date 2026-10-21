@@ -20,6 +20,8 @@ import {
   getFreshStore,
   getOwnerAccounts,
   getCommunePromotionRecords,
+  createCommunePromotionBatchRecord,
+  setCommunePromotionBatchPaymentStatus,
   getStore,
   initializeOwnerStore,
   insertOwnerPromotionRecord,
@@ -440,6 +442,12 @@ export async function generateCommunePromotionCodes(
   const batchId = randomUUID();
   const promos: PromotionCode[] = [];
   try {
+    await createCommunePromotionBatchRecord(batchId, {
+      discountType,
+      discountValue: Math.round(value * 100) / 100,
+      eventHost: normalizedEventHost,
+      expiresAt,
+    }, codeCount);
     for (let index = 0; index < codeCount; index += 1) {
       promos.push(await insertCommunePromotionRecord({
         discountType,
@@ -458,6 +466,27 @@ export async function generateCommunePromotionCodes(
       error: error instanceof Error ? error.message : "Could not generate Commune vouchers.",
       promos,
     };
+  }
+}
+
+export async function updateCommunePromotionBatchPaymentStatus(
+  batchId: string,
+  paymentStatus: "not_paid" | "paid",
+) {
+  await requireAdmin();
+  const normalizedBatchId = batchId.trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalizedBatchId)) {
+    return { error: "Invalid Commune voucher batch." };
+  }
+  if (paymentStatus !== "not_paid" && paymentStatus !== "paid") {
+    return { error: "Choose Not Paid or Paid." };
+  }
+  try {
+    await setCommunePromotionBatchPaymentStatus(normalizedBatchId, paymentStatus);
+    refresh();
+    return { ok: true as const, batchId: normalizedBatchId, paymentStatus };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Could not update the payment status." };
   }
 }
 

@@ -35,6 +35,7 @@ let queue: Promise<unknown> = Promise.resolve();
 let memoryStore: StoreData | null = null;
 let memoryStoreReadAt = 0;
 let memoryCommunePromotions: PromotionCode[] = [];
+const memoryCommunePromotionPayments = new Map<string, "not_paid" | "paid">();
 const tenantContext = new AsyncLocalStorage<string | null>();
 const tenantStoreCache = new Map<string, { store: StoreData; readAt: number }>();
 const GLOBAL_STORE_KEY = "__all_owners__";
@@ -2023,13 +2024,53 @@ function communePromotionFromRow(row: Record<string, unknown>): PromotionCode {
 }
 
 export async function getCommunePromotionRecords(): Promise<PromotionCode[]> {
-  if (!isRealSupabaseConfigured()) return [...memoryCommunePromotions];
-  const { data, error } = await supabaseAdmin()
-    .from("commune_promotions")
-    .select("code,batch_id,approval_status,created_at,discount_type,discount_value,event_host,expires_at,redeemed_at,redeemed_order_id")
-    .order("created_at", { ascending: false });
+  if (!isRealSupabaseConfigured()) {
+    return memoryCommunePromotions.map((promo) => ({
+      ...promo,
+      paymentStatus: promo.batchId ? memoryCommunePromotionPayments.get(promo.batchId) ?? "not_paid" : "not_paid",
+    }));
+  }
+  const db = supabaseAdmin();
+  const [promotionsResult, batchesResult] = await Promise.all([
+    db.from("commune_promotions")
+      .select("code,batch_id,approval_status,created_at,discount_type,discount_value,event_host,expires_at,redeemed_at,redeemed_order_id")
+      .order("created_at", { ascending: false }),
+    db.from("commune_promotion_batches").select("batch_id,payment_status"),
+  ]);
+  const { data, error } = promotionsResult;
   if (error) throw new Error(`Unable to read Commune promotion codes: ${error.message}`);
-  return (data ?? []).map((row) => communePromotionFromRow(row));
+  if (batchesResult.error) throw new Error(`Unable to read Commune promotion batch payment status: ${batchesResult.error.message}`);
+  const paymentByBatch = new Map((batchesResult.data ?? []).map((batch) => [
+    String(batch.batch_id),
+    batch.payment_status === "paid" ? "paid" as const : "not_paid" as const,
+  ]));
+  return (data ?? []).map((row) => ({
+    ...communePromotionFromRow(row),
+    paymentStatus: row.batch_id ? paymentByBatch.get(String(row.batch_id)) ?? "not_paid" : "not_paid",
+  }));
+}
+
+export async function createCommunePromotionBatchRecord(
+  batchId: string,
+  input: Pick<PromotionCode, "discountType" | "discountValue" | "eventHost" | "expiresAt">,
+  voucherCount: number,
+): Promise<void> {
+  if (!isRealSupabaseConfigured()) {
+    memoryCommunePromotionPayments.set(batchId, "not_paid");
+    return;
+  }
+  const { error } = await supabaseAdmin().from("commune_promotion_batches").insert({
+    batch_id: batchId,
+    event_host: input.eventHost ?? "",
+    discount_type: input.discountType,
+    discount_value: input.discountValue,
+    expires_at: input.expiresAt,
+    voucher_count: voucherCount,
+    approval_status: "pending",
+    payment_status: "not_paid",
+    ready: false,
+  });
+  if (error) throw new Error(`Could not create Commune voucher batch: ${error.message}`);
 }
 
 export async function insertCommunePromotionRecord(
@@ -2041,14 +2082,14 @@ export async function insertCommunePromotionRecord(
   const makeCode = () => `${prefix}-${Array.from({ length: 6 }, () => alphabet[randomInt(alphabet.length)]).join("")}`;
   if (!isRealSupabaseConfigured()) {
     let promo: PromotionCode;
-    do { promo = { code: makeCode(), batchId, approvalStatus: "pending", createdAt: new Date().toISOString(), ...input }; }
+    do { promo = { code: makeCode(), batchId, approvalStatus: "pending", paymentStatus: "not_paid", createdAt: new Date().toISOString(), ...input }; }
     while (memoryCommunePromotions.some((entry) => entry.code === promo.code));
     memoryCommunePromotions = [promo, ...memoryCommunePromotions];
     return promo;
   }
 
   for (let attempt = 0; attempt < 12; attempt += 1) {
-    const promo: PromotionCode = { code: makeCode(), batchId, approvalStatus: "pending", ...input };
+    const promo: PromotionCode = { code: makeCode(), batchId, approvalStatus: "pending", paymentStatus: "not_paid", ...input };
     const { error } = await supabaseAdmin().from("commune_promotions").insert({
       code: promo.code,
       batch_id: batchId,
@@ -2067,21 +2108,57 @@ export async function insertCommunePromotionRecord(
 
 export async function markCommunePromotionBatchReady(batchId: string): Promise<void> {
   if (!isRealSupabaseConfigured()) return;
-  const { error } = await supabaseAdmin()
+  const db = supabaseAdmin();
+  const { error: promotionsError } = await db
     .from("commune_promotions")
     .update({ batch_ready: true })
     .eq("batch_id", batchId)
     .eq("approval_status", "pending");
-  if (error) throw new Error(`Could not finish Commune voucher batch: ${error.message}`);
+  if (promotionsError) throw new Error(`Could not finish Commune voucher batch: ${promotionsError.message}`);
+  const { count, error: countError } = await db.from("commune_promotions")
+    .select("code", { count: "exact", head: true })
+    .eq("batch_id", batchId);
+  if (countError) throw new Error(`Could not count Commune voucher batch: ${countError.message}`);
+  const { error: batchError } = await db.from("commune_promotion_batches")
+    .update({ ready: true, voucher_count: count ?? 0 })
+    .eq("batch_id", batchId)
+    .eq("approval_status", "pending");
+  if (batchError) throw new Error(`Could not finish Commune voucher batch: ${batchError.message}`);
+}
+
+export async function setCommunePromotionBatchPaymentStatus(
+  batchId: string,
+  paymentStatus: "not_paid" | "paid",
+): Promise<void> {
+  if (!isRealSupabaseConfigured()) {
+    memoryCommunePromotionPayments.set(batchId, paymentStatus);
+    memoryCommunePromotions = memoryCommunePromotions.map((promo) => promo.batchId === batchId ? { ...promo, paymentStatus } : promo);
+    return;
+  }
+  const { data, error } = await supabaseAdmin().rpc("set_commune_promotion_batch_payment_status", {
+    p_batch_id: batchId,
+    p_payment_status: paymentStatus,
+  });
+  if (error) throw new Error(`Could not update Commune voucher payment status: ${error.message}`);
+  if (!Number(data)) throw new Error("Commune voucher batch was not found or is not ready yet.");
 }
 
 export async function deleteCommunePromotionRecord(code: string): Promise<void> {
   if (!isRealSupabaseConfigured()) {
+    const existing = memoryCommunePromotions.find((promo) => promo.code === code);
+    if (existing?.redeemedAt) throw new Error("Used Commune vouchers cannot be deleted.");
     memoryCommunePromotions = memoryCommunePromotions.filter((promo) => promo.code !== code);
     return;
   }
-  const { error } = await supabaseAdmin().from("commune_promotions").delete().eq("code", code);
+  const { data, error } = await supabaseAdmin()
+    .from("commune_promotions")
+    .delete()
+    .eq("code", code)
+    .is("redeemed_at", null)
+    .select("code")
+    .maybeSingle();
   if (error) throw new Error(`Could not delete Commune voucher: ${error.message}`);
+  if (!data) throw new Error("Used or missing Commune vouchers cannot be deleted.");
 }
 
 export async function upsertStaffUserRecord(user: StaffUser): Promise<void> {

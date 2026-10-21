@@ -58,6 +58,7 @@ export function AdminShell({ session, users, store, children }: AdminShellProps)
         <UserManager
           users={users.filter((user) => user.role !== "admin")}
           session={session}
+          orders={session.role === "admin" ? store.orders : []}
           loginActivity={store.loginActivity ?? []}
           offRequests={store.offRequests ?? []}
           showAdminRole={false}

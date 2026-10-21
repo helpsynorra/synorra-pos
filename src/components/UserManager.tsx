@@ -13,6 +13,7 @@ import {
   updateStaffSessionTimes,
   deleteStaffSession,
   generateCommunePromotionCodes,
+  updateCommunePromotionBatchPaymentStatus,
   updateOwnerPermissions,
   generateOwnerPromotionCode,
   getCommunePromotionCodes,
@@ -23,7 +24,8 @@ import type { PublicStaffUser } from "@/lib/users";
 import { DEFAULT_STAFF_PERMISSIONS } from "@/lib/users";
 import { phDateString, phDateTimeInputValue, phDateTimeLabel } from "@/lib/datetime";
 import { pairLoginSessions, type StaffSession } from "@/lib/staff-sessions";
-import type { LoginActivity, OffRequest, PromotionCode, Session, StaffPermissions } from "@/lib/types";
+import type { LoginActivity, OffRequest, Order, PromotionCode, Session, StaffPermissions } from "@/lib/types";
+import { formatMoney } from "@/lib/menu";
 
 const field =
   "w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm text-neutral-900 outline-none transition-all focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900";
@@ -33,6 +35,7 @@ const adminField =
 type UserManagerProps = {
   users: PublicStaffUser[];
   session: Session;
+  orders?: Order[];
   loginActivity: LoginActivity[];
   offRequests: OffRequest[];
   showShiftTabs?: boolean;
@@ -102,7 +105,7 @@ const adminPermissionGroups: {
   },
 ];
 
-export function UserManager({ users, session, loginActivity, offRequests, showShiftTabs = true, showAdminRole = true, showOwnerRole = true, showBaristaRole = true, showBaristasOnly = false, showEditStaffButton = true, showDeleteStaffButton = true, baristaOnlyStaffActions = false, showLoginLinksTab = true, showPrintButtonToggle = true, showViewPermissionsButton = true, adminLoginPath }: UserManagerProps) {
+export function UserManager({ users, session, orders = [], loginActivity, offRequests, showShiftTabs = true, showAdminRole = true, showOwnerRole = true, showBaristaRole = true, showBaristasOnly = false, showEditStaffButton = true, showDeleteStaffButton = true, baristaOnlyStaffActions = false, showLoginLinksTab = true, showPrintButtonToggle = true, showViewPermissionsButton = true, adminLoginPath }: UserManagerProps) {
   const [tab, setTab] = useState<SubTab>("staff");
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
   const [name, setName] = useState("");
@@ -117,6 +120,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
   );
   const [selectedPermissionOwnerId, setSelectedPermissionOwnerId] = useState<string | null>(null);
   const [communePromoCodes, setCommunePromoCodes] = useState<PromotionCode[]>([]);
+  const [showVoucherTotals, setShowVoucherTotals] = useState(false);
   const [promoCodeRecords, setPromoCodeRecords] = useState<Record<string, PromotionCode[]>>(
     () => Object.fromEntries(users.map((user) => [user.id, user.permissions?.promoCodes ?? []])),
   );
@@ -170,6 +174,40 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
     : uniqueUsers;
   const ownerUsers = visibleUsers.filter((user) => user.role === "cashier");
   const isAdminConsole = session.role === "admin";
+  const communeVoucherOrderBreakdown = useMemo(() => {
+    const today = phDateString();
+    const activeRedeemedPromos = communePromoCodes.filter(
+      (promo) => promo.redeemedAt && (!promo.expiresAt || phDateString(promo.expiresAt) >= today),
+    );
+    const redeemedVoucherByCode = new Map(activeRedeemedPromos.map((promo) => [promo.code.trim().toUpperCase(), promo] as const));
+    const normalizeOrderId = (value: string) => value.trim().replace(/^#/, "").toUpperCase();
+    const redeemedVoucherByOrderId = new Map(
+      activeRedeemedPromos.flatMap((promo) => promo.redeemedOrderId
+        ? [[normalizeOrderId(promo.redeemedOrderId), promo] as const]
+        : []),
+    );
+    return orders
+      .flatMap((order) => {
+        if (order.voided || order.voidReason?.trim() || order.deletedAt || order.recordType === "Purchase") return [];
+        const promo = (order.promoLabel ? redeemedVoucherByCode.get(order.promoLabel.trim().toUpperCase()) : undefined) ??
+          redeemedVoucherByOrderId.get(normalizeOrderId(order.id)) ??
+          (order.ticketNo ? redeemedVoucherByOrderId.get(normalizeOrderId(order.ticketNo)) : undefined);
+        if (!promo) return [];
+        const items = order.items.map((item) => {
+          const addonsTotal = (item.addons ?? []).reduce((sum, addon) => sum + addon.price * Math.max(1, Number(addon.qty) || 1), 0);
+          return { ...item, lineTotal: item.qty * (item.price + addonsTotal) };
+        });
+        return [{
+          order,
+          voucherCode: promo.code,
+          items,
+          itemsTotal: items.reduce((sum, item) => sum + item.lineTotal, 0),
+        }];
+      })
+      .sort((left, right) => right.order.createdAt.localeCompare(left.order.createdAt));
+  }, [communePromoCodes, orders]);
+  const totalCommuneVoucherItems = communeVoucherOrderBreakdown.reduce((sum, entry) => sum + entry.itemsTotal, 0);
+  const totalCommuneVoucherDiscount = communeVoucherOrderBreakdown.reduce((sum, entry) => sum + (entry.order.discount ?? 0), 0);
   const editing = visibleUsers.find((user) => user.id === editingId) ?? null;
   const floorStaff = visibleUsers.filter((user) =>
     baristaOnlyStaffActions ? user.role === "barista" : user.role !== "admin",
@@ -488,7 +526,20 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
             const host = promo.eventHost?.trim() || "No host assigned";
             promosByHost.set(host, [...(promosByHost.get(host) ?? []), promo]);
           }
-          const hostGroups = [...promosByHost].sort(([left], [right]) => left.localeCompare(right));
+          const hostGroups = [...promosByHost]
+            .sort(([left], [right]) => left.localeCompare(right))
+            .map(([host, hostPromos]) => {
+              const batches = new Map<string, PromotionCode[]>();
+              for (const promo of hostPromos) {
+                const batchKey = promo.batchId ?? `legacy-${promo.code}`;
+                batches.set(batchKey, [...(batches.get(batchKey) ?? []), promo]);
+              }
+              return {
+                host,
+                hostPromos,
+                batches: [...batches].map(([, batchPromos]) => ({ batchId: batchPromos[0]?.batchId ?? null, promos: batchPromos })),
+              };
+            });
           const canGenerate = Boolean(
               !pending &&
               expiry &&
@@ -566,12 +617,86 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                     </div>
                   </div>
 
+                  <div className="flex flex-col gap-4 rounded-xl border border-[#e3eaf4] bg-[#f8faff] p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-[#7587a3]">Total discounts given</p>
+                      <p className="mt-1 text-2xl font-bold text-emerald-700">{formatMoney(totalCommuneVoucherDiscount)}</p>
+                      <p className="mt-1 text-xs text-[#8091ab]">From redeemed voucher orders that were not voided.</p>
+                    </div>
+                    <button type="button" onClick={() => setShowVoucherTotals(true)} disabled={!communeVoucherOrderBreakdown.length} className="rounded-lg border border-emerald-200 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50">View Total</button>
+                  </div>
+
+                  {showVoucherTotals ? (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#17243e]/50 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowVoucherTotals(false); }}>
+                      <section role="dialog" aria-modal="true" aria-labelledby="commune-voucher-total-title" className="max-h-[85vh] w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-xl">
+                        <header className="flex items-start justify-between gap-4 border-b border-[#e3eaf4] px-6 py-5">
+                          <div>
+                            <h2 id="commune-voucher-total-title" className="text-lg font-bold text-[#17243e]">Voucher order item totals</h2>
+                            <p className="mt-1 text-sm text-[#7587a3]">Items from redeemed voucher orders that were not voided.</p>
+                          </div>
+                          <button type="button" onClick={() => setShowVoucherTotals(false)} className="rounded-lg px-3 py-1.5 text-sm font-semibold text-[#536783] hover:bg-[#f3f6fb]">Close</button>
+                        </header>
+                        <div className="max-h-[calc(85vh-150px)] space-y-4 overflow-y-auto p-6">
+                          {communeVoucherOrderBreakdown.length ? communeVoucherOrderBreakdown.map(({ order, voucherCode, items, itemsTotal }) => (
+                            <article key={order.id} className="overflow-hidden rounded-xl border border-[#e3eaf4]">
+                              <div className="flex flex-wrap items-center justify-between gap-2 bg-[#f8faff] px-4 py-3 text-sm">
+                                <div className="space-x-2"><span className="font-bold text-[#17243e]">Order {order.ticketNo || order.id}</span><span className="text-[#7587a3]">ID: {order.id}</span></div>
+                                <span className="font-semibold text-[#4353ff]">Voucher: {voucherCode}</span>
+                              </div>
+                              <div className="divide-y divide-[#edf1f7]">
+                                {items.map((item, index) => (
+                                  <div key={`${item.productId}-${index}`} className="flex justify-between gap-4 px-4 py-3 text-sm">
+                                    <span className="text-[#405475]">{item.name}{item.style ? ` (${item.style})` : ""} × {item.qty}</span>
+                                    <span className="shrink-0 font-medium text-[#17243e]">{formatMoney(item.lineTotal)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="flex justify-between border-t border-[#e3eaf4] px-4 py-3 text-sm font-bold text-[#17243e]"><span>Total of items</span><span>{formatMoney(itemsTotal)}</span></div>
+                              <div className="flex justify-between border-t border-[#e3eaf4] bg-emerald-50/60 px-4 py-3 text-sm font-bold text-emerald-800"><span>Discount to pay for this voucher</span><span>{formatMoney(order.discount ?? 0)}</span></div>
+                            </article>
+                          )) : <p className="text-sm text-[#7587a3]">No redeemed voucher orders that were not voided.</p>}
+                        </div>
+                        <footer className="space-y-2 border-t border-[#e3eaf4] bg-[#f8faff] px-6 py-4 font-bold text-[#17243e]">
+                          <div className="flex justify-between"><span>Total discounts to pay Commune</span><span className="text-emerald-700">{formatMoney(totalCommuneVoucherDiscount)}</span></div>
+                          <div className="flex justify-between text-sm text-[#536783]"><span>Total value of items ordered</span><span>{formatMoney(totalCommuneVoucherItems)}</span></div>
+                        </footer>
+                      </section>
+                    </div>
+                  ) : null}
+
                   <div className="space-y-4">
-                    {promos.length === 0 ? <p className="p-4 text-sm text-neutral-500">No Commune website vouchers generated.</p> : hostGroups.map(([host, hostPromos]) => (
+                    {promos.length === 0 ? <p className="p-4 text-sm text-neutral-500">No Commune website vouchers generated.</p> : hostGroups.map(({ host, hostPromos, batches }) => (
                       <section key={host} aria-label={`Commune vouchers for ${host}`} className="overflow-hidden rounded-xl border border-[#e3eaf4] bg-white">
                         <div className="bg-[#f8faff] px-4 py-3 text-sm font-semibold text-[#172849]">{host}<span className="ml-2 text-xs font-medium text-[#8091ab]">{hostPromos.length} voucher{hostPromos.length === 1 ? "" : "s"}</span></div>
                         <div className="hidden grid-cols-[1.2fr_0.75fr_0.75fr_0.9fr_1.1fr_1fr_0.9fr_0.8fr_auto] gap-3 border-t border-[#e3eaf4] bg-[#f5f8fc] px-4 py-2.5 text-[10px] font-semibold tracking-wide text-[#7587a3] uppercase sm:grid"><span>Code</span><span>Discount</span><span>Prefix</span><span>Total items</span><span>Event Host</span><span>Expires</span><span>Approval</span><span>Status</span><span className="text-right">Actions</span></div>
-                        <div className="divide-y divide-[#edf1f7]">{hostPromos.map((promo) => (
+                        {batches.map(({ batchId, promos: batchPromos }) => (
+                          <div key={batchId ?? batchPromos[0]?.code} className="border-t border-[#edf1f7] first:border-t-0">
+                            <div className="flex flex-wrap items-center justify-between gap-3 bg-[#fbfcff] px-4 py-2.5">
+                              <span className="text-xs font-semibold text-[#536783]">Promo batch · {batchPromos.length} voucher{batchPromos.length === 1 ? "" : "s"}</span>
+                              <label className="flex items-center gap-2 text-xs font-medium text-[#586b89]">
+                                <span>Payment Status</span>
+                                <select
+                                  aria-label={`Payment status for ${host} batch ${batchId ?? "legacy"}`}
+                                  value={batchPromos[0]?.paymentStatus === "paid" ? "paid" : "not_paid"}
+                                  disabled={!batchId || pending}
+                                  onChange={(event) => {
+                                    if (!batchId) return;
+                                    const nextStatus = event.target.value as "not_paid" | "paid";
+                                    startTransition(async () => {
+                                      const result = await updateCommunePromotionBatchPaymentStatus(batchId, nextStatus);
+                                      if ("error" in result && result.error) { setNotice(result.error); return; }
+                                      setCommunePromoCodes((current) => current.map((promo) => promo.batchId === batchId ? { ...promo, paymentStatus: nextStatus } : promo));
+                                      setNotice(`${host} promotion payment status updated to ${nextStatus === "paid" ? "Paid" : "Not Paid"}.`);
+                                    });
+                                  }}
+                                  className="h-9 rounded-lg border border-[#dce6f4] bg-white px-3 text-xs text-[#243a5e] outline-none focus:border-[#5363ff] disabled:opacity-60"
+                                >
+                                  <option value="not_paid">Not Paid</option>
+                                  <option value="paid">Paid</option>
+                                </select>
+                              </label>
+                            </div>
+                            <div className="divide-y divide-[#edf1f7]">{batchPromos.map((promo) => (
                       <div key={promo.code} className="grid grid-cols-2 gap-2 border-t border-[#edf1f7] px-4 py-3 text-xs text-[#405475] sm:grid-cols-[1.2fr_0.75fr_0.75fr_0.9fr_1.1fr_1fr_0.9fr_0.8fr_auto] sm:items-center sm:gap-3">
                         <span className="font-mono font-semibold tracking-widest">{promo.code}</span>
                         <span>{promo.discountType === "item" ? `${promo.discountValue || 1} free item${(promo.discountValue || 1) === 1 ? "" : "s"}` : promo.discountType === "percent" ? `${promo.discountValue}% off` : `PHP ${promo.discountValue} off`}</span>
@@ -581,7 +706,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                         <span>{promo.expiresAt ? phDateString(promo.expiresAt) : "No expiry"}</span>
                         <span className={promo.approvalStatus === "pending" ? "font-semibold text-amber-700" : promo.approvalStatus === "declined" ? "font-semibold text-rose-700" : "font-semibold text-emerald-700"}>{promo.approvalStatus === "pending" ? "Pending" : promo.approvalStatus === "declined" ? "Declined" : "Approved"}</span>
                         <span className={promo.redeemedAt ? "text-neutral-400" : isPromotionExpired(promo) ? "text-amber-700" : "text-emerald-700"}>{promo.redeemedAt ? "Used" : isPromotionExpired(promo) ? "Expired" : "Active"}</span>
-                        <button type="button" aria-label={`Delete Commune voucher ${promo.code}`} disabled={pending} onClick={() => {
+                        <button type="button" aria-label={`Delete Commune voucher ${promo.code}`} title={promo.redeemedAt ? "Used vouchers cannot be deleted." : undefined} disabled={pending || Boolean(promo.redeemedAt)} onClick={() => {
                           if (!window.confirm(`Delete promo voucher ${promo.code}?`)) return;
                           startTransition(async () => {
                             const result = await deleteCommunePromotionCode(promo.code);
@@ -589,9 +714,11 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                             setCommunePromoCodes((current) => current.filter((entry) => entry.code !== promo.code));
                             setNotice(`Promo voucher ${promo.code} deleted.`);
                           });
-                        }} className="justify-self-start rounded-full border border-[#ffd6d9] bg-[#fff8f8] px-3 py-1.5 text-[11px] font-medium text-[#f04452] transition hover:bg-[#fff0f1] disabled:opacity-40 sm:justify-self-end">Delete</button>
+                        }} className="justify-self-start rounded-full border border-[#ffd6d9] bg-[#fff8f8] px-3 py-1.5 text-[11px] font-medium text-[#f04452] transition hover:bg-[#fff0f1] disabled:cursor-not-allowed disabled:opacity-40 sm:justify-self-end">{promo.redeemedAt ? "Used" : "Delete"}</button>
                       </div>
-                        ))}</div>
+                            ))}</div>
+                          </div>
+                        ))}
                       </section>
                     ))}
                   </div>
