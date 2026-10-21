@@ -483,6 +483,12 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
           const itemCount = promoItemCountDrafts[communeDraftId] ?? 1;
           const value = promoValueDrafts[communeDraftId] ?? 10;
           const promos = communePromoCodes;
+          const promosByHost = new Map<string, PromotionCode[]>();
+          for (const promo of promos) {
+            const host = promo.eventHost?.trim() || "No host assigned";
+            promosByHost.set(host, [...(promosByHost.get(host) ?? []), promo]);
+          }
+          const hostGroups = [...promosByHost].sort(([left], [right]) => left.localeCompare(right));
           const canGenerate = Boolean(
               !pending &&
               expiry &&
@@ -560,9 +566,12 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                     </div>
                   </div>
 
-                  <div className="overflow-hidden rounded-xl border border-[#e3eaf4]">
-                    <div className="hidden grid-cols-[1.2fr_0.75fr_0.75fr_0.9fr_1.1fr_1fr_0.9fr_0.8fr_auto] gap-3 bg-[#f5f8fc] px-4 py-2.5 text-[10px] font-semibold tracking-wide text-[#7587a3] uppercase sm:grid"><span>Code</span><span>Discount</span><span>Prefix</span><span>Total items</span><span>Event Host</span><span>Expires</span><span>Approval</span><span>Status</span><span className="text-right">Actions</span></div>
-                    {promos.length === 0 ? <p className="p-4 text-sm text-neutral-500">No Commune website vouchers generated.</p> : promos.map((promo) => (
+                  <div className="space-y-4">
+                    {promos.length === 0 ? <p className="p-4 text-sm text-neutral-500">No Commune website vouchers generated.</p> : hostGroups.map(([host, hostPromos]) => (
+                      <section key={host} aria-label={`Commune vouchers for ${host}`} className="overflow-hidden rounded-xl border border-[#e3eaf4] bg-white">
+                        <div className="bg-[#f8faff] px-4 py-3 text-sm font-semibold text-[#172849]">{host}<span className="ml-2 text-xs font-medium text-[#8091ab]">{hostPromos.length} voucher{hostPromos.length === 1 ? "" : "s"}</span></div>
+                        <div className="hidden grid-cols-[1.2fr_0.75fr_0.75fr_0.9fr_1.1fr_1fr_0.9fr_0.8fr_auto] gap-3 border-t border-[#e3eaf4] bg-[#f5f8fc] px-4 py-2.5 text-[10px] font-semibold tracking-wide text-[#7587a3] uppercase sm:grid"><span>Code</span><span>Discount</span><span>Prefix</span><span>Total items</span><span>Event Host</span><span>Expires</span><span>Approval</span><span>Status</span><span className="text-right">Actions</span></div>
+                        <div className="divide-y divide-[#edf1f7]">{hostPromos.map((promo) => (
                       <div key={promo.code} className="grid grid-cols-2 gap-2 border-t border-[#edf1f7] px-4 py-3 text-xs text-[#405475] sm:grid-cols-[1.2fr_0.75fr_0.75fr_0.9fr_1.1fr_1fr_0.9fr_0.8fr_auto] sm:items-center sm:gap-3">
                         <span className="font-mono font-semibold tracking-widest">{promo.code}</span>
                         <span>{promo.discountType === "item" ? `${promo.discountValue || 1} free item${(promo.discountValue || 1) === 1 ? "" : "s"}` : promo.discountType === "percent" ? `${promo.discountValue}% off` : `PHP ${promo.discountValue} off`}</span>
@@ -582,6 +591,8 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                           });
                         }} className="justify-self-start rounded-full border border-[#ffd6d9] bg-[#fff8f8] px-3 py-1.5 text-[11px] font-medium text-[#f04452] transition hover:bg-[#fff0f1] disabled:opacity-40 sm:justify-self-end">Delete</button>
                       </div>
+                        ))}</div>
+                      </section>
                     ))}
                   </div>
               </>
