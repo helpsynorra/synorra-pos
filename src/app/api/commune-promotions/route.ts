@@ -49,6 +49,18 @@ export async function POST(request: NextRequest) {
       if (available.error) throw available.error;
       if (hostRows.error) throw hostRows.error;
       if (redeemed.error) throw redeemed.error;
+      const manilaDateOnly = (value: string) => {
+        const date = new Date(value);
+        if (!Number.isFinite(date.getTime())) return "";
+        const parts = new Intl.DateTimeFormat("en-US", {
+          timeZone: "Asia/Manila",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).formatToParts(date);
+        const part = (type: string) => parts.find((entry) => entry.type === type)?.value ?? "";
+        return `${part("year")}-${part("month")}-${part("day")}`;
+      };
       const { data: pendingRows, error: pendingError } = await db.from("commune_promotions")
         .select("batch_id,code,event_host,created_at,expires_at,discount_type,discount_value")
         .eq("approval_status", "pending")
@@ -62,6 +74,8 @@ export async function POST(request: NextRequest) {
         eventHost: string;
         createdAt: string;
         expiresAt: string;
+        expiresOn: string;
+        discount: number;
         discountType: string;
         discountValue: number;
       }>();
@@ -73,24 +87,14 @@ export async function POST(request: NextRequest) {
           eventHost: String(row.event_host ?? "").trim() || "No host assigned",
           createdAt: String(row.created_at),
           expiresAt: String(row.expires_at),
+          expiresOn: manilaDateOnly(String(row.expires_at)),
+          discount: Number(row.discount_value),
           discountType: String(row.discount_type),
           discountValue: Number(row.discount_value),
         };
         batch.voucherCount += 1;
         pendingBatches.set(batchId, batch);
       }
-      const manilaDateOnly = (value: string) => {
-        const date = new Date(value);
-        if (!Number.isFinite(date.getTime())) return "";
-        const parts = new Intl.DateTimeFormat("en-US", {
-          timeZone: "Asia/Manila",
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-        }).formatToParts(date);
-        const part = (type: string) => parts.find((entry) => entry.type === type)?.value ?? "";
-        return `${part("year")}-${part("month")}-${part("day")}`;
-      };
       const hostCounts = new Map<string, { availableCount: number; redeemedCount: number }>();
       const expirationGroups = new Map<string, Map<string, { availableCount: number; redeemedCount: number }>>();
       for (const row of hostRows.data ?? []) {
