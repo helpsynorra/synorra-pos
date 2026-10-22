@@ -37,7 +37,7 @@ import {
   upsertStaffUserRecord,
 } from "@/lib/store";
 import { phDateString, phIsoFromDateTimeInput } from "@/lib/datetime";
-import { openBaristaShifts, pairLoginSessions } from "@/lib/staff-sessions";
+import { isAttendanceStaffRole, openBaristaShifts, pairLoginSessions } from "@/lib/staff-sessions";
 import {
   canUsePos,
   parseRole,
@@ -79,7 +79,7 @@ function hasBaristaCredentials(user: StaffUser, username: string, password: stri
   const passwordMatches = user.password.startsWith("$2")
     ? bcrypt.compareSync(normalizedPassword, user.password)
     : user.password.trim() === normalizedPassword;
-  return user.role === "barista" &&
+  return (user.role === "barista" || user.role === "pos_cashier") &&
     user.password.trim().length > 0 &&
     passwordMatches &&
     (user.username.trim().toLowerCase() === normalizedUsername ||
@@ -122,7 +122,7 @@ function parseStaff(input: {
   if (!name) return { error: "Enter a display name." };
 
   const title =
-    role === "barista"
+    role === "barista" || role === "pos_cashier"
       ? (input.title.trim() || "Barista")
       : role === "cashier"
         ? "Owner"
@@ -174,8 +174,8 @@ export async function createStaffUser(input: {
   }
   const parsed = parseStaff({ ...input, requirePassword: true });
   if ("error" in parsed) return parsed;
-  if (session.role === "cashier" && parsed.role !== "barista") {
-    return { error: "Owners can only create Barista accounts." };
+  if (session.role === "cashier" && parsed.role !== "barista" && parsed.role !== "pos_cashier") {
+    return { error: "Owners can only create staff accounts." };
   }
 
   const store = session.role === "admin" && parsed.role === "cashier"
@@ -584,8 +584,8 @@ export async function deleteStaffUser(id: string) {
   if (!user) {
     return { error: "Staff account not found." };
   }
-  if (session.role === "cashier" && user.role !== "barista") {
-    return { error: "Owners can only delete Barista accounts." };
+  if (session.role === "cashier" && user.role !== "barista" && user.role !== "pos_cashier") {
+    return { error: "Owners can only delete staff accounts." };
   }
   const admins = store.users.filter((entry) => entry.role === "admin");
   if (user.role === "admin" && admins.length < 2) {
@@ -607,7 +607,7 @@ export async function punchStaff(userId: string, type: "login" | "logout") {
   let activity: LoginActivity | undefined;
   await updateStore((store) => {
     const user = store.users.find((entry) => entry.id === userId);
-    if (!user || user.role === "admin") {
+    if (!user || !isAttendanceStaffRole(user.role)) {
       error = "Pick a staff member.";
       return;
     }
@@ -657,7 +657,7 @@ export async function punchBaristaShift(input: {
         );
       });
       if (!user || !hasBaristaCredentials(user, username, password)) {
-        error = "Use a barista account to clock in here.";
+        error = "Use a staff account to clock in here.";
         return;
       }
       if (openShifts.some((shift) => shift.userId === user.id)) {
@@ -665,7 +665,7 @@ export async function punchBaristaShift(input: {
         error = `${user.name} is already clocked in.`;
         return;
       }
-      activity = appendPunch(store, user, "login", "barista");
+      activity = appendPunch(store, user, "login");
       punched = { id: user.id, name: user.name, username: user.username };
       return;
     }
@@ -673,19 +673,19 @@ export async function punchBaristaShift(input: {
     const userId = String(input.userId ?? "").trim();
     const open = openShifts.find((shift) => shift.userId === userId) ?? (userId ? null : openShifts[0]);
     if (!open) {
-      error = "That barista is not clocked in.";
+      error = "That staff member is not clocked in.";
       return;
     }
     const user = store.users.find((entry) => entry.id === open.userId);
     if (!user) {
-      error = "Barista account not found.";
+      error = "Staff account not found.";
       return;
     }
     if (!hasBaristaCredentials(user, input.username ?? "", input.password ?? "")) {
-      error = "Use the on-shift Barista's own username and password to clock out.";
+      error = "Use the on-shift staff member's own username and password to clock out.";
       return;
     }
-    activity = appendPunch(store, user, "logout", "barista");
+    activity = appendPunch(store, user, "logout");
     punched = { id: user.id, name: user.name, username: user.username };
   });
 

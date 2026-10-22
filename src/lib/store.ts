@@ -288,6 +288,9 @@ function formatDbStaffTitle(user: StaffUser): string {
   if (user.role === "cashier") {
     return "Owner";
   }
+  if (user.role === "pos_cashier") {
+    return "Cashier";
+  }
   return rawTitle || "Barista";
 }
 
@@ -715,7 +718,7 @@ async function readStore(options?: { fresh?: boolean; ownerId?: string | null })
               },
               name: row.name,
               role: parseRole(String(row.role ?? row.title ?? ""), String(row.title ?? row.username ?? "")),
-              title: row.role === "admin" ? "Admin" : row.role === "cashier" ? "Owner" : row.title || "Barista",
+              title: row.role === "admin" ? "Admin" : row.role === "cashier" ? "Owner" : row.role === "pos_cashier" ? "Cashier" : row.title || "Barista",
             },
           ]),
         ).values(),
@@ -2839,7 +2842,7 @@ export async function recordAuthActivity(entry: {
   role: Role;
   type: LoginActivity["type"];
 }) {
-  if (entry.role === "admin") return;
+  if (entry.role === "admin" || entry.role === "cashier") return;
 
   await insertLoginActivityRecord({
     id: `auth-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,

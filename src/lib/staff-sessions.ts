@@ -12,6 +12,10 @@ export type StaffSession = {
   logoutAt: string | null;
 };
 
+export function isAttendanceStaffRole(role: Role): role is "barista" | "pos_cashier" {
+  return role === "barista" || role === "pos_cashier";
+}
+
 export function pairLoginSessions(records: LoginActivity[]): StaffSession[] {
   const chronological = [...records]
     .filter(
@@ -59,5 +63,5 @@ export function pairLoginSessions(records: LoginActivity[]): StaffSession[] {
 }
 
 export function openBaristaShifts(records: LoginActivity[]): StaffSession[] {
-  return pairLoginSessions(records).filter((session) => session.role === "barista" && !session.logoutAt);
+  return pairLoginSessions(records).filter((session) => isAttendanceStaffRole(session.role) && !session.logoutAt);
 }

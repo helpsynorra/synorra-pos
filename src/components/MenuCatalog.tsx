@@ -221,8 +221,8 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
   }
 
   return (
-    <div className="min-h-screen min-w-0 space-y-6 rounded-none border-0 border-neutral-300 bg-white p-3 sm:rounded-xl sm:border sm:p-6">
-      <div className="flex gap-2 overflow-x-auto border-b border-neutral-400 pb-3">
+    <div className="min-h-[calc(100svh-65px)] min-w-0 space-y-5 bg-slate-50 p-3 sm:space-y-6 sm:p-5 xl:p-7 2xl:p-9">
+      <div className="flex w-fit max-w-full gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
         {(
           [
             { id: "items", label: "Items" },
@@ -233,8 +233,8 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
             key={entry.id}
             type="button"
             onClick={() => setTab(entry.id)}
-            className={`shrink-0 px-4 py-1.5 rounded text-xs font-bold transition shadow-sm uppercase ${
-              tab === entry.id ? "bg-black text-white" : "bg-white text-neutral-700 hover:bg-neutral-100"
+            className={`shrink-0 rounded-xl px-4 py-2 text-xs font-bold uppercase transition ${
+              tab === entry.id ? "bg-[#101d37] text-white shadow-sm" : "text-slate-600 hover:bg-[#edf4fc]"
             }`}
           >
             {entry.label}
@@ -251,7 +251,7 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
             <button
               type="button"
               onClick={startCreateItem}
-              className="rounded-full bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800"
+              className="rounded-full bg-[#101d37] px-4 py-2 text-sm font-medium text-white hover:bg-[#243a5e]"
             >
               Add item
             </button>
@@ -307,7 +307,7 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
               <button
                 type="submit"
                 disabled={pending || !newCategory.trim()}
-                className="w-full rounded-full bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-40 lg:w-auto"
+                className="w-full rounded-full bg-[#101d37] px-4 py-2 text-sm font-medium text-white hover:bg-[#243a5e] disabled:opacity-40 lg:w-auto"
               >
                 {pending ? "Saving..." : "Add category"}
               </button>
@@ -498,7 +498,7 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                   onClick={() => setFilter(name)}
                   className={`rounded-full px-3 py-1.5 text-xs font-medium ${
                     filter === name
-                      ? "bg-black text-white"
+                      ? "bg-[#101d37] text-white"
                       : "bg-white text-neutral-600 ring-1 ring-neutral-200 hover:text-black"
                   }`}
                 >
@@ -617,7 +617,7 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                               )
                             }
                             className={`rounded-full border px-3 py-1.5 text-xs font-medium ${
-                              on ? "border-black bg-black text-white" : "border-neutral-200 bg-white text-neutral-600"
+                              on ? "border-[#101d37] bg-[#101d37] text-white" : "border-neutral-200 bg-white text-neutral-600"
                             }`}
                           >
                             {drinkStyleLabel(style)}
@@ -1011,7 +1011,7 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                   <button
                     type="submit"
                     disabled={pending || !itemName.trim() || !itemCategory || categories.length === 0}
-                    className="rounded-full bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-40"
+                    className="rounded-full bg-[#101d37] px-4 py-2 text-sm font-medium text-white hover:bg-[#243a5e] disabled:opacity-40"
                   >
                     {pending ? "Saving..." : editingId === "new" ? "Add" : "Save"}
                   </button>

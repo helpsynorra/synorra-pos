@@ -166,7 +166,7 @@ class _DrinkOptionsDialogState extends State<DrinkOptionsDialog> {
 
                 // Dynamic Add-ons Section (Only shown when configured in Admin for this item)
                 if (widget.item.types.isNotEmpty) ...[
-                  const Text('TYPES (OPTIONAL)', style: TextStyle(
+                  const Text('TYPES', style: TextStyle(
                     fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8,
                     color: SynorraTheme.textMuted,
                   )),

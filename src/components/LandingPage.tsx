@@ -142,7 +142,8 @@ function DashboardPreview() {
 export function LandingPage() {
   return (
     <main className="overflow-hidden bg-[#f5f8fd] text-[#17243e]">
-      <header className="mx-auto flex max-w-7xl items-center justify-between px-5 py-5 sm:px-8 sm:py-6">
+      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 px-5 py-3 shadow-sm backdrop-blur sm:px-8">
+        <div className="mx-auto flex max-w-7xl items-center justify-between">
         <Link href="/" aria-label="Synorra home" className="flex items-center gap-2.5">
           <Image
             src="/images/logo-transparent.png"
@@ -150,42 +151,46 @@ export function LandingPage() {
             width={437}
             height={366}
             priority
-            sizes="132px"
-            className="h-12 w-[132px] object-cover"
+            sizes="100px"
+            className="h-9 w-[100px] object-cover"
           />
         </Link>
-        <nav className="hidden items-center gap-8 text-sm text-[#6e89a6] md:flex">
-          <a href="#features" className="transition hover:text-[#17243e]">Features</a>
-          <a href="#platform" className="transition hover:text-[#17243e]">Platform</a>
+        <nav className="hidden items-center gap-7 text-sm font-medium text-slate-500 md:flex">
+          <a href="#home" className="border-b-2 border-[#bd1010] px-1 py-3 text-[#101d37]">Home</a>
+          <a href="#about" className="px-1 py-3 transition hover:text-[#bd1010]">About</a>
+          <a href="#services" className="px-1 py-3 transition hover:text-[#bd1010]">Services</a>
+          <a href="#works" className="px-1 py-3 transition hover:text-[#bd1010]">Works</a>
+          <a href="#contact" className="px-1 py-3 transition hover:text-[#bd1010]">Contact</a>
         </nav>
-        <Link href="/back-office" className="rounded-full bg-[#101d37] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#1b2c50] sm:px-5 sm:text-sm">
-          Log in
+        <Link href="#contact" className="rounded-full bg-[#b90c0c] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#970909] sm:px-5 sm:text-sm">
+          Book a demo <span aria-hidden="true" className="ml-1">↗</span>
         </Link>
+        </div>
       </header>
 
-      <section className="relative px-5 pb-20 pt-12 sm:px-8 sm:pb-28 sm:pt-20">
+      <section id="home" className="relative scroll-mt-16 px-5 pb-20 pt-12 sm:px-8 sm:pb-28 sm:pt-20">
         <div className="pointer-events-none absolute -left-44 -top-40 h-[520px] w-[520px] rounded-full bg-[#dceeff]/85 blur-[100px]" />
         <div className="pointer-events-none absolute -right-40 -top-24 h-[520px] w-[520px] rounded-full bg-[#dfe3ff]/75 blur-[100px]" />
         <div className="relative mx-auto grid max-w-7xl items-center gap-12 lg:grid-cols-[0.95fr_1.05fr] lg:gap-8">
           <div className="max-w-xl">
             <p className="inline-flex items-center gap-2 rounded-full border border-[#dce5f0] bg-white/70 px-3 py-1.5 text-[10px] font-semibold tracking-[0.14em] text-[#6e89a6] uppercase">
               <span className="h-1.5 w-1.5 rounded-full bg-[#748eac]" />
-              Point of sale, made simple
+              Digital tools, built around your work
             </p>
             <h1 className="mt-6 text-[3.25rem] leading-[0.98] font-semibold tracking-[-0.065em] sm:text-7xl lg:text-[5.3rem]">
-              Run your store.
+              Build what your business needs.
               <br />
-              <span className="text-[#536f91]">Know your business.</span>
+              <span className="text-[#b90c0c]">Make it work for you.</span>
             </h1>
             <p className="mt-6 max-w-lg text-base leading-7 text-[#7892af] sm:text-lg sm:leading-8">
-              Synorra brings checkout, sales, inventory, recipes, and team
-              permissions into one workspace designed for café operations.
+              From websites to café POS, Synorra brings ideas to life with clear,
+              dependable digital tools designed around the way your team works.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
-              <Link href="/back-office" className="rounded-full bg-[#101d37] px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-[#101d37]/10 transition hover:-translate-y-0.5 hover:bg-[#1b2c50]">
-                Open Synorra POS <span aria-hidden="true" className="ml-2">↗</span>
+              <Link href="#contact" className="rounded-full bg-[#b90c0c] px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-red-900/10 transition hover:-translate-y-0.5 hover:bg-[#970909]">
+                Start a project <span aria-hidden="true" className="ml-2">→</span>
               </Link>
-              <a href="#features" className="rounded-full px-5 py-3.5 text-sm font-semibold text-[#536f91] transition hover:bg-white">Explore features</a>
+              <a href="#services" className="rounded-full px-5 py-3.5 text-sm font-semibold text-[#536f91] transition hover:bg-white">Explore services</a>
             </div>
             <div className="mt-9 flex flex-wrap gap-x-6 gap-y-2 text-[11px] text-[#7f9bb9]">
               <span>✓ Sales and reports</span>
@@ -203,7 +208,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      <section className="px-5 pb-16 sm:px-8 sm:pb-24">
+      <section id="works" className="scroll-mt-20 px-5 pb-16 sm:px-8 sm:pb-24">
         <div className="mx-auto grid max-w-7xl gap-4 sm:grid-cols-3">
           {stories.map((story) => <PhotoCard key={story.title} {...story} />)}
         </div>
@@ -212,7 +217,7 @@ export function LandingPage() {
         </p>
       </section>
 
-      <section id="features" className="border-y border-[#dce5f0] bg-white px-5 py-16 sm:px-8 sm:py-24">
+      <section id="services" className="scroll-mt-20 border-y border-[#dce5f0] bg-white px-5 py-16 sm:px-8 sm:py-24">
         <div className="mx-auto max-w-7xl">
           <div className="max-w-2xl">
             <p className="text-[10px] font-semibold tracking-[0.2em] text-[#6e89a6] uppercase">Everything in sync</p>
@@ -234,31 +239,44 @@ export function LandingPage() {
         </div>
       </section>
 
-      <section id="how-it-works" className="px-5 py-16 sm:px-8 sm:py-24">
+      <section id="about" className="scroll-mt-20 px-5 py-16 sm:px-8 sm:py-24">
         <div className="mx-auto grid max-w-7xl items-center gap-10 rounded-[28px] bg-[#101d37] px-6 py-10 text-white sm:px-12 sm:py-14 lg:grid-cols-[1fr_auto]">
           <div className="max-w-2xl">
             <p className="text-[10px] font-semibold tracking-[0.2em] text-[#91b9e8] uppercase">Ready when you are</p>
             <h2 className="mt-4 text-3xl leading-tight font-semibold tracking-[-0.045em] sm:text-5xl">A clearer way to run your day.</h2>
             <p className="mt-4 max-w-xl text-sm leading-6 text-white/60 sm:text-base">Sign in to your Synorra workspace and pick up right where your business needs you.</p>
           </div>
-          <Link href="/back-office" className="inline-flex items-center justify-center rounded-full bg-[#dceeff] px-6 py-3.5 text-sm font-bold text-[#101d37] transition hover:bg-white">
-            Log in to Synorra <span aria-hidden="true" className="ml-2">↗</span>
+          <Link href="/back-office" className="inline-flex items-center justify-center rounded-full bg-[#b90c0c] px-6 py-3.5 text-sm font-bold text-white transition hover:bg-[#970909]">
+            Open Synorra POS <span aria-hidden="true" className="ml-2">→</span>
           </Link>
         </div>
       </section>
 
-      <section id="platform" className="border-t border-[#dce5f0] bg-white px-5 py-16 sm:px-8 sm:py-20">
-        <div className="mx-auto grid max-w-7xl gap-8 md:grid-cols-[0.8fr_1.2fr] md:items-end">
+      <section id="contact" className="relative scroll-mt-16 overflow-hidden bg-[#0c1428] px-5 py-16 text-white sm:px-8 sm:py-24">
+        <div className="pointer-events-none absolute -left-24 top-0 h-80 w-80 rounded-full bg-red-900/20 blur-[100px]" />
+        <div className="pointer-events-none absolute -right-12 bottom-0 h-96 w-96 rounded-full bg-sky-700/20 blur-[100px]" />
+        <div className="relative mx-auto grid max-w-7xl gap-10 md:grid-cols-[1.15fr_1fr] md:items-center">
           <div>
-            <p className="text-[10px] font-semibold tracking-[0.2em] text-[#6e89a6] uppercase">One workspace for your operation</p>
-            <h2 className="mt-4 text-3xl leading-tight font-semibold tracking-[-0.045em] sm:text-4xl">Your counter and back office, connected.</h2>
+            <p className="text-xs font-semibold tracking-[0.2em] text-rose-200 uppercase">Contact</p>
+            <h2 className="mt-4 max-w-2xl text-4xl leading-tight font-semibold tracking-[-0.045em] sm:text-6xl">Turn your idea into <span className="text-[#c20c0c]">what ships.</span></h2>
+            <p className="mt-5 max-w-xl text-base leading-7 text-white/60">Website, café POS, or a custom build. Tell us what you have in mind.</p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <a href="mailto:rayhanpyo2016@gmail.com?subject=Synorra%20project%20inquiry" className="rounded-full bg-[#b90c0c] px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-[#970909]">Get started <span aria-hidden="true" className="ml-2">→</span></a>
+              <Link href="/back-office" className="rounded-full border border-white/20 px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-white/10">Open POS</Link>
+            </div>
           </div>
-          <p className="max-w-2xl text-sm leading-7 text-[#7892af] sm:text-base">
-            Take orders at the POS, review sales, manage stock and restocks,
-            configure recipe costing, and control staff access from one system.
-            Each Owner account has its own operational workspace for its menu,
-            inventory, sales, and staff.
-          </p>
+          <div className="grid gap-3">
+            <a href="mailto:rayhanpyo2016@gmail.com?subject=Book%20a%20Synorra%20demo" className="rounded-[26px] border border-white/10 bg-white/[0.06] p-6 transition hover:bg-white/[0.1]">
+              <span className="text-xs font-semibold tracking-wide text-rose-200">Book a demo</span>
+              <span className="mt-2 block text-lg font-semibold">Short call. Clear next step.</span>
+              <span className="mt-4 block text-sm font-medium text-rose-200">Open calendar mail →</span>
+            </a>
+            <a href="mailto:rayhanpyo2016@gmail.com" className="rounded-[26px] border border-white/10 bg-white/[0.06] p-6 transition hover:bg-white/[0.1]">
+              <span className="text-xs font-semibold tracking-wide text-rose-200">Email the team</span>
+              <span className="mt-2 block text-lg font-semibold">rayhanpyo2016@gmail.com</span>
+              <span className="mt-4 block text-sm font-medium text-rose-200">Send inquiry →</span>
+            </a>
+          </div>
         </div>
       </section>
 

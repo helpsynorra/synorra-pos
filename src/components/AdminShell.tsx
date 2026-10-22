@@ -54,35 +54,40 @@ export function AdminShell({ session, users, store, children }: AdminShellProps)
     <>
       <StaffHeader session={session} panel={current} onPanelChange={handlePanelChange} />
 
-      {current === "staff" ? (
-        <UserManager
-          users={users.filter((user) => user.role !== "admin")}
-          session={session}
-          loginActivity={store.loginActivity ?? []}
-          offRequests={store.offRequests ?? []}
-          showAdminRole={false}
-          showOwnerRole={false}
-          showBaristaRole={true}
-          showBaristasOnly={false}
-          showEditStaffButton={false}
-          baristaOnlyStaffActions={true}
-          printButtonHidden={store.pos.printButtonHidden}
-          showLoginLinksTab={session.role !== "cashier"}
-          showPrintButtonToggle={session.role !== "cashier"}
-          showViewPermissionsButton={session.role !== "cashier"}
-          adminLoginPath={store.loginGates.admin}
-        />
-      ) : null}
-      {current === "sales" ? children : null}
-      {current === "menu" ? (
-        <MenuCatalog
-          menu={store.menu}
-          categories={store.categories}
-          categoryTypes={store.categoryTypes ?? {}}
-          inventory={store.inventory}
-        />
-      ) : null}
-      {current === "transactions" ? <SalePurchaseTransactions store={store} /> : null}
+      <div className="min-w-0 xl:pl-60">
+        <div className="mx-auto min-h-[calc(100svh-65px)] w-full max-w-[1920px] min-w-0">
+          {current === "staff" ? (
+            <UserManager
+              users={users.filter((user) => user.role !== "admin")}
+              session={session}
+              loginActivity={store.loginActivity ?? []}
+              offRequests={store.offRequests ?? []}
+              showAdminRole={false}
+              showOwnerRole={false}
+              showBaristaRole={true}
+              showCashierRole={true}
+              showBaristasOnly={false}
+              showEditStaffButton={false}
+              baristaOnlyStaffActions={true}
+              printButtonHidden={store.pos.printButtonHidden}
+              showLoginLinksTab={session.role !== "cashier"}
+              showPrintButtonToggle={session.role !== "cashier"}
+              showViewPermissionsButton={session.role !== "cashier"}
+              adminLoginPath={store.loginGates.admin}
+            />
+          ) : null}
+          {current === "sales" ? children : null}
+          {current === "menu" ? (
+            <MenuCatalog
+              menu={store.menu}
+              categories={store.categories}
+              categoryTypes={store.categoryTypes ?? {}}
+              inventory={store.inventory}
+            />
+          ) : null}
+          {current === "transactions" ? <SalePurchaseTransactions store={store} /> : null}
+        </div>
+      </div>
     </>
   );
 }

@@ -25,14 +25,16 @@ import {
 import type { PublicStaffUser } from "@/lib/users";
 import { DEFAULT_STAFF_PERMISSIONS } from "@/lib/users";
 import { phDateString, phDateTimeInputValue, phDateTimeLabel } from "@/lib/datetime";
-import { pairLoginSessions, type StaffSession } from "@/lib/staff-sessions";
+import { isAttendanceStaffRole, pairLoginSessions, type StaffSession } from "@/lib/staff-sessions";
 import type { LoginActivity, OffRequest, Order, PromotionCode, Session, StaffPermissions } from "@/lib/types";
 import { formatMoney } from "@/lib/menu";
 
 const field =
   "w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm text-neutral-900 outline-none transition-all focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900";
+const staffField =
+  "w-full rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#58789d] focus:bg-white focus:ring-4 focus:ring-[#e8f0fa]";
 const adminField =
-  "h-12 w-full min-w-0 rounded-xl border border-[#dce6f4] bg-white px-3.5 text-sm text-[#243a5e] outline-none transition focus:border-[#5363ff] focus:ring-2 focus:ring-[#e8ebff]";
+  "h-12 w-full min-w-0 rounded-xl border border-[#dce6f4] bg-white px-3.5 text-sm text-[#243a5e] outline-none transition focus:border-[#58789d] focus:ring-2 focus:ring-[#e8f0fa]";
 
 type UserManagerProps = {
   users: PublicStaffUser[];
@@ -43,6 +45,7 @@ type UserManagerProps = {
   showAdminRole?: boolean;
   showOwnerRole?: boolean;
   showBaristaRole?: boolean;
+  showCashierRole?: boolean;
   showBaristasOnly?: boolean;
   showEditStaffButton?: boolean;
   showDeleteStaffButton?: boolean;
@@ -56,7 +59,7 @@ type UserManagerProps = {
 };
 
 type SubTab = "staff" | "inout" | "off" | "gates" | "settings" | "customWebsitePromo";
-type StaffRole = "Admin" | "Barista" | "Owner";
+type StaffRole = "Admin" | "Barista" | "Cashier" | "Owner";
 
 type PermissionFlag = Exclude<keyof StaffPermissions, "promoCodes">;
 
@@ -106,13 +109,20 @@ const adminPermissionGroups: {
   },
 ];
 
-export function UserManager({ users, session, loginActivity, offRequests, showShiftTabs = true, showAdminRole = true, showOwnerRole = true, showBaristaRole = true, showBaristasOnly = false, showEditStaffButton = true, showDeleteStaffButton = true, baristaOnlyStaffActions = false, showLoginLinksTab = true, showPrintButtonToggle = true, showViewPermissionsButton = true, adminLoginPath }: UserManagerProps) {
+export function UserManager({ users, session, loginActivity, offRequests, showShiftTabs = true, showAdminRole = true, showOwnerRole = true, showBaristaRole = true, showCashierRole = false, showBaristasOnly = false, showEditStaffButton = true, showDeleteStaffButton = true, baristaOnlyStaffActions = false, showLoginLinksTab = true, showPrintButtonToggle = true, showViewPermissionsButton = true, adminLoginPath }: UserManagerProps) {
+  const defaultStaffRole: StaffRole = showBaristasOnly || (!showOwnerRole && showBaristaRole)
+    ? "Barista"
+    : !showOwnerRole && showCashierRole
+      ? "Cashier"
+      : showOwnerRole
+        ? "Owner"
+        : "Admin";
   const [tab, setTab] = useState<SubTab>("staff");
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<StaffRole>(showBaristasOnly ? "Barista" : "Owner");
+  const [role, setRole] = useState<StaffRole>(defaultStaffRole);
   const [password, setPassword] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [adminPath, setAdminPath] = useState(adminLoginPath);
@@ -121,6 +131,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
   );
   const [selectedPermissionOwnerId, setSelectedPermissionOwnerId] = useState<string | null>(null);
   const [communePromoCodes, setCommunePromoCodes] = useState<PromotionCode[]>([]);
+  const [communePromoCollapsed, setCommunePromoCollapsed] = useState(false);
   const [selectedVoucherHost, setSelectedVoucherHost] = useState<string | null>(null);
   const [communeDiscountSummary, setCommuneDiscountSummary] = useState<{
     totalDiscountGiven: number;
@@ -202,7 +213,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
     [users],
   );
   const visibleUsers = showBaristasOnly
-    ? uniqueUsers.filter((user) => user.role === "barista")
+    ? uniqueUsers.filter((user) => user.role === "barista" || user.role === "pos_cashier")
     : uniqueUsers;
   const ownerUsers = visibleUsers.filter((user) => user.role === "cashier");
   const isAdminConsole = session.role === "admin";
@@ -221,10 +232,11 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
       });
   }, [communeDiscountSummary]);
   const editing = visibleUsers.find((user) => user.id === editingId) ?? null;
-  const floorStaff = visibleUsers.filter((user) =>
-    baristaOnlyStaffActions ? user.role === "barista" : user.role !== "admin",
+  const floorStaff = visibleUsers.filter((user) => isAttendanceStaffRole(user.role));
+  const allSessions = useMemo(
+    () => pairLoginSessions(loginActivity).filter((row) => isAttendanceStaffRole(row.role)),
+    [loginActivity],
   );
-  const allSessions = useMemo(() => pairLoginSessions(loginActivity), [loginActivity]);
   const selectedStaffIsOnShift = allSessions.some(
     (shift) => shift.userId === punchUserId && !shift.logoutAt,
   );
@@ -254,7 +266,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
     setName("");
     setUsername("");
     setEmail("");
-    setRole(showBaristasOnly ? "Barista" : "Owner");
+    setRole(defaultStaffRole);
     setPassword("");
     setNotice(null);
     setTab("staff");
@@ -271,6 +283,8 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
         ? "Admin"
         : lowerRole === "cashier"
             ? "Owner"
+            : lowerRole === "pos_cashier" || user.title?.toLowerCase() === "cashier"
+              ? "Cashier"
             : "Barista",
     );
     setPassword("");
@@ -290,9 +304,9 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
   }
 
   return (
-    <div className="min-h-screen min-w-0 space-y-6 rounded-none border-0 border-neutral-300 bg-white p-3 sm:rounded-xl sm:border sm:p-6">
+    <div className="min-h-[calc(100svh-65px)] min-w-0 space-y-5 bg-slate-50/70 p-3 sm:space-y-6 sm:p-5 xl:p-7 2xl:p-9">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-neutral-400 pb-3">
-        <div className="flex gap-2 overflow-x-auto">
+        <div className="flex w-fit max-w-full gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
           {(
             [
               { id: "staff", label: "Staff" },
@@ -315,12 +329,12 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
               className={`shrink-0 rounded-xl px-4 py-2.5 text-xs font-bold uppercase transition ${
                 isAdminConsole
                   ? tab === entry.id
-                    ? "bg-[#4353ff] text-white shadow-[0_4px_12px_rgba(67,83,255,0.2)]"
-                    : "bg-white text-[#536783] shadow-sm hover:bg-[#f2f5ff]"
+                    ? "bg-[#101d37] text-white shadow-[0_4px_12px_rgba(16,29,55,0.2)]"
+                    : "text-[#536783] hover:bg-[#f2f5ff]"
                   : tab === entry.id
-                    ? "bg-black text-white shadow-sm"
-                    : "bg-white text-neutral-700 shadow-sm hover:bg-neutral-100"
-              }`}
+                    ? "bg-slate-900 text-white shadow-sm"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+              } rounded-xl`}
             >
               {entry.label}
             </button>
@@ -333,20 +347,25 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
 
         {tab === "staff" ? (
           <>
-            <div className="flex items-center justify-between gap-3">
-              <h1 className="text-xl font-semibold tracking-tight">Staff</h1>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-[11px] font-bold tracking-[0.2em] text-[#58789d] uppercase">Team management</p>
+                <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">Staff</h1>
+                <p className="mt-1 text-sm text-slate-500">Manage team accounts and POS access.</p>
+              </div>
               <button
                 type="button"
                 onClick={startCreate}
-                className="rounded-full bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#101d37] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-slate-900/10 transition hover:-translate-y-0.5 hover:bg-[#243a5e]"
               >
+                <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" aria-hidden="true"><path d="M12 5v14M5 12h14" strokeWidth="2" strokeLinecap="round" /></svg>
                 Add staff
               </button>
             </div>
 
             {editingId ? (
               <form
-                className="space-y-4 rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5"
+                className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.07)]"
                 onSubmit={(event) => {
                   event.preventDefault();
                   const submittedPassword = password;
@@ -357,7 +376,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                       username,
                       email,
                       title: role,
-                      role: role === "Owner" ? "cashier" : role.toLowerCase(),
+                      role: role === "Owner" ? "cashier" : role === "Cashier" ? "pos_cashier" : role.toLowerCase(),
                       password: submittedPassword,
                     };
                     const result =
@@ -379,93 +398,127 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                   });
                 }}
               >
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">
-                    {editingId === "new" ? "New staff" : `Edit ${editing?.name ?? ""}`}
-                  </p>
-                  <button type="button" onClick={resetForm} className="text-xs text-neutral-500 hover:text-black">
+                <div className="flex items-center justify-between gap-4 border-b border-slate-100 bg-gradient-to-r from-[#edf4fc] via-white to-white px-5 py-5 sm:px-7">
+                  <div>
+                    <p className="text-[11px] font-bold tracking-[0.18em] text-[#58789d] uppercase">Team account</p>
+                    <h2 className="mt-1 text-lg font-bold text-slate-900">{editingId === "new" ? "Add a team member" : `Edit ${editing?.name ?? "staff"}`}</h2>
+                  </div>
+                  <button type="button" onClick={resetForm} className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-500 transition hover:bg-white hover:text-slate-900">
                     Cancel
                   </button>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="text-xs font-medium text-neutral-600">
-                    <span className="mb-1.5 block">Busines name</span>
-                    <input value={name} onChange={(event) => setName(event.target.value)} className={field} required />
-                  </label>
-                  <label className="text-xs font-medium text-neutral-600">
-                    <span className="mb-1.5 block">Username</span>
-                    <input value={username} onChange={(event) => setUsername(event.target.value)} className={field} required />
-                  </label>
-                  {role === "Owner" && editingId === "new" ? (
-                    <p className="sm:col-span-2 text-xs text-neutral-500">
-                      The Owner can sign in to POS with this username and password.
+                <div className="grid gap-5 p-4 min-[600px]:gap-6 min-[600px]:p-6 md:grid-cols-[1.1fr_0.9fr] xl:p-7">
+                  <section className="space-y-4">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-800">Account details</h3>
+                      <p className="mt-1 text-xs text-slate-500">Set the name and sign-in details for this account.</p>
+                    </div>
+                    <div className="grid gap-4 min-[600px]:grid-cols-2">
+                      <label className="space-y-1.5 text-xs font-semibold text-slate-600">
+                        <span className="block">Full name</span>
+                        <input value={name} onChange={(event) => setName(event.target.value)} className={staffField} placeholder="e.g. Alex Santos" required />
+                      </label>
+                      <label className="space-y-1.5 text-xs font-semibold text-slate-600">
+                        <span className="block">Username</span>
+                        <input value={username} onChange={(event) => setUsername(event.target.value)} className={staffField} placeholder="e.g. alex" required />
+                      </label>
+                      {role === "Owner" && editingId !== "new" ? (
+                        <label className="space-y-1.5 text-xs font-semibold text-slate-600 sm:col-span-2">
+                          <span className="block">Email</span>
+                          <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} className={staffField} placeholder="name@example.com" />
+                        </label>
+                      ) : null}
+                      <label className="space-y-1.5 text-xs font-semibold text-slate-600 sm:col-span-2">
+                        <span className="block">Password</span>
+                        <input
+                          type="password"
+                          value={password}
+                          onChange={(event) => setPassword(event.target.value)}
+                          className={staffField}
+                          required={editingId === "new"}
+                          placeholder={editingId === "new" ? "Create a password" : "Leave blank to keep current"}
+                        />
+                      </label>
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 sm:p-5">
+                    <div className="mb-4">
+                      <h3 className="text-sm font-bold text-slate-800">Choose a role</h3>
+                      <p className="mt-1 text-xs text-slate-500">Select what this person can do in the store.</p>
+                    </div>
+                    <div className="grid gap-3 min-[600px]:grid-cols-2">
+                      {([...(showAdminRole ? ["Admin" as const] : []), ...(showOwnerRole ? ["Owner" as const] : []), ...(showBaristaRole ? ["Barista" as const] : []), ...(showCashierRole ? ["Cashier" as const] : [])] as const).map((id) => {
+                        const selected = role === id;
+                        const description = id === "Barista"
+                          ? "Clock in and out for shifts."
+                          : id === "Cashier"
+                            ? "Handle POS sales and track shifts."
+                            : id === "Owner"
+                              ? "Manage this store and use the POS."
+                              : "Manage Synorra settings and staff.";
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            aria-pressed={selected}
+                            onClick={() => setRole(id)}
+                            className={`group flex min-h-24 items-start gap-3 rounded-2xl border p-3 text-left transition ${selected ? "border-[#58789d] bg-white shadow-md shadow-[#dce8f7] ring-2 ring-[#e8f0fa]" : "border-slate-200 bg-white/70 hover:border-slate-300 hover:bg-white"}`}
+                          >
+                            <span className={`flex size-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold ${selected ? "bg-[#101d37] text-white" : "bg-slate-100 text-slate-500 group-hover:bg-[#edf4fc] group-hover:text-[#243a5e]"}`}>
+                              {id === "Barista" ? "B" : id === "Cashier" ? "₱" : id === "Owner" ? "O" : "A"}
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block text-sm font-bold text-slate-800">{id}</span>
+                              <span className="mt-1 block text-[11px] leading-4 text-slate-500">{description}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="mt-4 rounded-xl border-l-2 border-[#d64646] bg-[#edf4fc] px-3.5 py-3 text-xs leading-5 text-[#344f73]">
+                      {role === "Owner"
+                        ? "The Owner can sign in to POS with this username and password."
+                        : role === "Admin"
+                          ? "Admins can manage Synorra settings and staff."
+                          : `${role}s use this username and password to clock in and out on POS.`}
                     </p>
-                  ) : null}
-                  {role === "Owner" && editingId !== "new" ? (
-                    <label className="text-xs font-medium text-neutral-600">
-                      <span className="mb-1.5 block">Email (optional)</span>
-                      <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} className={field} />
-                    </label>
-                  ) : null}
-                  {role === "Barista" ? (
-                    <p className="sm:col-span-2 text-xs text-neutral-500">
-                      Baristas use this username and password to clock in and out on POS.
-                    </p>
-                  ) : null}
-                  <label className="text-xs font-medium text-neutral-600">
-                    <span className="mb-1.5 block">Password</span>
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={(event) => setPassword(event.target.value)}
-                      className={field}
-                      required={editingId === "new"}
-                      placeholder={editingId === "new" ? "" : "Leave blank to keep current"}
-                    />
-                  </label>
+                  </section>
                 </div>
-                <div
-                  className="grid gap-2"
-                  style={{ gridTemplateColumns: `repeat(${(showAdminRole ? 1 : 0) + (showOwnerRole ? 1 : 0) + (showBaristaRole ? 1 : 0)}, minmax(0, 1fr))` }}
-                >
-                  {([...(showAdminRole ? ["Admin" as const] : []), ...(showOwnerRole ? ["Owner" as const] : []), ...(showBaristaRole ? ["Barista" as const] : [])] as const).map((id) => (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setRole(id)}
-                      className={`rounded-full border py-2 text-xs font-medium ${
-                        role === id ? "border-black bg-black text-white" : "border-neutral-200 bg-white text-neutral-600"
-                      }`}
-                    >
-                      {id}
-                    </button>
-                  ))}
+                <div className="flex justify-end border-t border-slate-100 bg-slate-50/70 px-5 py-4 sm:px-7">
+                  <button
+                    type="submit"
+                    disabled={pending}
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#101d37] px-6 py-3 text-sm font-bold text-white shadow-lg shadow-slate-900/15 transition hover:bg-[#243a5e] disabled:cursor-wait disabled:opacity-50"
+                  >
+                    {pending ? "Saving…" : editingId === "new" ? "Add staff member" : "Save changes"}
+                    {!pending ? <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" aria-hidden="true"><path d="m9 18 6-6-6-6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg> : null}
+                  </button>
                 </div>
-                <button
-                  type="submit"
-                  disabled={pending}
-                  className="rounded-full bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-40"
-                >
-                  {editingId === "new" ? "Add" : "Save"}
-                </button>
               </form>
             ) : null}
 
-            <div className="divide-y divide-neutral-100 overflow-hidden rounded-2xl border border-neutral-200 bg-white">
+            <div className="grid gap-3 min-[1025px]:grid-cols-2">
               {visibleUsers.map((user) => (
-                <div key={user.id} className="flex items-center justify-between gap-3 px-4 py-4 sm:px-5">
-                  <div className="min-w-0">
+                <div key={user.id} className="group flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-[#b8cce4] hover:shadow-lg hover:shadow-slate-900/5 sm:p-5">
+                  <div className="flex min-w-0 items-center gap-3.5">
+                    <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#101d37] to-[#58789d] text-base font-bold text-white shadow-md shadow-[#dce8f7]">
+                      {user.name.trim().charAt(0).toUpperCase() || "S"}
+                    </div>
+                    <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="truncate text-sm font-medium">{user.name}</p>
+                      <p className="truncate text-sm font-bold text-slate-900">{user.name}</p>
                       {user.id === session.userId ? (
-                        <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium text-neutral-500 uppercase">
+                        <span className="rounded-full bg-[#fff0f0] px-2 py-0.5 text-[10px] font-bold tracking-wide text-[#c63d3d] uppercase">
                           you
                         </span>
                       ) : null}
                     </div>
-                    <p className="mt-0.5 text-xs text-neutral-400">
-                      {`${user.username} · ${user.role === "admin" ? "Admin" : user.role === "cashier" ? "Owner" : "Barista"}`}
-                    </p>
+                    <p className="mt-1 truncate text-xs text-slate-500">@{user.username}</p>
+                    <span className="mt-2 inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold tracking-wide text-slate-600 uppercase">
+                      {user.role === "admin" ? "Admin" : user.role === "cashier" ? "Owner" : user.role === "pos_cashier" ? "Cashier" : user.title || "Barista"}
+                    </span>
+                    </div>
                   </div>
                   <div className="flex items-center gap-1">
                     {user.role === "cashier" && showViewPermissionsButton ? (
@@ -480,7 +533,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                         View Permissions
                       </button>
                     ) : null}
-                    {showEditStaffButton && (!baristaOnlyStaffActions || user.role === "barista") ? <button
+                    {showEditStaffButton && (!baristaOnlyStaffActions || user.role === "barista" || user.role === "pos_cashier") ? <button
                       type="button"
                       aria-label={`Edit ${user.name}`}
                       onClick={() => startEdit(user)}
@@ -491,7 +544,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                         <path d="M13.5 6.5l3 3" strokeWidth="1.7" />
                       </svg>
                     </button> : null}
-                    {showDeleteStaffButton && (!baristaOnlyStaffActions || user.role === "barista") ? <button
+                    {showDeleteStaffButton && (!baristaOnlyStaffActions || user.role === "barista" || user.role === "pos_cashier") ? <button
                       type="button"
                       aria-label={`Delete ${user.name}`}
                       disabled={pending || user.id === session.userId}
@@ -592,13 +645,24 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
           );
 
           return (
-            <section aria-label="Custom Website Promo" className="space-y-5 rounded-2xl border border-[#e4ebf5] bg-white p-4 shadow-[0_8px_30px_rgba(37,75,130,0.06)] sm:p-6">
-              <div>
-                <h1 className="text-xl font-semibold tracking-tight text-[#14213d]">Commune checkout vouchers</h1>
-                <p className="mt-1 text-sm text-[#7486a3]">Generate one-time promo codes for the Commune website checkout. These are stored separately from Synorra Owner vouchers.</p>
+            <section aria-label="Custom Website Promo" className="rounded-2xl border border-[#e4ebf5] bg-white p-4 shadow-[0_8px_30px_rgba(37,75,130,0.06)] sm:p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h1 className="text-xl font-semibold tracking-tight text-[#14213d]">Commune checkout vouchers</h1>
+                  <p className="mt-1 text-sm text-[#7486a3]">Generate one-time promo codes for the Commune website checkout. These are stored separately from Synorra Owner vouchers.</p>
+                </div>
+                <button
+                  type="button"
+                  aria-expanded={!communePromoCollapsed}
+                  aria-controls="commune-voucher-content"
+                  onClick={() => setCommunePromoCollapsed((collapsed) => !collapsed)}
+                  className="shrink-0 rounded-lg border border-[#dce6f4] bg-white px-4 py-2 text-sm font-semibold text-[#536783] transition hover:bg-[#f5f8fc]"
+                >
+                  {communePromoCollapsed ? "Expand" : "Minimize"}
+                </button>
               </div>
 
-              <>
+              <div id="commune-voucher-content" hidden={communePromoCollapsed} className="mt-5 space-y-5">
                   <div className="space-y-4 border-t border-[#e7edf6] pt-5">
                     <div>
                       <h2 className="text-sm font-semibold text-[#172849]">Generate voucher codes</h2>
@@ -724,10 +788,10 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                     </div>
                   ) : null}
 
-                  <div className="space-y-4">
+                  <div className="divide-y divide-[#e3eaf4]">
                     {promos.length === 0 ? <p className="p-4 text-sm text-neutral-500">No Commune website vouchers generated.</p> : hostVoucherGroups.map(({ host, hostPromos, batches, totalDiscountGiven, hasActiveVouchers }) => (
-                      <section key={host} aria-label={`Commune vouchers for ${host}`} className="overflow-hidden rounded-xl border border-[#e3eaf4] bg-white">
-                        <div className="flex flex-wrap items-center justify-between gap-4 bg-[#f8faff] px-4 py-3">
+                      <section key={host} aria-label={`Commune vouchers for ${host}`} className="overflow-hidden py-4 first:pt-0 last:pb-0">
+                        <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg bg-[#f8faff] px-4 py-3">
                           <div className="text-sm font-semibold text-[#172849]">{host}<span className="ml-2 text-xs font-medium text-[#8091ab]">{hostPromos.length} voucher{hostPromos.length === 1 ? "" : "s"}</span></div>
                           <div className="flex items-center gap-4">
                             <div className="text-right">
@@ -781,7 +845,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                       </section>
                     ))}
                   </div>
-              </>
+              </div>
             </section>
           );
         })() : null}
@@ -893,7 +957,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                         <tr key={row.id} className="border-t border-neutral-100">
                           <td className="px-4 py-3">
                             <p className="font-medium">{row.name}</p>
-                            <p className="text-xs text-neutral-400">{row.username}</p>
+                            <p className="text-xs text-neutral-400">{row.role === "pos_cashier" ? "Cashier" : "Barista"} · {row.username}</p>
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             {isEditing && row.loginId ? (
@@ -1183,7 +1247,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                   <section className={isAdminConsole ? "space-y-5 rounded-2xl border border-[#e4ebf5] bg-white p-4 shadow-[0_8px_30px_rgba(37,75,130,0.06)] sm:p-6" : "space-y-3 rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5"}>
                     <div className="flex items-center justify-between gap-3">
                       <h2 className="font-semibold text-[#14213d]">{owner.name}</h2>
-                      <button type="button" onClick={() => setSelectedPermissionOwnerId(null)} className={isAdminConsole ? "rounded-lg border border-[#dce5f2] px-3 py-1.5 text-xs font-medium text-[#516783] transition hover:border-[#4353ff] hover:text-[#4353ff]" : "text-xs font-medium text-neutral-600 hover:text-black"}>Back</button>
+                    <button type="button" onClick={() => setSelectedPermissionOwnerId(null)} className={isAdminConsole ? "rounded-lg border border-[#dce5f2] px-3 py-1.5 text-xs font-medium text-[#516783] transition hover:border-[#58789d] hover:text-[#243a5e]" : "text-xs font-medium text-neutral-600 hover:text-black"}>Back</button>
                     </div>
                     <div className={isAdminConsole ? "grid gap-3 lg:grid-cols-3" : "grid gap-2 sm:grid-cols-2 lg:grid-cols-3"}>
                       {(isAdminConsole ? adminPermissionGroups : [{ title: "Permissions", description: "", icon: "inventory" as const, permissions: permissionOptions.map(({ key }) => key) }]).map((group) => (
@@ -1230,7 +1294,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                                     }}
                                     className={isAdminConsole ? "peer sr-only" : "size-4 accent-black"}
                                   />
-                                  {isAdminConsole ? <span aria-hidden="true" className={`relative h-5 w-9 shrink-0 rounded-full transition peer-focus-visible:ring-2 peer-focus-visible:ring-[#4353ff] peer-focus-visible:ring-offset-2 ${permissions[key] ? "bg-[#4353ff]" : "bg-[#cbd5e1]"}`}><span className={`absolute top-0.5 size-4 rounded-full bg-white shadow-sm transition ${permissions[key] ? "left-[18px]" : "left-0.5"}`} /></span> : null}
+                          {isAdminConsole ? <span aria-hidden="true" className={`relative h-5 w-9 shrink-0 rounded-full transition peer-focus-visible:ring-2 peer-focus-visible:ring-[#58789d] peer-focus-visible:ring-offset-2 ${permissions[key] ? "bg-[#101d37]" : "bg-[#cbd5e1]"}`}><span className={`absolute top-0.5 size-4 rounded-full bg-white shadow-sm transition ${permissions[key] ? "left-[18px]" : "left-0.5"}`} /></span> : null}
                                 </label>
                               );
                             })}

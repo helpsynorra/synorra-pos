@@ -1121,13 +1121,13 @@ export function SalePurchaseTransactions({
   );
 
   return (
-    <div className="min-h-screen min-w-0 space-y-6 rounded-none border-0 border-neutral-300 bg-white p-3 sm:rounded-xl sm:border sm:p-6">
-      {showTabs ? <div className="flex gap-2 overflow-x-auto border-b border-neutral-400 pb-3">
+    <div className="min-h-[calc(100svh-65px)] min-w-0 space-y-5 bg-slate-50 p-3 sm:space-y-6 sm:p-5 xl:p-7 2xl:p-9">
+      {showTabs ? <div className="flex w-fit max-w-full gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
         {tabs.filter((tab) => tab !== "units").map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`shrink-0 px-4 py-1.5 rounded text-xs font-bold transition shadow-sm uppercase ${activeTab === tab ? "bg-black text-white" : "bg-white text-neutral-700 hover:bg-neutral-100"}`}
+            className={`shrink-0 rounded-xl px-3 py-2 text-[11px] font-bold uppercase transition sm:px-4 sm:text-xs ${activeTab === tab ? "bg-slate-900 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100"}`}
           >
             {tab === "transactions" ? "Transactions" : tab === "stock" ? "Stock Inventory" : tab === "restock" ? "Restock History" : tab === "used" ? "Usage Logbook" : "Recipes"}
           </button>

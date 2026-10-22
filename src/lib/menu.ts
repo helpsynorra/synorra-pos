@@ -131,12 +131,19 @@ export function normalizeMenuTypeOptions(item: Pick<MenuItem, "types"> | undefin
   if (!Array.isArray(item?.types)) return [];
   const seen = new Set<string>();
   return item.types.flatMap((value) => {
-    const row = value && typeof value === "object" ? value : { name: value, price: 0 };
-    const name = String(row.name ?? "").trim();
+    const row: Record<string, unknown> = value && typeof value === "object"
+      ? value as unknown as Record<string, unknown>
+      : { name: value, price: 0 };
+    const nestedOption = row.name && typeof row.name === "object"
+      ? row.name as Record<string, unknown>
+      : undefined;
+    const rawName = nestedOption?.name ?? row.name;
+    const name = String(rawName ?? "").trim();
     const key = name.toLowerCase();
     if (!name || seen.has(key)) return [];
     seen.add(key);
-    return [{ name, price: Math.max(0, Math.round(Number(row.price) || 0)) }];
+    const nestedPrice = nestedOption?.price;
+    return [{ name, price: Math.max(0, Math.round(Number(row.price ?? nestedPrice) || 0)) }];
   });
 }
 

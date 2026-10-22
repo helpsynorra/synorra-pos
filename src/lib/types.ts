@@ -1,4 +1,4 @@
-export type Role = "admin" | "cashier" | "barista";
+export type Role = "admin" | "cashier" | "barista" | "pos_cashier";
 
 export type Session = {
   userId: string;

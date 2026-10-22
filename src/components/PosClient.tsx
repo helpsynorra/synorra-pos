@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { logout } from "@/actions/auth";
 import { punchBaristaShift } from "@/actions/users";
 import {
@@ -162,6 +163,8 @@ export function PosClient({
   const router = useRouter();
   const [cart, setCart] = useState<OrderItem[]>([]);
   const [category, setCategory] = useState("All");
+  const [itemSearch, setItemSearch] = useState("");
+  const [mobileCheckoutOpen, setMobileCheckoutOpen] = useState(false);
   const [tendered, setTendered] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [serviceMode, setServiceMode] = useState<"dine-in" | "take-out">("dine-in");
@@ -262,9 +265,10 @@ export function PosClient({
 
       const matchesCategory =
         category === "All" || itemCatNormalized === selectedCatNormalized;
-      return matchesCategory;
+      const matchesSearch = item.name.toLowerCase().includes(itemSearch.trim().toLowerCase());
+      return matchesCategory && matchesSearch;
     });
-  }, [menu, category]);
+  }, [menu, category, itemSearch]);
 
   useEffect(() => {
     setOnShift((current) => {
@@ -816,15 +820,15 @@ export function PosClient({
   }
 
   return (
-    <div className="pos-root relative flex h-svh flex-col overflow-hidden bg-neutral-100 text-black">
+    <div className="pos-root relative flex h-svh flex-col overflow-hidden bg-slate-50 text-slate-950">
       <div className="pos-screen flex min-h-0 flex-1 flex-col overflow-hidden">
-        <header className="flex h-12 shrink-0 items-center gap-3 bg-black px-3 text-white">
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-3 text-slate-900 shadow-sm sm:px-5">
           <button
             type="button"
             aria-label={menuOpen ? "Close menu" : "Open menu"}
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((open) => !open)}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-neutral-900 text-white transition hover:bg-neutral-800"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-100"
           >
             <svg viewBox="0 0 24 24" className="h-4 w-4 stroke-current" fill="none">
               {menuOpen ? (
@@ -840,12 +844,12 @@ export function PosClient({
               setActivePanel("pos");
               setMenuOpen(false);
             }}
-            className="text-base font-bold tracking-tight lowercase"
+            className="text-base font-bold tracking-tight text-slate-900 lowercase"
           >
-            synorra
+            <span className="text-rose-600">syn</span>orra
           </button>
           {activePanel !== "pos" ? (
-            <p className="truncate text-sm font-medium text-white/70">
+            <p className="truncate text-sm font-medium text-slate-500">
               {activePanel === "stock" ? "Stock inventory" : "Restock"}
             </p>
           ) : null}
@@ -902,7 +906,7 @@ export function PosClient({
               }}
               className={`mb-3 w-full rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
                 activePanel === "pos"
-                  ? "bg-black text-white"
+                  ? "bg-[#101d37] text-white"
                   : "text-neutral-600 hover:bg-neutral-100 hover:text-black"
               }`}
             >
@@ -930,7 +934,7 @@ export function PosClient({
                   }}
                   className={`mb-1 w-full rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
                     activePanel === id
-                      ? "bg-black text-white"
+                      ? "bg-[#101d37] text-white"
                       : "text-neutral-600 hover:bg-neutral-100 hover:text-black"
                   }`}
                 >
@@ -1088,8 +1092,8 @@ export function PosClient({
                         }}
                         className={`rounded-2xl border px-4 py-4 text-sm font-medium ${
                           drinkPick.style === style
-                            ? "border-black bg-black text-white"
-                            : "border-neutral-200 hover:border-black hover:bg-black hover:text-white"
+                            ? "border-[#101d37] bg-[#101d37] text-white"
+                            : "border-neutral-200 hover:border-[#58789d] hover:bg-[#edf4fc] hover:text-[#101d37]"
                         }`}
                       >
                         {drinkStyleLabel(style)}
@@ -1163,7 +1167,7 @@ export function PosClient({
 
               {normalizeMenuTypes(drinkPick.item).length > 0 ? (
                 <div className="mt-5 space-y-2">
-                  <p className="text-sm text-neutral-500">Types (optional)</p>
+                  <p className="text-sm text-neutral-500">Types</p>
                   {normalizeMenuTypeOptions(drinkPick.item).map((option, index) => {
                     const typeId = `type:${addonIdFromName(option.name, index)}`;
                     const on = (drinkPick.addons[typeId] ?? 0) > 0;
@@ -1654,7 +1658,7 @@ export function PosClient({
             />
           </div>
         ) : (
-            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
+            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col min-[1024px]:flex-row">
               {!pos.isOpen ? (
                 <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-neutral-100 px-6 text-center">
                   <p className="font-serif text-4xl italic sm:text-5xl">Closed</p>
@@ -1673,22 +1677,48 @@ export function PosClient({
               ) : null}
           {/* Menu Catalog Section */}
           <section className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-2">
+            <div className="shrink-0 space-y-2 border-b border-slate-200 bg-white px-3 py-3 sm:px-4">
+              <label className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-slate-400 focus-within:border-slate-400 focus-within:bg-white">
+                <svg viewBox="0 0 24 24" className="size-4 shrink-0 fill-none stroke-current" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" strokeWidth="1.8" /><path d="m16 16 5 5" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                <input value={itemSearch} onChange={(event) => setItemSearch(event.target.value)} placeholder="Search menu" aria-label="Search menu" className="min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400" />
+              </label>
+              <nav aria-label="Menu categories" className="flex gap-2 overflow-x-auto pb-0.5">
+                {floorCategories.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => setCategory(name)}
+                    aria-pressed={category === name}
+                    className={`shrink-0 rounded-full border px-3.5 py-2 text-xs font-medium transition ${category === name ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"}`}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </nav>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 pb-24 sm:px-4 min-[1024px]:pb-3">
               {items.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-xs text-neutral-400">
                   No items found in this category.
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-4">
+                <div className="grid grid-cols-2 gap-2.5 min-[600px]:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
                   {items.map((item) => (
                     <button
                       key={item.id}
                       type="button"
                       onClick={() => handleMenuTap(item)}
                       disabled={voidRequestPending}
-                      className="rounded-2xl border border-neutral-300 bg-white p-3 text-center transition hover:border-black disabled:cursor-not-allowed disabled:opacity-40"
+                      className="rounded-2xl border border-slate-200 bg-white p-3 text-center shadow-sm transition hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                      <p className="text-xs font-medium">{item.name}</p>
+                      {item.image ? (
+                        <Image src={item.image} alt="" width={160} height={100} unoptimized className="mx-auto mb-2 h-16 w-full rounded-xl object-contain sm:h-20" />
+                      ) : (
+                        <div aria-hidden="true" className="mx-auto mb-2 flex h-16 items-center justify-center rounded-xl bg-slate-50 text-slate-300 sm:h-20">
+                          <svg viewBox="0 0 24 24" className="size-8 fill-none stroke-current" strokeWidth="1.5"><path d="M5 8h12v8a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4V8Zm12 2h2a2 2 0 0 1 0 4h-2M8 4v2m4-2v2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                        </div>
+                      )}
+                      <p className="text-xs font-semibold text-slate-800">{item.name}</p>
                       {normalizeMenuStyles(item).length > 0 ? (
                         <p className="mt-0.5 text-[10px] text-neutral-400">
                           {normalizeMenuStyles(item).map(drinkStyleLabel).join(" / ")}
@@ -1711,30 +1741,24 @@ export function PosClient({
               )}
             </div>
 
-            {/* Bottom Category Navigation */}
-            <div className="flex flex-wrap items-center gap-1.5 border-t border-neutral-200 px-4 py-2">
-              {floorCategories.map((name) => (
-                <button
-                  key={name}
-                  type="button"
-                  onClick={() => setCategory(name)}
-                  className={`rounded-lg border px-3 py-1.5 text-xs transition ${
-                    category === name
-                      ? "border-black bg-black text-white"
-                      : "border-neutral-300 bg-white hover:border-black"
-                  }`}
-                >
-                  {name}
-                </button>
-              ))}
-            </div>
           </section>
 
           {/* Checkout Panel Sidebar */}
-          <aside className="flex min-h-0 w-full flex-col border-t border-neutral-200 bg-white md:w-[320px] lg:w-[350px] md:border-t-0 md:border-l">
-            <h2 className="shrink-0 py-2.5 text-center text-lg font-semibold">
+          <aside className={`absolute inset-x-0 bottom-0 z-30 flex min-h-0 min-w-0 flex-col border-t border-slate-200 bg-white shadow-[0_-12px_36px_rgba(15,23,42,0.08)] min-[1024px]:relative min-[1024px]:inset-auto min-[1024px]:z-auto min-[1024px]:h-auto min-[1024px]:w-[40%] min-[1024px]:max-w-[520px] min-[1024px]:shrink-0 min-[1024px]:border-l min-[1024px]:border-t-0 min-[1024px]:shadow-none min-[1280px]:w-[38%] ${mobileCheckoutOpen ? "h-[min(78svh,680px)] rounded-t-3xl border-x border-slate-200" : "h-[76px] rounded-t-2xl border-x border-slate-200 min-[1024px]:h-auto min-[1024px]:rounded-none"}`}>
+            <button type="button" aria-expanded={mobileCheckoutOpen} onClick={() => setMobileCheckoutOpen((open) => !open)} className="flex h-[76px] shrink-0 items-center justify-between gap-3 px-4 text-left min-[1024px]:hidden">
+              <span>
+                <span className="block text-sm font-semibold text-slate-900">View Cart &amp; Pay</span>
+                <span className="mt-0.5 block text-xs text-slate-500">{cart.reduce((sum, item) => sum + item.qty, 0)} items in cart</span>
+              </span>
+              <span className="flex items-center gap-3">
+                <span className="text-base font-bold text-slate-900">{formatMoney(total)}</span>
+                <span className={`flex size-8 items-center justify-center rounded-full bg-[#101d37] text-white transition ${mobileCheckoutOpen ? "rotate-180" : ""}`} aria-hidden="true"><svg viewBox="0 0 24 24" className="size-4 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 14 6-6 6 6" /></svg></span>
+              </span>
+            </button>
+            <h2 className="hidden shrink-0 py-2.5 text-center text-lg font-semibold min-[1024px]:block">
               Checkout
             </h2>
+            <div className={`${mobileCheckoutOpen ? "flex" : "hidden"} min-h-0 flex-1 flex-col min-[1024px]:flex`}>
             <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 px-3 text-[10px] tracking-wide text-neutral-400 uppercase">
               <span>Name</span>
               <span className="w-16 text-center">Qty</span>
@@ -1844,7 +1868,7 @@ export function PosClient({
                       onClick={() => setPaymentMethod(method.id)}
                       className={`rounded-lg border py-1.5 text-xs transition ${
                         paymentMethod === method.id
-                          ? "border-black bg-black text-white"
+                          ? "border-[#101d37] bg-[#101d37] text-white"
                           : "border-neutral-300 bg-white hover:border-black"
                       }`}
                     >
@@ -1863,7 +1887,7 @@ export function PosClient({
                         type="button"
                         onClick={() => setServiceMode(mode.id)}
                         aria-pressed={serviceMode === mode.id}
-                        className={`rounded-md border px-2 py-1.5 text-xs transition ${serviceMode === mode.id ? "border-black bg-black text-white" : "border-neutral-300 bg-white hover:border-black"}`}
+                        className={`rounded-md border px-2 py-1.5 text-xs transition ${serviceMode === mode.id ? "border-[#101d37] bg-[#101d37] text-white" : "border-neutral-300 bg-white hover:border-[#58789d]"}`}
                       >
                         {mode.label}
                       </button>
@@ -1927,7 +1951,7 @@ export function PosClient({
                   disabled={!canPrint}
                   className={`rounded-lg border py-2 text-xs transition ${
                     canPrint
-                      ? "border-black bg-black text-white hover:bg-neutral-800"
+                      ? "border-[#101d37] bg-[#101d37] text-white hover:bg-[#243a5e]"
                       : "border-neutral-300 text-neutral-400"
                   }`}
                 >
@@ -1964,6 +1988,7 @@ export function PosClient({
                     setLastOrderId(savedOrder.id);
                     upsertPrintJobs(result.printJobs);
                     setCart([]);
+                    setMobileCheckoutOpen(false);
                     setTendered("");
                     setPaymentMethod("cash");
                     setServiceMode("dine-in");
@@ -1990,7 +2015,7 @@ export function PosClient({
                     });
                   })
                 }
-                className="relative w-full rounded-xl border-2 border-black py-2.5 text-xs font-medium transition active:scale-[0.99] disabled:opacity-40"
+                className="relative w-full rounded-xl bg-[#1d2b45] py-3 text-sm font-semibold text-white transition hover:bg-[#2a3c5d] active:scale-[0.99] disabled:opacity-40"
               >
                 Proceed Order
               </button>
@@ -2003,6 +2028,7 @@ export function PosClient({
                   Void request pending admin approval
                 </p>
               ) : null}
+            </div>
             </div>
           </aside>
         </div>

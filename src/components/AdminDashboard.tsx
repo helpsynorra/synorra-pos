@@ -41,7 +41,7 @@ function Metric({
   hint?: string | null;
 }) {
   return (
-    <div className="min-w-0 border border-neutral-200 bg-white p-4 sm:p-5">
+    <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       <p className="text-[10px] tracking-[0.2em] text-neutral-500 uppercase sm:text-xs sm:tracking-[0.25em]">
         {label}
       </p>
@@ -64,7 +64,7 @@ function VerticalBars({
           <p className="mb-2 text-[10px] text-neutral-400 whitespace-nowrap">{item.display}</p>
           <div className="flex w-full items-end flex-1">
             <div
-              className="w-full bg-black"
+              className="w-full bg-[#58789d]"
               style={{ height: `${Math.max((item.value / max) * 100, item.value > 0 ? 6 : 0)}%` }}
               title={item.display}
             />
@@ -98,7 +98,7 @@ function HorizontalBars({
           </div>
           <div className="mt-1.5 h-2 bg-neutral-200">
             <div
-              className="h-full bg-black"
+              className="h-full bg-[#58789d]"
               style={{ width: `${Math.max((item.value / max) * 100, item.value > 0 ? 4 : 0)}%` }}
             />
           </div>
@@ -569,7 +569,7 @@ export function AdminDashboard({
   }
 
   return (
-    <div className="min-w-0 max-w-full space-y-6 px-3 py-5 sm:space-y-10 sm:px-6 sm:py-8">
+    <div className="mx-auto min-w-0 max-w-[1760px] space-y-6 px-3 py-5 sm:space-y-8 sm:px-6 sm:py-7 xl:px-8 2xl:space-y-10 2xl:px-10 2xl:py-9">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-xs tracking-[0.3em] text-neutral-500 uppercase">
@@ -631,7 +631,7 @@ export function AdminDashboard({
           <button
             type="button"
             onClick={() => window.print()}
-            className="rounded-lg bg-black px-4 py-2 text-xs font-medium text-white transition hover:bg-neutral-800 shadow-sm"
+            className="rounded-lg bg-[#101d37] px-4 py-2 text-xs font-medium text-white transition hover:bg-[#243a5e] shadow-sm"
           >
             Download PDF Sales
           </button>
@@ -640,7 +640,7 @@ export function AdminDashboard({
       </div>
 
       {pendingVoidRequests.length > 0 ? (
-        <section className="border border-neutral-300 bg-white p-4 sm:p-5">
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <div className="flex flex-wrap items-end justify-between gap-2 border-b border-neutral-200 pb-3">
             <div>
               <p className="text-[10px] tracking-[0.2em] text-neutral-500 uppercase sm:text-xs sm:tracking-[0.25em]">
@@ -648,7 +648,7 @@ export function AdminDashboard({
               </p>
               <h2 className="mt-1 text-lg font-semibold">Requests waiting for admin</h2>
             </div>
-            <span className="rounded-full bg-black px-3 py-1 text-xs font-medium text-white">
+            <span className="rounded-full bg-[#101d37] px-3 py-1 text-xs font-medium text-white">
               {pendingVoidRequests.length} pending
             </span>
           </div>
@@ -657,7 +657,7 @@ export function AdminDashboard({
             <p className="mt-3 text-sm text-neutral-600">{approvalMessage}</p>
           ) : null}
 
-          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          <div className="mt-4 grid gap-3 xl:grid-cols-2">
             {pendingVoidRequests.map((request) => (
               <article key={request.id} className="border border-neutral-200 bg-neutral-50 p-4">
                 <div className="flex items-start justify-between gap-4">
@@ -689,7 +689,7 @@ export function AdminDashboard({
                       setApprovalMessage(`Void approved for ${request.requestedByName}.`);
                     })
                   }
-                  className="mt-4 w-full rounded-lg bg-black px-4 py-2.5 text-xs font-medium text-white transition hover:bg-neutral-800 disabled:opacity-40"
+                  className="mt-4 w-full rounded-lg bg-[#101d37] px-4 py-2.5 text-xs font-medium text-white transition hover:bg-[#243a5e] disabled:opacity-40"
                 >
                   {approvalPending ? "Processing..." : "Approve void"}
                 </button>
@@ -699,7 +699,7 @@ export function AdminDashboard({
         </section>
       ) : null}
 
-      <section className="border border-neutral-200 bg-white p-4 sm:p-5">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-[10px] tracking-[0.2em] text-neutral-500 uppercase sm:text-xs sm:tracking-[0.25em]">
@@ -724,7 +724,7 @@ export function AdminDashboard({
           </h2>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           {isTodaySelected ? (
             <>
               <Metric
@@ -754,7 +754,7 @@ export function AdminDashboard({
             value={formatMoney(computedAverageTicket)}
           />
 
-          <div className="min-w-0 border border-neutral-200 bg-white p-4 sm:p-5">
+          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <p className="text-[10px] tracking-[0.2em] text-neutral-500 uppercase sm:text-xs sm:tracking-[0.25em]">
               Sold Products
             </p>
@@ -803,9 +803,9 @@ export function AdminDashboard({
         </p>
       ) : null}
 
-      <section className="grid gap-6 lg:grid-cols-2">
+      <section className="grid gap-4 xl:grid-cols-2 2xl:gap-6">
         {!isTodaySelected && (
-          <div className="min-w-0 border border-neutral-200 bg-white p-4 sm:p-5">
+          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-[10px] tracking-[0.2em] text-neutral-500 uppercase sm:text-xs sm:tracking-[0.25em]">
                 {trackingTitle}
@@ -816,7 +816,7 @@ export function AdminDashboard({
           </div>
         )}
 
-        <div className={`min-w-0 border border-neutral-200 bg-white p-4 sm:p-5 ${isTodaySelected ? "lg:col-span-2" : ""}`}>
+        <div className={`min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 ${isTodaySelected ? "xl:col-span-2" : ""}`}>
           <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-[10px] tracking-[0.2em] text-neutral-500 uppercase sm:text-xs sm:tracking-[0.25em]">
               Peak hours <span className="hidden sm:inline">(by item volume) · 10:00 AM – 12:00 AM</span>
@@ -838,8 +838,8 @@ export function AdminDashboard({
         </div>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-2">
-        <div className="min-w-0 border border-neutral-200 bg-white p-4 sm:p-5">
+      <section className="grid gap-4 xl:grid-cols-2 2xl:gap-6">
+        <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <h2 className="text-[10px] tracking-[0.2em] text-neutral-500 uppercase sm:text-xs sm:tracking-[0.25em]">
             Best selling drinks
           </h2>
@@ -856,7 +856,7 @@ export function AdminDashboard({
           />
         </div>
 
-        <div className="min-w-0 border border-neutral-200 bg-white p-4 sm:p-5">
+        <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <h2 className="text-[10px] tracking-[0.2em] text-neutral-500 uppercase sm:text-xs sm:tracking-[0.25em]">
             Low selling drinks
           </h2>
@@ -873,8 +873,8 @@ export function AdminDashboard({
         </div>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-2">
-        <div className="min-w-0 border border-neutral-200 bg-white p-4 sm:p-5">
+      <section className="grid gap-4 xl:grid-cols-2 2xl:gap-6">
+        <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <h2 className="text-[10px] tracking-[0.2em] text-neutral-500 uppercase sm:text-xs sm:tracking-[0.25em]">
             Sales by category (by item quantity)
           </h2>
@@ -892,7 +892,7 @@ export function AdminDashboard({
           />
         </div>
 
-        <div className="min-w-0 border border-neutral-200 bg-white p-4 sm:p-5">
+        <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <h2 className="text-[10px] tracking-[0.2em] text-neutral-500 uppercase sm:text-xs sm:tracking-[0.25em]">
             Payment Mix (Total Breakdown)
           </h2>
@@ -915,8 +915,8 @@ export function AdminDashboard({
         </div>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-2">
-        <div className="min-w-0 border border-neutral-200 bg-white p-4 space-y-4 sm:p-5">
+      <section className="grid gap-4 xl:grid-cols-2 2xl:gap-6">
+        <div className="min-w-0 space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <div className="flex justify-between items-center">
             <div>
               <h2 className="text-xs tracking-[0.25em] text-neutral-500 uppercase">Expenses Tracker</h2>
@@ -954,7 +954,7 @@ export function AdminDashboard({
             <button
               type="submit"
               disabled={ledgerPending}
-              className="sm:col-span-3 bg-black text-white rounded px-3 py-1.5 text-sm font-medium hover:bg-neutral-800 transition"
+              className="sm:col-span-3 bg-[#101d37] text-white rounded px-3 py-1.5 text-sm font-medium hover:bg-[#243a5e] transition"
             >
               {ledgerPending ? "Saving..." : "Add Expense"}
             </button>
@@ -1002,7 +1002,7 @@ export function AdminDashboard({
           </div>
         </div>
 
-        <div className="min-w-0 border border-neutral-200 bg-white p-4 space-y-4 sm:p-5">
+        <div className="min-w-0 space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <div className="flex justify-between items-center">
             <div>
               <h2 className="text-xs tracking-[0.25em] text-neutral-500 uppercase">Credits</h2>
@@ -1040,7 +1040,7 @@ export function AdminDashboard({
             <button
               type="submit"
               disabled={ledgerPending}
-              className="sm:col-span-3 bg-black text-white rounded px-3 py-1.5 text-sm font-medium hover:bg-neutral-800 transition"
+              className="sm:col-span-3 bg-[#101d37] text-white rounded px-3 py-1.5 text-sm font-medium hover:bg-[#243a5e] transition"
             >
               {ledgerPending ? "Saving..." : "Add Credit"}
             </button>
@@ -1089,7 +1089,7 @@ export function AdminDashboard({
         </div>
       </section>
 
-      <section className="min-w-0 border border-neutral-200 bg-white p-4 sm:p-5">
+      <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex items-center gap-3">
           <h2 className="text-[10px] tracking-[0.2em] text-neutral-500 uppercase sm:text-xs sm:tracking-[0.25em]">
             Drinks sold
@@ -1145,7 +1145,7 @@ export function AdminDashboard({
         ) : null}
       </section>
 
-      <section className="min-w-0 border border-neutral-200 bg-white p-4 sm:p-5">
+      <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex items-center gap-3">
           <h2 className="text-[10px] tracking-[0.2em] text-neutral-500 uppercase sm:text-xs sm:tracking-[0.25em]">
             Recent orders
@@ -1177,11 +1177,11 @@ export function AdminDashboard({
               <p className="min-w-0">Service</p>
               <p className="min-w-0 text-right">Total</p>
             </div>
-            <div className="divide-y divide-neutral-200">
+            <div className="grid gap-3 lg:block lg:divide-y lg:divide-neutral-200">
               {latest.map((order: Order, ordIdx: number) => (
                 <div
                   key={`${order.id}-${ordIdx}`}
-                  className={`grid grid-cols-1 gap-2 py-3 lg:items-start lg:gap-x-4 ${showPromoVoucher ? "lg:grid-cols-10" : "lg:grid-cols-9"}`}
+                  className={`grid grid-cols-1 gap-2 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 shadow-sm lg:items-start lg:gap-x-4 lg:rounded-none lg:border-0 lg:bg-transparent lg:px-0 lg:py-3 lg:shadow-none ${showPromoVoucher ? "lg:grid-cols-10" : "lg:grid-cols-9"}`}
                 >
                   <div className="min-w-0">
                     <p className="text-sm leading-5 text-neutral-700">

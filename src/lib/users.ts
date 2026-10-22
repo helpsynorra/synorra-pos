@@ -80,6 +80,7 @@ export function parseRole(value: string, fallbackRole?: string): Role {
   const fallback = String(fallbackRole ?? "").trim().toLowerCase();
   const combined = `${normalized} ${fallback}`.trim();
 
+  if (normalized === "pos_cashier" || fallback === "pos_cashier") return "pos_cashier";
   if (normalized === "admin" || fallback === "admin") return "admin";
   if (/admin/i.test(combined)) return "admin";
   if (normalized === "cashier" || fallback === "cashier") return "cashier";
@@ -102,7 +103,7 @@ export function canUsePos(role: Role) {
 }
 
 export function normalizeStaffRole(item: Pick<StaffUser, "role" | "password">): Role {
-  if (item.role === "admin" || item.role === "cashier" || item.role === "barista") {
+  if (item.role === "admin" || item.role === "cashier" || item.role === "barista" || item.role === "pos_cashier") {
     return item.role;
   }
   return item.password ? "cashier" : "barista";

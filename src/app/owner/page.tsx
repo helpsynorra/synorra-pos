@@ -18,7 +18,7 @@ export default async function AdminPage() {
   const [store, ledger] = await Promise.all([getStore(), getAdminLedgerEntries()]);
 
   return (
-    <main className="min-h-svh overflow-x-hidden bg-neutral-100 text-black">
+    <main className="min-h-svh overflow-x-clip bg-slate-50 text-slate-950">
       <AdminShell session={session} users={store.users.map(publicUser)} store={store}>
         <AdminDashboard
           store={store}

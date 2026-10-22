@@ -57,9 +57,12 @@ class MenuTypeOption {
 
   factory MenuTypeOption.fromJson(dynamic value) {
     if (value is Map) {
+      final rawName = value['name'];
+      final nestedName = rawName is Map ? rawName['name'] : rawName;
+      final rawPrice = value['price'] ?? (rawName is Map ? rawName['price'] : null);
       return MenuTypeOption(
-        name: value['name']?.toString() ?? '',
-        price: (value['price'] as num?)?.toDouble() ?? 0,
+        name: nestedName?.toString() ?? '',
+        price: (rawPrice as num?)?.toDouble() ?? 0,
       );
     }
     return MenuTypeOption(name: value?.toString() ?? '');

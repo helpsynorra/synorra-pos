@@ -480,7 +480,7 @@ class _CartPanelState extends State<CartPanel> {
                                     ),
                                   ),
                                   SizedBox(
-                                    width: widget.isFullWidth ? 22 : 24,
+                                    width: widget.isFullWidth ? 22 : 20,
                                     child: Text(
                                       '${controller.cart[index].qty}',
                                       textAlign: TextAlign.center,
@@ -1017,8 +1017,8 @@ class _CartPanelState extends State<CartPanel> {
           onTap: onTap,
           customBorder: const CircleBorder(),
           child: SizedBox(
-            width: widget.isFullWidth ? 28 : 44,
-            height: widget.isFullWidth ? 32 : 44,
+            width: widget.isFullWidth ? 28 : 36,
+            height: widget.isFullWidth ? 32 : 36,
             child: Icon(icon, size: widget.isFullWidth ? 16 : 20, color: _ink),
           ),
         ),

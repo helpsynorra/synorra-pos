@@ -1,13 +1,21 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0a0a0a;
-  --foreground: #f4f4f4;
+  --background: #f3f7fc;
+  --foreground: #17243e;
+  --synorra-navy: #101d37;
+  --synorra-blue: #58789d;
+  --synorra-red: #d64646;
+  --synorra-mist: #edf4fc;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-synorra-navy: var(--synorra-navy);
+  --color-synorra-blue: var(--synorra-blue);
+  --color-synorra-red: var(--synorra-red);
+  --color-synorra-mist: var(--synorra-mist);
   --font-sans: var(--font-inter);
   --font-serif: var(--font-playfair);
   --font-script: var(--font-great-vibes);

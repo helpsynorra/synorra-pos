@@ -25,10 +25,10 @@ export function LoginForm({ role }: { role: "admin" | "cashier" }) {
   }
 
   return (
-    <form action={action} className={`w-full ${isCashier ? "space-y-6" : "space-y-5"}`}>
+    <form action={action} className={`w-full ${isCashier ? "grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-x-4 xl:grid-cols-1" : "space-y-5"}`}>
       <input type="hidden" name="role" value={role} />
       {isCashier ? (
-        <div className="mb-1 text-center">
+        <div className="mb-1 text-center md:col-span-2 xl:col-span-1">
           <p className="mt-2 text-[15px] leading-6 text-[#7892af]">
             Sign in with your Email and Password.
           </p>
@@ -97,7 +97,7 @@ export function LoginForm({ role }: { role: "admin" | "cashier" }) {
       </label>
 
       {state?.error ? (
-        <p className={`text-sm ${isCashier ? "text-red-600" : "text-red-300"}`}>
+        <p className={`text-sm ${isCashier ? "text-red-600 md:col-span-2 xl:col-span-1" : "text-red-300"}`}>
           {state.error}
         </p>
       ) : null}
@@ -107,7 +107,7 @@ export function LoginForm({ role }: { role: "admin" | "cashier" }) {
         disabled={pending}
         className={`w-full text-sm font-semibold transition disabled:cursor-wait disabled:opacity-60 ${
           isCashier
-            ? "flex h-[60px] items-center justify-center gap-3 rounded-[17px] bg-[#101d37] text-white shadow-[0_12px_25px_rgba(20,38,70,0.2)] hover:bg-[#1b2c50]"
+          ? "flex h-[60px] items-center justify-center gap-3 rounded-[17px] bg-[#101d37] text-white shadow-[0_12px_25px_rgba(20,38,70,0.2)] hover:bg-[#1b2c50] md:col-span-2 xl:col-span-1"
             : "rounded-full bg-white py-3.5 text-black hover:bg-neutral-200"
         }`}
       >
@@ -118,7 +118,7 @@ export function LoginForm({ role }: { role: "admin" | "cashier" }) {
         <button
           type="button"
           onClick={() => setShowPasswordReset(true)}
-          className="w-full text-center text-sm font-medium text-[#243958] underline underline-offset-4 hover:text-[#536f91]"
+          className="w-full text-center text-sm font-medium text-[#243958] underline underline-offset-4 hover:text-[#536f91] md:col-span-2 xl:col-span-1"
         >
           Forgot password?
         </button>
