@@ -509,8 +509,55 @@ class SyncService extends ChangeNotifier {
       }
 
       if (matchedCosting != null) {
-        if (matchedCosting['ingredients'] is List) {
-          for (final rawIng in (matchedCosting['ingredients'] as List)) {
+        final style = line.style ??
+            ((menuItem?.styles.length ?? 0) == 1 ? menuItem!.styles.first : null);
+        final selectedSize = line.addons
+            .where((addon) =>
+                addon.id?.startsWith('size:') == true && addon.qty > 0)
+            .firstOrNull;
+        String sizeKey(String value) => value
+            .trim()
+            .toLowerCase()
+            .replaceAll(RegExp(r'[^a-z0-9.]'), '');
+        final selectedSizeKey = selectedSize == null
+            ? ''
+            : sizeKey(selectedSize.name);
+        final sizeCup = selectedSizeKey.isEmpty
+            ? null
+            : inventory.where((item) {
+                final itemStyle = item.inventoryType;
+                final styleMatches = style == null ||
+                    itemStyle == null ||
+                    !itemStyle.startsWith('cup_') ||
+                    itemStyle == 'cup_$style';
+                final itemSize = sizeKey(item.cupSize ?? item.name);
+                return styleMatches && itemSize == selectedSizeKey;
+              }).firstOrNull;
+
+        final configuredCupId = style == 'hot'
+            ? matchedCosting['hotCupInventoryItemId']?.toString()
+            : style == 'iced'
+                ? matchedCosting['icedCupInventoryItemId']?.toString()
+                : matchedCosting['otherCupInventoryItemId']?.toString();
+        final cupStock = sizeCup ??
+            (configuredCupId == null
+                ? null
+                : inventory.where((item) => item.id == configuredCupId).firstOrNull);
+        final cupId = cupStock?.id ?? configuredCupId;
+
+        final cupRecipesRaw = matchedCosting['cupRecipes'] ?? matchedCosting['cup_recipes'];
+        final cupRecipes = cupRecipesRaw is Map
+            ? Map<String, dynamic>.from(cupRecipesRaw)
+            : <String, dynamic>{};
+        final selectedCupRecipe = cupId != null && cupRecipes[cupId] is List
+            ? cupRecipes[cupId] as List
+            : null;
+        final recipeIngredients = selectedCupRecipe ??
+            (matchedCosting['ingredients'] is List
+                ? matchedCosting['ingredients'] as List
+                : const <dynamic>[]);
+
+        for (final rawIng in recipeIngredients) {
             if (rawIng is Map) {
               final ingId = rawIng['inventoryItemId']?.toString() ?? '';
               final ingName = rawIng['name']?.toString() ?? '';
@@ -536,19 +583,15 @@ class SyncService extends ChangeNotifier {
           }
         }
         // Cup from recipeCosting
-        final cupId = line.style == 'hot'
-            ? matchedCosting['hotCupInventoryItemId']?.toString()
-            : line.style == 'iced'
-                ? matchedCosting['icedCupInventoryItemId']?.toString()
-                : matchedCosting['otherCupInventoryItemId']?.toString();
         if (cupId != null && cupId.isNotEmpty) {
-          final cupStock = inventory.where((i) => i.id == cupId).firstOrNull;
-          if (cupStock != null) {
+          final resolvedCupStock = cupStock ??
+              inventory.where((i) => i.id == cupId).firstOrNull;
+          if (resolvedCupStock != null) {
             deductions.add({
-              'inventoryItemId': cupStock.id,
-              'itemName': cupStock.name,
+              'inventoryItemId': resolvedCupStock.id,
+              'itemName': resolvedCupStock.name,
               'amount': 1.0 * line.qty,
-              'unit': cupStock.unit,
+              'unit': resolvedCupStock.unit,
               'orderItemId': line.productId,
             });
           }

@@ -20,7 +20,7 @@ class SupabaseConfig {
   static String get supabasePublishableKey => publishableKey;
 
   static const String _defaultPosApiUrl =
-      'https://https://synorra-pos.click/api/sync';
+      'https://synorra-pos.click/api/sync';
   static const String _configuredPosApiUrl = String.fromEnvironment(
     'POS_API_URL',
     defaultValue: _defaultPosApiUrl,
@@ -34,6 +34,8 @@ class SupabaseConfig {
     if (uri == null ||
         (uri.scheme != 'https' && uri.scheme != 'http') ||
         uri.host.isEmpty ||
+        uri.host == 'https' ||
+        uri.host == 'http' ||
         !uri.path.toLowerCase().replaceFirst(RegExp(r'/$'), '').endsWith('/api/sync')) {
       return _defaultPosApiUrl;
     }

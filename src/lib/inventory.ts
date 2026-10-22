@@ -1,5 +1,5 @@
 import { phDateString, phTimestamp } from "@/lib/datetime";
-import { hydrateOrderLine, normalizeMenuAddons } from "@/lib/menu";
+import { hydrateOrderLine, normalizeMenuAddons, normalizeMenuStyles } from "@/lib/menu";
 import type {
   DrinkStyle,
   InventoryItem,
@@ -21,6 +21,14 @@ export function formatQty(value: number): string {
 
 function itemKey(name: string) {
   return name.trim().toLowerCase();
+}
+
+function cupSizeKey(value: string) {
+  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9.]/g, "");
+  const match = /(\d+(?:\.\d+)?)(oz|ounce|ounces)?/.exec(normalized);
+  if (!match) return normalized;
+  const unit = match[2] ? "oz" : /cup/i.test(value) ? "oz" : "";
+  return `${Number(match[1])}${unit}`;
 }
 
 // Inventory identity is exact-after-normalization only. Substring
@@ -155,7 +163,7 @@ export function remainingForUsages(
 
 type CupAssignment = Pick<
   RecipeCosting,
-  "hotCupInventoryItemId" | "icedCupInventoryItemId" | "otherCupInventoryItemId"
+  "hotCupInventoryItemId" | "icedCupInventoryItemId" | "otherCupInventoryItemId" | "extraCupInventoryItemIds"
 >;
 
 export function configuredCupIds(costings: CupAssignment[] | undefined) {
@@ -165,15 +173,20 @@ export function configuredCupIds(costings: CupAssignment[] | undefined) {
       const id = String(value ?? "").trim();
       if (id) ids.add(id);
     }
+    for (const value of costing.extraCupInventoryItemIds ?? []) {
+      const id = String(value ?? "").trim();
+      if (id) ids.add(id);
+    }
   }
   return ids;
 }
 
 export function looksLikeCupItem(
-  item: { id?: string; name: string },
+  item: { id?: string; name: string; inventoryType?: string },
   costings?: CupAssignment[],
 ) {
   if (configuredCupIds(costings).has(String(item.id ?? "").trim())) return true;
+  if (item.inventoryType) return item.inventoryType === "cup" || item.inventoryType.startsWith("cup_");
   return /\bcups?\b/i.test(String(item.name ?? "").trim());
 }
 
@@ -182,12 +195,17 @@ export function cupForOrderLine(
   costing: CupAssignment | undefined,
   style?: DrinkStyle,
 ) {
-  const selectedId =
-    style === "hot"
-      ? costing?.hotCupInventoryItemId
-      : style === "iced"
-        ? costing?.icedCupInventoryItemId
-        : costing?.otherCupInventoryItemId;
+  const hotCupId = String(costing?.hotCupInventoryItemId ?? "").trim();
+  const icedCupId = String(costing?.icedCupInventoryItemId ?? "").trim();
+  const selectedId = style === "hot"
+    ? hotCupId
+    : style === "iced"
+      ? icedCupId
+      : hotCupId && !icedCupId
+        ? hotCupId
+        : icedCupId && !hotCupId
+          ? icedCupId
+          : costing?.otherCupInventoryItemId;
   const id = String(selectedId ?? "").trim();
   if (!id) return undefined;
   return inventory.find((item) => item.id === id);
@@ -251,12 +269,29 @@ export function ingredientsForOrderLine(
   const costing = [...recipeCostings].reverse().find((entry) => entry.menuItems.some(matchesDrink));
 
   // Configured recipe costings are authoritative; otherwise use the legacy recipe map.
-  const recipe = recipeCostings.length > 0
+  const baseRecipe = recipeCostings.length > 0
     ? costing?.ingredients ?? []
     : (store.recipes ?? {})[line.productId] ?? Object.entries(store.recipes ?? {}).find(([recipeKey]) => matchesDrink(recipeKey))?.[1] ?? [];
 
   const inventory = store.inventory ?? [];
-  const selectedCup = cupForOrderLine(inventory, costing, line.style);
+  const nameStyle = (value: string): DrinkStyle | undefined => {
+    const match = /^\s*(iced|hot)\b/i.exec(value);
+    return match ? match[1].toLowerCase() as DrinkStyle : undefined;
+  };
+  const availableStyles = menuItem ? normalizeMenuStyles(menuItem) : [];
+  const inferredStyle = line.style ?? nameStyle(line.name) ?? (availableStyles.length === 1 ? availableStyles[0] : undefined);
+  const selectedSize = (line.addons ?? []).find((addon) => addon.id.startsWith("size:") && addon.qty > 0);
+  const sizeCup = selectedSize
+    ? inventory.find((item) =>
+        looksLikeCupItem(item, store.recipeCostings) &&
+        (!inferredStyle || !item.inventoryType?.startsWith("cup_") || item.inventoryType === `cup_${inferredStyle}`) &&
+        cupSizeKey(item.cupSize ?? item.name) === cupSizeKey(selectedSize.name),
+      )
+    : undefined;
+  const selectedCup = sizeCup ?? cupForOrderLine(inventory, costing, inferredStyle);
+  const recipe = selectedCup && costing?.cupRecipes?.[selectedCup.id]
+    ? costing.cupRecipes[selectedCup.id]
+    : baseRecipe;
   const cupIds = configuredCupIds(store.recipeCostings);
   const isCupIngredient = (ingredient: RecipeIngredient) => {
     if (cupIds.has(ingredient.inventoryItemId)) return true;
@@ -271,14 +306,19 @@ export function ingredientsForOrderLine(
     if (!selectedCup || !isCupIngredient(ingredient)) return ingredient;
     return { ...ingredient, inventoryItemId: selectedCup.id, name: selectedCup.name, unit: selectedCup.unit };
   });
-  const hasConfiguredCup = resolvedRecipe.some((ingredient) => ingredient.inventoryItemId === selectedCup?.id);
-  const cupIngredient = selectedCup && !hasConfiguredCup
-    ? [{ inventoryItemId: selectedCup.id, name: selectedCup.name, amount: 1, unit: selectedCup.unit }]
-    : [];
+  const additionalCups = (costing?.extraCupInventoryItemIds ?? [])
+    .map((id) => inventory.find((item) => item.id === id))
+    .filter((item): item is InventoryItem => Boolean(item));
+  const selectedCups = [selectedCup, ...additionalCups].filter(
+    (item, index, all): item is InventoryItem => Boolean(item) && all.findIndex((candidate) => candidate?.id === item?.id) === index,
+  );
+  const cupIngredients = selectedCups
+    .filter((cup) => !resolvedRecipe.some((ingredient) => ingredient.inventoryItemId === cup.id))
+    .map((cup) => ({ inventoryItemId: cup.id, name: cup.name, amount: 1, unit: cup.unit }));
 
   return [
     ...resolvedRecipe,
-    ...cupIngredient,
+    ...cupIngredients,
     ...addonIngredientsForOrderLine(store, line),
   ];
 }

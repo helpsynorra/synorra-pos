@@ -764,6 +764,8 @@ async function readStore(options?: { fresh?: boolean; ownerId?: string | null })
         purchaseUnitSize: row.purchase_unit_size != null ? Number(row.purchase_unit_size) : undefined,
         cupUsageAmount: row.cup_usage_amount != null ? Number(row.cup_usage_amount) : undefined,
         cupsMake: row.cups_make != null ? Number(row.cups_make) : undefined,
+        inventoryType: typeof row.inventory_type === "string" && row.inventory_type.trim() ? row.inventory_type.trim() : undefined,
+        cupSize: typeof row.cup_size === "string" && row.cup_size.trim() ? row.cup_size.trim() : undefined,
       })),
       orders: rows.map((row) => ({
         id: row.id,
@@ -818,6 +820,12 @@ async function readStore(options?: { fresh?: boolean; ownerId?: string | null })
         hotCupInventoryItemId: row.hot_cup_inventory_item_id ?? undefined,
         icedCupInventoryItemId: row.iced_cup_inventory_item_id ?? undefined,
         otherCupInventoryItemId: row.other_cup_inventory_item_id ?? undefined,
+        extraCupInventoryItemIds: Array.isArray(row.extra_cup_inventory_item_ids)
+          ? row.extra_cup_inventory_item_ids.filter((id: unknown): id is string => typeof id === "string" && Boolean(id.trim()))
+          : [],
+        cupRecipes: row.cup_recipes && typeof row.cup_recipes === "object" && !Array.isArray(row.cup_recipes)
+          ? row.cup_recipes as Record<string, RecipeIngredient[]>
+          : {},
       })),
       loginActivity: (loginActivity.data ?? []).map((row) => ({
         id: row.id,
@@ -878,6 +886,8 @@ async function writeStore(store: StoreData): Promise<void> {
     purchase_unit_size: item.purchaseUnitSize ?? null,
     cup_usage_amount: item.cupUsageAmount ?? null,
     cups_make: item.cupsMake ?? null,
+    inventory_type: item.inventoryType ?? null,
+    cup_size: item.cupSize ?? null,
   }));
   const restockRows = store.restocks.map((record) => ({
     id: record.id,
@@ -898,13 +908,37 @@ async function writeStore(store: StoreData): Promise<void> {
       updated_at: new Date().toISOString(),
     }, { onConflict: "id" }),
     ...(inventoryRows.length > 0
-      ? [supabase.from("inventory_items").upsert(inventoryRows, { onConflict: "id" })]
+      ? [
+          (async () => {
+            const result = await supabase.from("inventory_items").upsert(inventoryRows, { onConflict: "id" });
+            if (result.error && /inventory_type/i.test(result.error.message)) {
+              if (/column|schema cache/i.test(result.error.message)) {
+                // Keep inventory saves working if this project has not added
+                // the inventory_type column yet.
+                const legacyRows = inventoryRows.map(({ inventory_type: _inventoryType, ...row }) => row);
+                return supabase.from("inventory_items").upsert(legacyRows, { onConflict: "id" });
+              }
+
+              // Do not rewrite cup_hot/cup_iced/custom values to a generic
+              // type: that would silently lose the stock item's classification.
+            }
+            return result;
+          })(),
+        ]
       : []),
     ...(restockRows.length > 0
       ? [supabase.from("restocks").upsert(restockRows, { onConflict: "id" })]
       : []),
   ]);
   const error = operations.find((result) => result.error)?.error;
+  if (error && /inventory_items_inventory_type_check/i.test(error.message)) {
+    throw new Error(
+      "Unable to save store data: Supabase still restricts inventory types. Apply migration 20261022001300_inventory_type_values.sql, then retry.",
+    );
+  }
+  if (error && /cup_size/i.test(error.message) && /column|schema cache/i.test(error.message)) {
+    throw new Error("Unable to save cup size: apply migration 20261022001500_inventory_cup_size.sql, then retry.");
+  }
   if (error) throw new Error(`Unable to save store data: ${error.message}`);
   cacheStore(ownerId, store);
 }
@@ -2321,10 +2355,45 @@ export async function saveRecipeCostingRecord(costing: RecipeCosting): Promise<v
       p_hot_cup_inventory_item_id: costing.hotCupInventoryItemId ?? null,
       p_iced_cup_inventory_item_id: costing.icedCupInventoryItemId ?? null,
       p_other_cup_inventory_item_id: costing.otherCupInventoryItemId ?? null,
+      p_extra_cup_inventory_item_ids: costing.extraCupInventoryItemIds ?? [],
       p_menu_items: costing.menuItems,
       p_ingredients: costing.ingredients,
     });
-    if (error) throw new Error(`Unable to save recipe costing: ${error.message}`);
+    if (error && (error.code === "PGRST202" || error.message.includes("Could not find the function"))) {
+      // Older deployed databases still expose the original owner RPC signature.
+      // Save through it, then persist the extra cup assignments directly.
+      const legacyResult = await supabase.rpc("save_recipe_costing_for_owner", {
+        p_owner_id: ownerId,
+        p_id: costing.id,
+        p_name: costing.name,
+        p_hot_cup_inventory_item_id: costing.hotCupInventoryItemId ?? null,
+        p_iced_cup_inventory_item_id: costing.icedCupInventoryItemId ?? null,
+        p_other_cup_inventory_item_id: costing.otherCupInventoryItemId ?? null,
+        p_menu_items: costing.menuItems,
+        p_ingredients: costing.ingredients,
+      });
+      if (legacyResult.error) throw new Error(`Unable to save recipe costing: ${legacyResult.error.message}`);
+
+      const extraCupsResult = await supabase
+        .from("recipe_costings")
+        .update({ extra_cup_inventory_item_ids: costing.extraCupInventoryItemIds ?? [], cup_recipes: costing.cupRecipes ?? {} })
+        .eq("id", costing.id)
+        .eq("owner_id", ownerId);
+      if (extraCupsResult.error) {
+        throw new Error(`Recipe saved, but cup settings could not be saved. Apply migrations 20261022001200_recipe_extra_cups.sql and 20261022001400_recipe_cup_ingredients.sql: ${extraCupsResult.error.message}`);
+      }
+    } else if (error) {
+      throw new Error(`Unable to save recipe costing: ${error.message}`);
+    } else {
+      const cupRecipesResult = await supabase
+        .from("recipe_costings")
+        .update({ cup_recipes: costing.cupRecipes ?? {} })
+        .eq("id", costing.id)
+        .eq("owner_id", ownerId);
+      if (cupRecipesResult.error) {
+        throw new Error(`Recipe saved, but cup-specific ingredient amounts could not be saved. Apply migration 20261022001400_recipe_cup_ingredients.sql: ${cupRecipesResult.error.message}`);
+      }
+    }
     if (memoryStore) {
       const index = memoryStore.recipeCostings.findIndex((entry) => entry.id === costing.id);
       if (index >= 0) memoryStore.recipeCostings[index] = costing;
@@ -2342,11 +2411,32 @@ export async function deleteRecipeCostingRecord(id: string): Promise<void> {
       return;
     }
     const supabase = supabaseAdmin();
-    // recipe_costing_menu_items.recipe_costing_id and
-    // recipe_costing_ingredients.recipe_costing_id are both
-    // ON DELETE CASCADE on recipe_costings.id, so deleting the parent row
-    // alone removes both children, atomically, in one statement.
-    const { error } = await supabase.from("recipe_costings").delete().eq("id", id).eq("owner_id", await activeOwnerId() ?? POS_STATE_ID);
+    const ownerId = await activeOwnerId() ?? POS_STATE_ID;
+    const { data: parent, error: parentLookupError } = await supabase
+      .from("recipe_costings")
+      .select("id")
+      .eq("id", id)
+      .eq("owner_id", ownerId)
+      .maybeSingle();
+    if (parentLookupError) throw new Error(`Unable to delete recipe costing: ${parentLookupError.message}`);
+    if (!parent) return;
+
+    // Some deployed databases were created with restrictive foreign keys,
+    // despite the original migration declaring ON DELETE CASCADE. Remove the
+    // dependent rows explicitly so deletion works against either schema.
+    const { error: menuItemsError } = await supabase
+      .from("recipe_costing_menu_items")
+      .delete()
+      .eq("recipe_costing_id", id);
+    if (menuItemsError) throw new Error(`Unable to delete recipe menu links: ${menuItemsError.message}`);
+
+    const { error: ingredientsError } = await supabase
+      .from("recipe_costing_ingredients")
+      .delete()
+      .eq("recipe_costing_id", id);
+    if (ingredientsError) throw new Error(`Unable to delete recipe ingredients: ${ingredientsError.message}`);
+
+    const { error } = await supabase.from("recipe_costings").delete().eq("id", id).eq("owner_id", ownerId);
     if (error) throw new Error(`Unable to delete recipe costing: ${error.message}`);
     if (memoryStore) {
       memoryStore.recipeCostings = memoryStore.recipeCostings.filter((entry) => entry.id !== id);

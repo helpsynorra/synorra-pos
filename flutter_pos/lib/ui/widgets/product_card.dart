@@ -62,11 +62,20 @@ class ProductCard extends StatelessWidget {
                   SizedBox(
                     height: 78,
                     width: double.infinity,
-                    child: item.image.isEmpty ? const Icon(Icons.local_cafe_outlined, color: Color(0xFF9CA3AF)) : Image.network(
-                      item.image,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const Icon(Icons.local_cafe_outlined, color: Color(0xFF9CA3AF)),
-                    ),
+                    child: item.image.isEmpty
+                        ? const Icon(
+                            Icons.local_cafe_outlined,
+                            color: Color(0xFF9CA3AF),
+                          )
+                        : Image.network(
+                            item.image,
+                            fit: BoxFit.contain,
+                            alignment: Alignment.center,
+                            errorBuilder: (_, __, ___) => const Icon(
+                              Icons.local_cafe_outlined,
+                              color: Color(0xFF9CA3AF),
+                            ),
+                          ),
                   ),
                   const SizedBox(height: 4),
                   Flexible(

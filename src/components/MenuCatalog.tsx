@@ -113,7 +113,6 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
   const [itemTypes, setItemTypes] = useState<string[]>([]);
   const [itemImage, setItemImage] = useState("");
   const [itemPhoto, setItemPhoto] = useState<File | null>(null);
-  const [sizePhotos, setSizePhotos] = useState<Record<string, File>>({});
 
   const counts = useMemo(() => {
     const map = new Map<string, number>();
@@ -163,7 +162,6 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
     setItemTypes([]);
     setItemImage("");
     setItemPhoto(null);
-    setSizePhotos({});
     setNotice(null);
     setTab("items");
   }
@@ -179,7 +177,6 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
     setItemTypes(normalizeMenuTypes(item));
     setItemImage(item.image);
     setItemPhoto(null);
-    setSizePhotos({});
     setNotice(null);
     setTab("items");
   }
@@ -204,7 +201,6 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
     data.set("addons", JSON.stringify(itemAddons.filter((addon) => addon.name.trim())));
     data.set("types", JSON.stringify(itemTypes.filter((type) => type.trim())));
     if (itemPhoto) data.set("photo", itemPhoto);
-    for (const [id, file] of Object.entries(sizePhotos)) data.set(`sizePhoto:${id}`, file);
     return data;
   }
 
@@ -645,12 +641,6 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                           aria-label="Size name"
                           className={field}
                         />
-                        <label className="text-xs text-neutral-500">Size photo
-                          <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(event) => {
-                            const file = event.target.files?.[0];
-                            if (file) setSizePhotos((current) => ({ ...current, [size.id]: file }));
-                          }} className="block max-w-full text-xs" />
-                        </label>
                         <input
                           type="number"
                           min="0"

@@ -343,8 +343,8 @@ class PosNavigationDrawer extends StatelessWidget {
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Image.asset(
-                'lib/src/images/logo_wordmark.png',
-                width: 84,
+                'lib/src/images/logo-app-transparent.png',
+                width: 24,
                 height: 22,
                 fit: BoxFit.contain,
                 semanticLabel: 'Synorra',

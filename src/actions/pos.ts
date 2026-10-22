@@ -161,11 +161,50 @@ export async function saveAdminData(data: {
   }
 
   if (data.recipeCostings) {
-    // Same reconcile pattern: saveCostings()/deleteRecipeCosting() in
-    // SalePurchaseTransactions.tsx both send the full resulting
-    // recipeCostings array (a "delete" is just "save the array without
-    // that entry").
-    const current = await getStore();
+    // Freeze usage calculated from the current recipes before they are edited
+    // or deleted. Otherwise the Usage Logbook would reconstruct old orders
+    // from the changed recipe and their historical usage could disappear.
+    const current = await getFreshStore();
+    const loggedOrderIds = new Set(current.usageLogs.map((entry) => entry.orderId).filter(Boolean));
+    const usageSnapshots = current.orders
+      .filter((order) => !order.voided && !order.deletedAt && !loggedOrderIds.has(order.id))
+      .flatMap((order) => {
+        const entries = order.items.flatMap((line, lineIndex) =>
+          ingredientsForOrderLine(current, line).map((ingredient, ingredientIndex) => ({
+            id: `recipe-snapshot-${order.id}-${lineIndex}-${ingredientIndex}`,
+            ownerId: undefined,
+            orderId: order.id,
+            orderItemId: line.productId,
+            inventoryItemId: ingredient.inventoryItemId && ingredient.inventoryItemId !== "other"
+              ? ingredient.inventoryItemId
+              : undefined,
+            date: order.createdAt,
+            itemName: ingredient.name,
+            usedAmount: roundQty(Number(ingredient.amount) * line.qty),
+            unit: ingredient.unit,
+          })),
+        );
+        // A marker preserves the fact that this order was checked and had no
+        // recipe, so a later recipe addition cannot rewrite its history.
+        return entries.length > 0 ? entries : [{
+          id: `recipe-snapshot-${order.id}-none`,
+          ownerId: undefined,
+          orderId: order.id,
+          orderItemId: "",
+          inventoryItemId: undefined,
+          date: order.createdAt,
+          itemName: "__usage_snapshot_empty__",
+          // usage_logs requires used_amount > 0. This internal marker is
+          // filtered from the logbook and has no inventory item, so it never
+          // changes stock or appears as a real usage quantity.
+          usedAmount: 1,
+          unit: "__snapshot__",
+        }];
+      });
+    if (usageSnapshots.length > 0) await saveUsageLogRecords(usageSnapshots);
+
+    // SaveCostings()/deleteRecipeCosting() send the full resulting costing
+    // array (a delete is the array without that entry).
     const nextIds = new Set(data.recipeCostings.map((entry) => entry.id));
     for (const existing of current.recipeCostings) {
       if (!nextIds.has(existing.id)) {

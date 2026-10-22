@@ -498,6 +498,10 @@ class SupabaseService {
           'hotCupInventoryItemId': row['hot_cup_inventory_item_id'],
           'icedCupInventoryItemId': row['iced_cup_inventory_item_id'],
           'otherCupInventoryItemId': row['other_cup_inventory_item_id'],
+          'extraCupInventoryItemIds': row['extra_cup_inventory_item_ids'] ?? const <String>[],
+          'cupRecipes': row['cup_recipes'] is Map
+              ? Map<String, dynamic>.from(row['cup_recipes'] as Map)
+              : <String, dynamic>{},
         };
       }).toList();
 

@@ -183,6 +183,8 @@ export type InventoryItem = {
   purchaseUnitSize?: number;
   cupUsageAmount?: number;
   cupsMake?: number;
+  inventoryType?: string;
+  cupSize?: string;
 };
 
 export type RecipeIngredient = {
@@ -201,6 +203,9 @@ export type RecipeCosting = {
   hotCupInventoryItemId?: string;
   icedCupInventoryItemId?: string;
   otherCupInventoryItemId?: string;
+  extraCupInventoryItemIds?: string[];
+  /** Ingredient amounts keyed by the selected cup inventory item ID. */
+  cupRecipes?: Record<string, RecipeIngredient[]>;
 };
 
 export type UsageLog = {

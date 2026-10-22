@@ -9,6 +9,8 @@ class InventoryItem {
   final double? purchaseUnitSize;
   final double? cupUsageAmount;
   final double? cupsMake;
+  final String? inventoryType;
+  final String? cupSize;
 
   InventoryItem({
     required this.id,
@@ -21,6 +23,8 @@ class InventoryItem {
     this.purchaseUnitSize,
     this.cupUsageAmount,
     this.cupsMake,
+    this.inventoryType,
+    this.cupSize,
   });
 
   bool get isLowStock => maxStock > 0 && stock <= (maxStock * 0.2);
@@ -37,6 +41,8 @@ class InventoryItem {
       purchaseUnitSize: (json['purchaseUnitSize'] as num?)?.toDouble() ?? (json['purchase_unit_size'] as num?)?.toDouble(),
       cupUsageAmount: (json['cupUsageAmount'] as num?)?.toDouble() ?? (json['cup_usage_amount'] as num?)?.toDouble(),
       cupsMake: (json['cupsMake'] as num?)?.toDouble() ?? (json['cups_make'] as num?)?.toDouble(),
+      inventoryType: json['inventoryType'] as String? ?? json['inventory_type'] as String?,
+      cupSize: json['cupSize'] as String? ?? json['cup_size'] as String?,
     );
   }
 
@@ -51,5 +57,7 @@ class InventoryItem {
     if (purchaseUnitSize != null) 'purchaseUnitSize': purchaseUnitSize,
     if (cupUsageAmount != null) 'cupUsageAmount': cupUsageAmount,
     if (cupsMake != null) 'cupsMake': cupsMake,
+    if (inventoryType != null) 'inventoryType': inventoryType,
+    if (cupSize != null) 'cupSize': cupSize,
   };
 }

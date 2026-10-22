@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createRestock, deleteAdminRecord, deleteRestock, saveAdminData } from "@/actions/pos";
 import { formatQty, ingredientsForOrderLine, itemNameEquals, looksLikeCupItem, matchesInventoryRow, remainingForUsages, roundQty, stockLedgerForRange } from "@/lib/inventory";
 import { phDateString, phDateTimeLabel, phIsoFromDate, phPeriodBounds, type PeriodRange } from "@/lib/datetime";
-import { cartLineUnitPrice, drinkDisplayName, orderLineOptionsLabel, orderSoldAsLabel, orderSoldAsLines, orderSoldAsParts } from "@/lib/menu";
+import { cartLineUnitPrice, drinkDisplayName, normalizeMenuAddons, normalizeMenuStyles, orderLineOptionsLabel, orderSoldAsLabel, orderSoldAsLines, orderSoldAsParts } from "@/lib/menu";
 import type { Order, RecipeIngredient, StoreData } from "@/lib/types";
 
 function inventoryUsagePerPiece(item: StockItem, used: number) {
@@ -23,6 +23,14 @@ function configuredCupsLeft(item: StockItem, remaining: number) {
 function pieceSize(item: Pick<StockItem, "purchaseUnitSize">) {
   const size = Number(item.purchaseUnitSize);
   return size > 0 ? size : 1;
+}
+
+function normalizeCupSize(value: string) {
+  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9.]/g, "");
+  const match = /(\d+(?:\.\d+)?)(oz|ounce|ounces)?/.exec(normalized);
+  if (!match) return normalized;
+  const unit = match[2] ? "oz" : /cup/i.test(value) ? "oz" : "";
+  return `${Number(match[1])}${unit}`;
 }
 
 function toPieceQuantity(item: Pick<StockItem, "purchaseUnitSize">, amount: number) {
@@ -182,6 +190,8 @@ type StockItem = {
   purchaseUnitSize?: number;
   cupUsageAmount?: number;
   cupsMake?: number;
+  inventoryType?: string;
+  cupSize?: string;
 };
 
 type RestockRecord = {
@@ -269,6 +279,8 @@ export function SalePurchaseTransactions({
     purchaseUnitSize: item.purchaseUnitSize,
     cupUsageAmount: item.cupUsageAmount,
     cupsMake: item.cupsMake,
+    inventoryType: item.inventoryType,
+    cupSize: item.cupSize,
   }));
   const loggedOrderIds = new Set(
     (store.usageLogs ?? [])
@@ -289,6 +301,7 @@ export function SalePurchaseTransactions({
     }))));
   const extraUsageLogs = (store.usageLogs ?? [])
     .flatMap((entry) => {
+      if (entry.itemName === "__usage_snapshot_empty__") return [];
       const order = store.orders.find((item) => item.id === entry.orderId);
       if (entry.orderId && (!order || order.voided || order.deletedAt)) return [];
       return [{
@@ -343,7 +356,11 @@ export function SalePurchaseTransactions({
   const [stockQty, setStockQty] = useState("");
   const [stockUnit, setStockUnit] = useState("");
   const [stockPurchaseUnitSize, setStockPurchaseUnitSize] = useState("");
-  const [stockCupUsageAmount, setStockCupUsageAmount] = useState("");
+  const [stockInventoryType, setStockInventoryType] = useState<"cup" | "ingredient" | "other">("ingredient");
+  const [stockCupType, setStockCupType] = useState<"hot" | "iced">("hot");
+  const [stockOtherType, setStockOtherType] = useState("");
+  const [showCupSizes, setShowCupSizes] = useState(false);
+  const [selectedCupSize, setSelectedCupSize] = useState("");
 
   function resetStockForm() {
     setEditStockId(null);
@@ -351,7 +368,10 @@ export function SalePurchaseTransactions({
       setStockQty("");
     setStockUnit("");
     setStockPurchaseUnitSize("");
-    setStockCupUsageAmount("");
+    setStockInventoryType("ingredient");
+    setStockOtherType("");
+    setShowCupSizes(false);
+    setSelectedCupSize("");
   }
 
   const [inlineRestockValues, setInlineRestockValues] = useState<{ [key: string]: string }>({});
@@ -364,9 +384,13 @@ export function SalePurchaseTransactions({
     name: string;
     menuItems: string[];
     ingredients: RecipeIngredient[];
+    otherItems?: RecipeIngredient[];
     hotCupInventoryItemId?: string;
     icedCupInventoryItemId?: string;
     otherCupInventoryItemId?: string;
+    extraCupInventoryItemIds?: string[];
+    cupRecipes?: Record<string, RecipeIngredient[]>;
+    activeCupInventoryItemId?: string;
   };
   const [recipeCostings, setRecipeCostings] = useState<Costing[]>([]);
   const [editingCostingIndex, setEditingCostingIndex] = useState<number | null>(null);
@@ -386,18 +410,68 @@ export function SalePurchaseTransactions({
     const saved = store.recipeCostings;
 
     if (saved && saved.length > 0) {
-      setRecipeCostings(saved);
+      const otherItemIds = new Set(store.inventory
+        .filter((item) => item.inventoryType && item.inventoryType !== "cup" && !item.inventoryType.startsWith("cup_") && item.inventoryType !== "ingredient")
+        .map((item) => item.id));
+      setRecipeCostings(saved.map((costing) => {
+        const menuStyles = new Set(costing.menuItems.flatMap((name) => {
+          const menu = recipeMenu.find((item) => item.name.trim().toLowerCase() === name.trim().toLowerCase());
+          return menu ? normalizeMenuStyles(menu) : (/^\s*iced\b/i.test(name) ? ["iced" as const] : /^\s*hot\b/i.test(name) ? ["hot" as const] : []);
+        }));
+        const activeCupId = menuStyles.size === 1
+          ? (menuStyles.has("iced") ? costing.icedCupInventoryItemId : costing.hotCupInventoryItemId)
+          : costing.icedCupInventoryItemId || costing.hotCupInventoryItemId;
+        const activeRecipe = (activeCupId && costing.cupRecipes?.[activeCupId]) || costing.ingredients;
+        const otherItems = activeRecipe.filter((item) => otherItemIds.has(item.inventoryItemId));
+        return {
+          ...costing,
+          activeCupInventoryItemId: activeCupId,
+          ingredients: activeRecipe.filter((item) => !otherItemIds.has(item.inventoryItemId)),
+          otherItems,
+        };
+      }));
     }
-  }, [store.recipeCostings]);
+  }, [recipeMenu, store.inventory, store.recipeCostings]);
 
   function updateCosting(index: number, patch: Partial<Costing>) {
     setRecipeCostings((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, ...patch } : row));
+  }
+
+  function changeCostingCup(index: number, field: "hotCupInventoryItemId" | "icedCupInventoryItemId", nextCupId: string) {
+    setRecipeCostings((rows) => rows.map((row, rowIndex) => {
+      if (rowIndex !== index) return row;
+      const currentCupId = row.activeCupInventoryItemId ?? row[field] ?? row.icedCupInventoryItemId ?? row.hotCupInventoryItemId ?? "";
+      if (currentCupId === nextCupId) {
+        return { ...row, [field]: nextCupId || undefined, activeCupInventoryItemId: nextCupId || undefined };
+      }
+
+      const cupRecipes = { ...(row.cupRecipes ?? {}) };
+      if (currentCupId) cupRecipes[currentCupId] = [...row.ingredients, ...(row.otherItems ?? [])].map((ingredient) => ({ ...ingredient }));
+      const nextRecipe = nextCupId ? cupRecipes[nextCupId] : undefined;
+      const template = nextRecipe ?? [...row.ingredients, ...(row.otherItems ?? [])].map((ingredient) => ({ ...ingredient, amount: 0 }));
+      const otherIds = new Set(stocks.filter((item) => item.inventoryType && item.inventoryType !== "cup" && !item.inventoryType.startsWith("cup_") && item.inventoryType !== "ingredient").map((item) => item.id));
+      return {
+        ...row,
+        [field]: nextCupId || undefined,
+        activeCupInventoryItemId: nextCupId || undefined,
+        ingredients: template.filter((ingredient) => !otherIds.has(ingredient.inventoryItemId)).map((ingredient) => ({ ...ingredient })),
+        otherItems: template.filter((ingredient) => otherIds.has(ingredient.inventoryItemId)).map((ingredient) => ({ ...ingredient })),
+        cupRecipes,
+      };
+    }));
   }
 
   function updateCostingIngredient(costingIndex: number, ingredientIndex: number, patch: Partial<RecipeIngredient>) {
     setRecipeCostings((rows) => rows.map((row, rowIndex) => rowIndex === costingIndex ? {
       ...row,
       ingredients: row.ingredients.map((ingredient, currentIndex) => currentIndex === ingredientIndex ? { ...ingredient, ...patch } : ingredient),
+    } : row));
+  }
+
+  function updateCostingOtherItem(costingIndex: number, itemIndex: number, patch: Partial<RecipeIngredient>) {
+    setRecipeCostings((rows) => rows.map((row, rowIndex) => rowIndex === costingIndex ? {
+      ...row,
+      otherItems: (row.otherItems ?? []).map((item, currentIndex) => currentIndex === itemIndex ? { ...item, ...patch } : item),
     } : row));
   }
 
@@ -435,6 +509,12 @@ export function SalePurchaseTransactions({
       }),
     [recipeMenu],
   );
+  const menuCupSizes = useMemo(() => Array.from(new Set(
+    recipeMenu.flatMap((item) => normalizeMenuAddons(item))
+      .filter((addon) => addon.id.startsWith("size:"))
+      .map((addon) => addon.name.trim())
+      .filter(Boolean),
+  )), [recipeMenu]);
   const assignedMenuItems = useMemo(
     () => new Set(recipeCostings.flatMap((costing) => costing.menuItems.map((name) => name.trim().toLowerCase()))),
     [recipeCostings],
@@ -457,8 +537,24 @@ export function SalePurchaseTransactions({
   }, [drinkSearch, selectedDrinkCategories, unassignedMenuItems]);
 
   const cupInventoryItems = useMemo(
-    () => store.inventory.filter((item) => looksLikeCupItem(item, recipeCostings)),
-    [recipeCostings, store.inventory],
+    () => stocks.filter((item) => looksLikeCupItem(item, recipeCostings)),
+    [recipeCostings, stocks],
+  );
+  const ingredientInventoryItems = useMemo(
+    () => stocks.filter((item) => !looksLikeCupItem(item, recipeCostings) && (!item.inventoryType || item.inventoryType === "ingredient")),
+    [recipeCostings, stocks],
+  );
+  const otherInventoryItems = useMemo(
+    () => stocks.filter((item) => Boolean(item.inventoryType) && item.inventoryType !== "cup" && !item.inventoryType.startsWith("cup_") && item.inventoryType !== "ingredient"),
+    [stocks],
+  );
+  const hotCupInventoryItems = useMemo(
+    () => cupInventoryItems.filter((item) => item.inventoryType !== "cup_iced"),
+    [cupInventoryItems],
+  );
+  const icedCupInventoryItems = useMemo(
+    () => cupInventoryItems.filter((item) => item.inventoryType !== "cup_hot"),
+    [cupInventoryItems],
   );
 
   function addMenuItemToCosting(index: number, drink: string) {
@@ -521,12 +617,37 @@ export function SalePurchaseTransactions({
 
   async function saveCostings(nextCostings = recipeCostings) {
     const recipes: StoreData["recipes"] = {};
+    const cupInventoryItemIds = new Set(cupInventoryItems.map((item) => item.id));
 
-    nextCostings.forEach((costing) =>
+    const savedCostings = nextCostings.map((costing, index) => {
+      const { otherItems = [], activeCupInventoryItemId, ...persistedCosting } = costing;
+      const menuStyles = new Set(costing.menuItems.flatMap((name) => {
+        const menu = recipeMenu.find((item) => item.name.trim().toLowerCase() === name.trim().toLowerCase());
+        return menu ? normalizeMenuStyles(menu) : (/^\s*iced\b/i.test(name) ? ["iced" as const] : /^\s*hot\b/i.test(name) ? ["hot" as const] : []);
+      }));
+      const activeCupId = activeCupInventoryItemId || (menuStyles.size === 1
+        ? (menuStyles.has("iced") ? costing.icedCupInventoryItemId : costing.hotCupInventoryItemId)
+        : costing.icedCupInventoryItemId || costing.hotCupInventoryItemId);
+      const cupRecipes = { ...(costing.cupRecipes ?? {}) };
+      if (activeCupId) cupRecipes[activeCupId] = [...costing.ingredients, ...otherItems]
+        .filter((ingredient) => !cupInventoryItemIds.has(ingredient.inventoryItemId))
+        .map((ingredient) => ({ ...ingredient }));
+      return {
+        ...persistedCosting,
+        cupRecipes,
+        id: costing.id || `recipe-costing-${Date.now()}-${index}`,
+        otherCupInventoryItemId: undefined,
+        extraCupInventoryItemIds: (costing.extraCupInventoryItemIds ?? []).filter(Boolean),
+        ingredients: [...costing.ingredients, ...otherItems].filter((ingredient) => !cupInventoryItemIds.has(ingredient.inventoryItemId)),
+      };
+    });
+
+    savedCostings.forEach((costing) =>
       costing.menuItems.forEach((menuItemName) => {
         const ingredients = costing.ingredients.filter(
           (ingredient) =>
             ingredient.name.trim() &&
+            !cupInventoryItemIds.has(ingredient.inventoryItemId) &&
             Number(ingredient.amount) > 0
         );
 
@@ -545,11 +666,6 @@ export function SalePurchaseTransactions({
         }
       })
     );
-
-    const savedCostings = nextCostings.map((costing, index) => ({
-      ...costing,
-      id: costing.id || `recipe-costing-${Date.now()}-${index}`,
-    }));
 
     const configuredIngredients = savedCostings
       .flatMap((costing) => costing.ingredients)
@@ -589,14 +705,23 @@ export function SalePurchaseTransactions({
     }
 
     setStocks(nextStocks);
-    setRecipeCostings(savedCostings);
-
-    await persistInventory(nextStocks);
+    setRecipeCostings(nextCostings.map((costing, index) => ({ ...costing, id: savedCostings[index].id })));
 
     await saveAdminData({
       recipes,
       recipeCostings: savedCostings,
     });
+
+    // Recipe persistence must not be blocked by inventory metadata migrations
+    // (for example, cup_size). The POS uses the saved costing to deduct recipe
+    // ingredients, while this inventory write only refreshes legacy unit data.
+    try {
+      await persistInventory(nextStocks);
+    } catch (error) {
+      setCostingNotice(
+        `Recipe saved, but inventory details could not be refreshed: ${error instanceof Error ? error.message : "Unknown inventory error."}`,
+      );
+    }
   }
 
   const [filterKeyword, setFilterKeyword] = useState("");
@@ -655,16 +780,18 @@ export function SalePurchaseTransactions({
       return {
         id: item.id,
         name: item.name,
-  stock: item.stock,
-  openingStock: item.openingStock ?? existing?.openingStock,
-  unit: item.unit || existing?.unit || "pcs",
+        stock: item.stock,
+        openingStock: item.openingStock ?? existing?.openingStock,
+        unit: item.unit || existing?.unit || "pcs",
         cost: existing?.cost ?? 0,
-      maxStock: existing?.maxStock ?? item.stock,
-      purchaseUnitSize: item.purchaseUnitSize,
-    cupUsageAmount: item.cupUsageAmount,
-    cupsMake: item.cupsMake ?? existing?.cupsMake,
-  };
-  });
+        maxStock: existing?.maxStock ?? item.stock,
+        purchaseUnitSize: item.purchaseUnitSize,
+        cupUsageAmount: item.cupUsageAmount,
+        cupsMake: item.cupsMake ?? existing?.cupsMake,
+        inventoryType: item.inventoryType ?? existing?.inventoryType,
+        cupSize: item.cupSize ?? existing?.cupSize,
+      };
+    });
     await saveAdminData({ inventory });
   }
 
@@ -684,25 +811,24 @@ export function SalePurchaseTransactions({
 
   const handleSaveStock = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!stockName.trim() || !stockQty) return;
+    const itemName = stockName.trim() || (stockInventoryType === "cup" ? selectedCupSize : stockInventoryType === "other" ? stockOtherType.trim() : "");
+    if (!itemName || !stockQty) return;
     const pieces = Number(stockQty);
     if (!Number.isFinite(pieces) || pieces < 0) return;
     const unit = stockUnit.trim() || "pcs";
-    const purchaseUnitSize = stockPurchaseUnitSize.trim() ? Number(stockPurchaseUnitSize) : undefined;
-    const cupUsageAmount = stockCupUsageAmount.trim() ? Number(stockCupUsageAmount) : undefined;
-    const cupsMake = unit && purchaseUnitSize !== undefined && cupUsageAmount !== undefined
-      ? purchaseUnitSize / cupUsageAmount
-      : undefined;
-    if ([purchaseUnitSize, cupUsageAmount].some((value) => value !== undefined && (!Number.isFinite(value) || value <= 0))) return;
+    const purchaseUnitSize = stockInventoryType === "cup" ? undefined : stockPurchaseUnitSize.trim() ? Number(stockPurchaseUnitSize) : undefined;
+    const inventoryType = stockInventoryType === "other" ? stockOtherType.trim() || "other" : stockInventoryType === "cup" ? `cup_${stockCupType}` : stockInventoryType;
+    const cupSize = stockInventoryType === "cup" ? selectedCupSize || undefined : undefined;
+    if (purchaseUnitSize !== undefined && (!Number.isFinite(purchaseUnitSize) || purchaseUnitSize <= 0)) return;
 
     if (editStockId) {
       const nextStocks = stocks.map((s) =>
-        s.id === editStockId ? { ...s, name: stockName.trim(), stock: toBaseQuantity({ purchaseUnitSize }, pieces), openingStock: toBaseQuantity({ purchaseUnitSize }, pieces), unit, purchaseUnitSize, cupUsageAmount, cupsMake } : s,
+        s.id === editStockId ? { ...s, name: itemName, stock: toBaseQuantity({ purchaseUnitSize }, pieces), openingStock: toBaseQuantity({ purchaseUnitSize }, pieces), unit, purchaseUnitSize, inventoryType, cupSize } : s,
       );
       const nextRestocks = restocks.filter((record) =>
         record.inventoryItemId
           ? record.inventoryItemId !== editStockId
-          : !itemNameEquals(record.itemName, stockName),
+          : !itemNameEquals(record.itemName, itemName),
       );
       setStocks(nextStocks);
       setRestocks(nextRestocks);
@@ -712,13 +838,13 @@ export function SalePurchaseTransactions({
     } else {
       const newItem: StockItem = {
         id: `stock-${Date.now()}`,
-        name: stockName.trim(),
+        name: itemName,
         stock: toBaseQuantity({ purchaseUnitSize }, pieces),
         openingStock: toBaseQuantity({ purchaseUnitSize }, pieces),
         unit,
         purchaseUnitSize,
-        cupUsageAmount,
-        cupsMake,
+        inventoryType,
+        cupSize,
       };
       const nextStocks = [...stocks, newItem];
       setStocks(nextStocks);
@@ -759,10 +885,15 @@ export function SalePurchaseTransactions({
   const handleEditStock = (s: StockItem) => {
     setEditStockId(s.id);
     setStockName(s.name);
+    setSelectedCupSize(s.cupSize ?? menuCupSizes.find((size) => normalizeCupSize(size) === normalizeCupSize(s.name)) ?? "");
     setStockQty(toPieceQuantity(s, s.openingStock ?? s.stock).toString());
     setStockUnit(s.unit || "pcs");
     setStockPurchaseUnitSize(s.purchaseUnitSize?.toString() ?? "");
-    setStockCupUsageAmount(s.cupUsageAmount?.toString() ?? "");
+    const savedType = s.inventoryType ?? (looksLikeCupItem(s, recipeCostings) ? "cup" : "ingredient");
+    const isCup = savedType === "cup" || savedType.startsWith("cup_");
+    setStockInventoryType(isCup || savedType === "ingredient" ? (isCup ? "cup" : "ingredient") : "other");
+    setStockCupType(savedType === "cup_iced" ? "iced" : "hot");
+    setStockOtherType(!isCup && savedType !== "ingredient" ? (savedType === "other" ? s.name : savedType) : "");
   };
 
   const handleDeleteStock = async (id: string) => {
@@ -985,7 +1116,7 @@ export function SalePurchaseTransactions({
             onClick={() => setActiveTab(tab)}
             className={`shrink-0 px-4 py-1.5 rounded text-xs font-bold transition shadow-sm uppercase ${activeTab === tab ? "bg-black text-white" : "bg-white text-neutral-700 hover:bg-neutral-100"}`}
           >
-            {tab === "transactions" ? "Transactions" : tab === "stock" ? "Stock Inventory" : tab === "restock" ? "Restock" : tab === "used" ? "Usage Logbook" : "Recipes"}
+            {tab === "transactions" ? "Transactions" : tab === "stock" ? "Stock Inventory" : tab === "restock" ? "Restock History" : tab === "used" ? "Usage Logbook" : "Recipes"}
           </button>
         ))}
       </div> : null}
@@ -1011,7 +1142,10 @@ export function SalePurchaseTransactions({
         <div className="space-y-4">
           {costingNotice ? <p role="alert" className="text-sm text-red-600">{costingNotice}</p> : null}
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold text-neutral-900">Costing</h3>
+            <div>
+              <h3 className="text-sm font-semibold text-neutral-900">Recipe setup</h3>
+              <p className="mt-1 text-xs text-neutral-500">Pick the menu drinks, choose their cups, then enter stock used for one drink.</p>
+            </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -1065,12 +1199,12 @@ export function SalePurchaseTransactions({
                     <input
                       value={costing.name}
                       onChange={(event) => updateCosting(costingIndex, { name: event.target.value })}
-                      placeholder="Recipe name"
+                      placeholder="Recipe name (optional)"
                       className="min-w-0 flex-1 bg-transparent text-base font-medium text-neutral-900 outline-none"
                     />
                   ) : (
                     <button type="button" onClick={() => openCosting(costingIndex)} className="min-w-0 flex-1 text-left text-base font-medium text-neutral-900">
-                      {costing.name.trim() || "Untitled recipe"}
+                      {costing.name.trim() || costing.menuItems.join(", ") || "Untitled recipe"}
                     </button>
                   )}
                   <div className="flex items-center gap-2">
@@ -1203,24 +1337,66 @@ export function SalePurchaseTransactions({
                     </div>
 
                     <div className="p-4">
-                      <p className="text-[11px] font-bold uppercase tracking-wide text-neutral-500">Ingredients: </p>
+                      <p className="text-sm font-semibold text-neutral-800">Cup setup</p>
+                      <p className="mt-1 text-xs text-neutral-500">Choose which cup stock is deducted when each drink is sold.</p>
                       <div className="mt-3 grid gap-2 sm:grid-cols-2">
 
-                        {(["hotCupInventoryItemId", "icedCupInventoryItemId", "otherCupInventoryItemId"] as const).map((field) => (
+                        {(["hotCupInventoryItemId", "icedCupInventoryItemId"] as const).map((field) => (
                           <label key={field} className="text-xs text-neutral-600">
-                            {field === "hotCupInventoryItemId" ? "Hot cup" : field === "icedCupInventoryItemId" ? "Iced cup" : "Other cup"}
+                            {field === "hotCupInventoryItemId" ? "Hot cup" : "Iced cup"}
                             <select
                               value={costing[field] ?? ""}
-                              onChange={(event) => updateCosting(costingIndex, { [field]: event.target.value || undefined })}
+                              onChange={(event) => changeCostingCup(costingIndex, field, event.target.value)}
                               className="mt-1 w-full rounded border border-neutral-300 bg-white px-2 py-1.5 text-sm text-neutral-800"
                             >
                               <option value="">Select cup item</option>
-                              {cupInventoryItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                              {(field === "hotCupInventoryItemId" ? hotCupInventoryItems : icedCupInventoryItems).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                             </select>
                           </label>
                         ))}
                       </div>
                       <div className="mt-3 space-y-2">
+                        {(costing.extraCupInventoryItemIds ?? []).map((cupId, cupIndex) => (
+                          <div key={`extra-cup-${cupIndex}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
+                            <label className="text-xs text-neutral-600">
+                              Additional cup {cupIndex + 1}
+                              <select
+                                value={cupId}
+                                onChange={(event) => updateCosting(costingIndex, {
+                                  extraCupInventoryItemIds: (costing.extraCupInventoryItemIds ?? []).map((id, index) => index === cupIndex ? event.target.value : id),
+                                })}
+                                className="mt-1 w-full rounded border border-neutral-300 bg-white px-2 py-1.5 text-sm text-neutral-800"
+                              >
+                                <option value="">Select cup item</option>
+                                {cupInventoryItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                              </select>
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => updateCosting(costingIndex, {
+                                extraCupInventoryItemIds: (costing.extraCupInventoryItemIds ?? []).filter((_, index) => index !== cupIndex),
+                              })}
+                              className="mb-1 text-xs font-medium text-red-600"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => updateCosting(costingIndex, {
+                            extraCupInventoryItemIds: [...(costing.extraCupInventoryItemIds ?? []), ""],
+                          })}
+                          className="text-xs font-medium text-neutral-700"
+                        >
+                          + Add another cup
+                        </button>
+                      </div>
+                      <div className="mt-4 border-t border-neutral-200 pt-3">
+                        <p className="text-sm font-semibold text-neutral-800">Recipe ingredients</p>
+                        <p className="mt-1 text-xs text-neutral-500">Enter the amount used for one drink, such as coffee beans or milk.</p>
+                      </div>
+                      <div className="mt-2 space-y-2">
                         {costing.ingredients.map((ingredient, ingredientIndex) => (
                           <div key={ingredientIndex} className="grid grid-cols-[minmax(0,1fr)_5.5rem_4.5rem_auto] items-start gap-2">
                             <div>
@@ -1237,16 +1413,18 @@ export function SalePurchaseTransactions({
                                 className="w-full rounded border border-neutral-300 px-2 py-1.5 text-sm"
                               >
                                 <option value="">Select ingredient</option>
-                                {store.inventory.map((item) => (
-                                  <option key={item.id} value={item.id}>{item.name}</option>
+                                {ingredientInventoryItems.map((item) => (
+                                  <option key={item.id} value={item.id}>
+                                    {item.name}{item.inventoryType && item.inventoryType !== "cup" && item.inventoryType !== "ingredient" && item.inventoryType.toLowerCase() !== item.name.toLowerCase() ? ` (${item.inventoryType === "other" ? "Other" : item.inventoryType})` : ""}
+                                  </option>
                                 ))}
-                                <option value="other">Other</option>
+                                <option value="other">Custom item (not in stock)</option>
                               </select>
                               {ingredient.inventoryItemId === "other" ? (
                                 <input
                                   value={ingredient.name}
                                   onChange={(event) => updateCostingIngredient(costingIndex, ingredientIndex, { name: event.target.value })}
-                                  placeholder="Ingredient name"
+                                  placeholder="Custom item name"
                                   className="mt-1 w-full rounded border border-neutral-300 px-2 py-1.5 text-sm"
                                 />
                               ) : null}
@@ -1256,12 +1434,14 @@ export function SalePurchaseTransactions({
                               min="0"
                               step="0.01"
                               placeholder="Qty"
+                              aria-label={`Amount of ${ingredient.name || "ingredient"} per drink`}
                               value={ingredient.amount === 0 ? "" : ingredient.amount}
                               onChange={(event) => updateCostingIngredient(costingIndex, ingredientIndex, { amount: event.target.value === "" ? 0 : Number(event.target.value) })}
                               className="w-full rounded border border-neutral-300 px-2 py-1.5 text-sm"
                             />
                             <input
                               placeholder="Unit"
+                              aria-label={`Unit for ${ingredient.name || "ingredient"}`}
                               value={ingredient.unit}
                               onChange={(event) => updateCostingIngredient(costingIndex, ingredientIndex, { unit: event.target.value })}
                               className="w-full rounded border border-neutral-300 px-2 py-1.5 text-sm"
@@ -1283,6 +1463,62 @@ export function SalePurchaseTransactions({
                       >
                         + Add ingredient
                       </button>
+                      {otherInventoryItems.length > 0 ? (
+                        <div className="mt-4 border-t border-neutral-200 pt-3">
+                          <p className="text-sm font-semibold text-neutral-800">Other stock items <span className="font-normal text-neutral-500">(optional)</span></p>
+                          <p className="mt-1 text-xs text-neutral-500">Add supplies such as forks or plates that are used per drink.</p>
+                          <div className="mt-2 space-y-2">
+                            {(costing.otherItems ?? []).map((otherItem, itemIndex) => (
+                              <div key={`other-item-${itemIndex}`} className="grid grid-cols-[minmax(0,1fr)_5.5rem_4.5rem_auto] items-start gap-2">
+                                <select
+                                  value={otherItem.inventoryItemId}
+                                  onChange={(event) => {
+                                    const item = otherInventoryItems.find((stock) => stock.id === event.target.value);
+                                    updateCostingOtherItem(costingIndex, itemIndex, {
+                                      inventoryItemId: event.target.value,
+                                      name: item?.name ?? otherItem.name,
+                                      unit: item?.unit ?? otherItem.unit,
+                                    });
+                                  }}
+                                  className="w-full rounded border border-neutral-300 px-2 py-1.5 text-sm"
+                                >
+                                  <option value="">Select other item</option>
+                                  {otherInventoryItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                                </select>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  placeholder="Qty"
+                                  value={otherItem.amount === 0 ? "" : otherItem.amount}
+                                  onChange={(event) => updateCostingOtherItem(costingIndex, itemIndex, { amount: event.target.value === "" ? 0 : Number(event.target.value) })}
+                                  className="w-full rounded border border-neutral-300 px-2 py-1.5 text-sm"
+                                />
+                                <input
+                                  placeholder="Unit"
+                                  value={otherItem.unit}
+                                  onChange={(event) => updateCostingOtherItem(costingIndex, itemIndex, { unit: event.target.value })}
+                                  className="w-full rounded border border-neutral-300 px-2 py-1.5 text-sm"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => updateCosting(costingIndex, { otherItems: (costing.otherItems ?? []).filter((_, rowIndex) => rowIndex !== itemIndex) })}
+                                  className="mt-1.5 text-xs font-medium text-red-600"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => updateCosting(costingIndex, { otherItems: [...(costing.otherItems ?? []), { inventoryItemId: "", name: "", amount: 0, unit: "pcs" }] })}
+                            className="mt-3 text-xs font-medium text-neutral-700"
+                          >
+                            + Add other stock item
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 ) : null}
@@ -1382,19 +1618,107 @@ export function SalePurchaseTransactions({
           {stockNotice ? <p className="text-sm text-red-600">{stockNotice}</p> : null}
           <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-400 space-y-4">
             <h3 className="text-xs font-bold text-neutral-700 uppercase">{editStockId ? "Edit Stock Item" : "Add Stock Item"}</h3>
-            <form onSubmit={handleSaveStock} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-7 gap-4 items-end">
+            <form onSubmit={handleSaveStock} className={`grid grid-cols-1 sm:grid-cols-2 ${stockInventoryType === "cup" ? "md:grid-cols-7" : "md:grid-cols-6"} gap-4 items-end`}>
               <div>
                 <label className="block text-xs font-medium text-neutral-600 mb-1">Item Name</label>
-                <input type="text" placeholder="e.g. Coffee Beans" value={stockName} onChange={(e) => setStockName(e.target.value)} className="w-full bg-white border border-neutral-400 rounded px-3 py-1.5 text-sm" />
+                <input
+                  type="text"
+                  placeholder={stockInventoryType === "cup" ? "e.g. 16oz, 22oz" : stockInventoryType === "other" ? "e.g. Fork" : "e.g. Coffee Beans"}
+                  value={stockName}
+                  onChange={(e) => setStockName(e.target.value)}
+                  className="w-full bg-white border border-neutral-400 rounded px-3 py-1.5 text-sm"
+                />
               </div>
               <div>
-                <label className="block text-xs font-medium text-neutral-600 mb-1">Total Unit Item</label>
-                <input type="number" placeholder="e.g. 1000" value={stockPurchaseUnitSize} onChange={(e) => setStockPurchaseUnitSize(e.target.value)} className="w-full bg-white border border-neutral-400 rounded px-3 py-1.5 text-sm" />
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Type</label>
+                <select
+                  value={stockInventoryType}
+                  onChange={(event) => {
+                    const type = event.target.value as "cup" | "ingredient" | "other";
+                    setStockInventoryType(type);
+                    setShowCupSizes(false);
+                    if (type !== "cup") setSelectedCupSize("");
+                    if (type === "cup") setStockPurchaseUnitSize("");
+                  }}
+                  className="w-full bg-white border border-neutral-400 rounded px-3 py-1.5 text-sm"
+                >
+                  <option value="cup">Cup</option>
+                  <option value="ingredient">Ingredient</option>
+                  <option value="other">Other</option>
+                </select>
+                {stockInventoryType === "other" ? (
+                  <input
+                    type="text"
+                    value={stockOtherType}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setStockOtherType(value);
+                      setStockName((current) => !current.trim() || current === stockOtherType ? value : current);
+                    }}
+                    placeholder="Custom type, e.g. Utensils"
+                    className="mt-1 w-full bg-white border border-neutral-400 rounded px-3 py-1.5 text-sm"
+                  />
+                ) : null}
               </div>
               <div>
-                <label className="block text-xs font-medium text-neutral-600 mb-1">Unit Item</label>
-                <input type="number" placeholder="e.g. 9" value={stockCupUsageAmount} onChange={(e) => setStockCupUsageAmount(e.target.value)} className="w-full bg-white border border-neutral-400 rounded px-3 py-1.5 text-sm" />
+                <label className="block text-xs font-medium text-neutral-600 mb-1">
+                  {stockInventoryType === "cup" ? "Cup Type" : "Total Unit Item"}
+                </label>
+                {stockInventoryType === "cup" ? (
+                  <select
+                    value={stockCupType}
+                    onChange={(event) => setStockCupType(event.target.value as "hot" | "iced")}
+                    className="w-full bg-white border border-neutral-400 rounded px-3 py-1.5 text-sm"
+                  >
+                    <option value="hot">Hot</option>
+                    <option value="iced">Iced</option>
+                  </select>
+                ) : (
+                  <input
+                    type="number"
+                    placeholder="e.g. 1000"
+                    value={stockPurchaseUnitSize}
+                    onChange={(e) => setStockPurchaseUnitSize(e.target.value)}
+                    className="w-full bg-white border border-neutral-400 rounded px-3 py-1.5 text-sm"
+                  />
+                )}
               </div>
+              {stockInventoryType === "cup" ? (
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Sizes</label>
+                  {menuCupSizes.length > 0 ? (
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setShowCupSizes((visible) => !visible)}
+                        aria-expanded={showCupSizes}
+                        className="w-full rounded border border-neutral-400 bg-white px-3 py-1.5 text-left text-sm text-neutral-700"
+                      >
+                        {showCupSizes ? "Choose a menu size" : selectedCupSize || "Select size"}
+                      </button>
+                      {showCupSizes ? (
+                        <div className="absolute left-0 top-full z-20 mt-1 flex min-w-full flex-wrap gap-1.5 rounded border border-neutral-300 bg-white p-2 shadow-lg">
+                          {menuCupSizes.map((size) => (
+                            <button
+                              key={size}
+                              type="button"
+                              onClick={() => {
+                                setSelectedCupSize(size);
+                                setShowCupSizes(false);
+                              }}
+                              className={`whitespace-nowrap rounded-full border px-2.5 py-1 text-xs hover:border-neutral-500 ${selectedCupSize === size ? "border-black bg-neutral-100 text-neutral-900" : "border-neutral-300 bg-white text-neutral-700"}`}
+                            >
+                              {size}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <span className="block rounded border border-neutral-200 px-3 py-1.5 text-sm text-neutral-400">No menu sizes</span>
+                  )}
+                </div>
+              ) : null}
               <div>
                 <label className="block text-xs font-medium text-neutral-600 mb-1">Quantity</label>
                 <input type="number" placeholder="0" value={stockQty} onChange={(e) => setStockQty(e.target.value)} className="w-full bg-white border border-neutral-400 rounded px-3 py-1.5 text-sm" />
@@ -1402,12 +1726,6 @@ export function SalePurchaseTransactions({
               <div>
                 <label className="block text-xs font-medium text-neutral-600 mb-1">Unit</label>
                 <input type="text" placeholder="grams, ml, pcs" value={stockUnit} onChange={(e) => setStockUnit(e.target.value)} className="w-full bg-white border border-neutral-400 rounded px-3 py-1.5 text-sm" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-neutral-600 mb-1">Cups make</label>
-                <div className="w-full rounded border border-neutral-300 bg-neutral-100 px-3 py-1.5 text-sm text-neutral-700">
-                  {stockUnit.trim() && Number(stockPurchaseUnitSize) > 0 && Number(stockCupUsageAmount) > 0 ? (Number(stockPurchaseUnitSize) / Number(stockCupUsageAmount)).toFixed(2) : "—"}
-                </div>
               </div>
               <div className="flex gap-2">
                 <button type="submit" className="flex-1 bg-black text-white px-4 py-1.5 rounded text-sm font-medium">{editStockId ? "Update" : "Add"}</button>
@@ -1444,11 +1762,7 @@ export function SalePurchaseTransactions({
                     usages,
                   });
                   const isLiveDate = isLiveRange;
-                  const configuredUsage = configuredUsagePerUnit(s);
-                  const cupsLeft = configuredCupsLeft(s, remaining) ??
-                    (s.unit.trim().toLowerCase() !== "pcs" && s.cupsMake != null
-                      ? Number(s.cupsMake)
-                      : null);
+                  const cupsLeft = configuredCupsLeft(s, remaining);
                   return (
                     <tr key={s.id} className="border-b border-neutral-200 text-xs">
                       <td className="p-2 border-r border-neutral-200 font-medium">{s.name}</td>

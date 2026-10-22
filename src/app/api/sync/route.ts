@@ -899,6 +899,7 @@ export async function POST(req: NextRequest) {
         purchaseUnitSize: raw.purchaseUnitSize != null ? Number(raw.purchaseUnitSize) : undefined,
         cupUsageAmount: raw.cupUsageAmount != null ? Number(raw.cupUsageAmount) : undefined,
         cupsMake: raw.cupsMake != null ? Number(raw.cupsMake) : undefined,
+        inventoryType: typeof raw.inventoryType === "string" && raw.inventoryType.trim() ? raw.inventoryType.trim().slice(0, 60) : undefined,
       };
       if (!item.name) {
         return NextResponse.json({ ok: false, error: "Item name is required" }, { status: 400, headers: corsHeaders });
