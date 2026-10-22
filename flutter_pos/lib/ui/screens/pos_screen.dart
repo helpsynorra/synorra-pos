@@ -150,13 +150,14 @@ class _PosScreenState extends State<PosScreen> {
   void _openDrinkOptions(MenuItem item) {
     setState(() => _selectedItemId = item.id);
     if (item.addons.isEmpty &&
+        item.types.isEmpty &&
         item.styles.length == 1 &&
         item.styles.single.toLowerCase() == 'iced') {
       widget.controller.addToCart(item, style: 'iced');
       return;
     }
 
-    if (item.styles.isNotEmpty || item.addons.isNotEmpty) {
+    if (item.styles.isNotEmpty || item.addons.isNotEmpty || item.types.isNotEmpty) {
       showDialog(
         context: context,
         builder: (_) => DrinkOptionsDialog(

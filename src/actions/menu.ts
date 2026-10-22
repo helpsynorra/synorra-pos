@@ -2,8 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
-import { addonIdFromName, DRINK_STYLES, isFoodOrPastry, menuItemId, normalizeMenuAddons, normalizeMenuCategoryType, normalizeMenuStyles, stripMenuImage } from "@/lib/menu";
-import type { DrinkStyle, MenuAddon, MenuCategoryType, MenuItem } from "@/lib/types";
+import { addonIdFromName, DRINK_STYLES, isFoodOrPastry, menuItemId, normalizeMenuAddons, normalizeMenuCategoryType, normalizeMenuStyles, normalizeMenuTypeOptions, stripMenuImage } from "@/lib/menu";
+import type { DrinkStyle, MenuAddon, MenuCategoryType, MenuItem, MenuTypeOption } from "@/lib/types";
 import {
   deleteMenuCategoryRecord,
   deleteMenuItemRecord,
@@ -145,16 +145,13 @@ function addonsFromForm(formData: FormData): MenuAddon[] {
   });
 }
 
-function typesFromForm(formData: FormData): string[] {
+function typesFromForm(formData: FormData): MenuTypeOption[] {
   const packed = formData.get("types");
   if (typeof packed !== "string" || !packed.trim()) return [];
   try {
     const parsed: unknown = JSON.parse(packed);
     if (!Array.isArray(parsed)) return [];
-    return [...new Set(parsed
-      .filter((value): value is string => typeof value === "string")
-      .map((value) => value.trim())
-      .filter(Boolean))];
+    return normalizeMenuTypeOptions({ types: parsed as MenuItem["types"] });
   } catch {
     return [];
   }
@@ -225,19 +222,37 @@ export async function createMenuItem(formData: FormData) {
   const category = readText(formData, "category");
   let addons = addonsFromForm(formData);
   const sizes = addons.filter((addon) => addon.id.startsWith("size:"));
+  const basePriceInput = readText(formData, "price");
   const price = sizes.length
     ? Math.min(...sizes.map((size) => Number(size.price)))
     : Number(readText(formData, "price"));
   const available = readText(formData, "available") !== "false";
+  const requestedInventoryMode = readText(formData, "inventoryMode");
+  const inventoryMode = requestedInventoryMode === "stock_only" || requestedInventoryMode === "stock_and_recipe"
+    ? requestedInventoryMode
+    : "none";
+  const stockInventoryItemId = readText(formData, "stockInventoryItemId").trim();
+  const stockUsageAmount = Number(readText(formData, "stockUsageAmount") || "1");
   const photo = photoFromForm(formData);
 
   if (!name || !category) {
     return { error: "Name and category are required." };
   }
-  if (!Number.isFinite(price) || price <= 0) {
+  if ((!sizes.length && !basePriceInput) || !Number.isFinite(price) || (sizes.length ? price <= 0 : price < 0)) {
     return { error: sizes.length ? "Enter a valid price for every size." : "Enter a valid price." };
   }
   const store = await getStore();
+  if (inventoryMode === "stock_only") {
+    const configuredStockIds = sizes.length
+      ? sizes.flatMap((size) => size.inventoryItemId ? [size.inventoryItemId] : [])
+      : stockInventoryItemId ? [stockInventoryItemId] : [];
+    const invalidUsage = sizes.length
+      ? sizes.some((size) => size.inventoryItemId && (!Number.isFinite(Number(size.usageAmount ?? 1)) || Number(size.usageAmount ?? 1) <= 0))
+      : Boolean(stockInventoryItemId) && (!Number.isFinite(stockUsageAmount) || stockUsageAmount <= 0);
+    if (invalidUsage || configuredStockIds.some((id) => !store.inventory.some((item) => item.id === id))) {
+      return { error: "Choose a valid stock item and usage amount, or leave the stock item unlinked for now." };
+    }
+  }
   const categoryType = normalizeMenuCategoryType(
     store.categoryTypes?.[category] ??
       Object.entries(store.categoryTypes ?? {}).find(([name]) => name.toLowerCase() === category.toLowerCase())?.[1] ??
@@ -262,6 +277,9 @@ export async function createMenuItem(formData: FormData) {
     categoryType,
     image,
     available,
+    inventoryMode,
+    stockInventoryItemId: inventoryMode === "stock_only" && sizes.length === 0 ? stockInventoryItemId : undefined,
+    stockUsageAmount: inventoryMode === "stock_only" && sizes.length === 0 ? stockUsageAmount : undefined,
     styles: stylesFromForm(formData, category, categoryType),
     addons,
     types: typesFromForm(formData),
@@ -277,17 +295,24 @@ export async function updateMenuItem(formData: FormData) {
   const category = readText(formData, "category");
   let addons = addonsFromForm(formData);
   const sizes = addons.filter((addon) => addon.id.startsWith("size:"));
+  const basePriceInput = readText(formData, "price");
   const price = sizes.length
     ? Math.min(...sizes.map((size) => Number(size.price)))
     : Number(readText(formData, "price"));
   const available = readText(formData, "available") !== "false";
+  const requestedInventoryMode = readText(formData, "inventoryMode");
+  const inventoryMode = requestedInventoryMode === "stock_only" || requestedInventoryMode === "stock_and_recipe"
+    ? requestedInventoryMode
+    : "none";
+  const stockInventoryItemId = readText(formData, "stockInventoryItemId").trim();
+  const stockUsageAmount = Number(readText(formData, "stockUsageAmount") || "1");
   const photo = photoFromForm(formData);
 
   if (!id) return { error: "Item not found." };
   if (!name || !category) {
     return { error: "Name and category are required." };
   }
-  if (!Number.isFinite(price) || price <= 0) {
+  if ((!sizes.length && !basePriceInput) || !Number.isFinite(price) || (sizes.length ? price <= 0 : price < 0)) {
     return { error: sizes.length ? "Enter a valid price for every size." : "Enter a valid price." };
   }
 
@@ -306,6 +331,17 @@ export async function updateMenuItem(formData: FormData) {
   const store = await getFreshStore();
   const existing = store.menu.find((entry) => entry.id === id);
   if (!existing) return { error: "Item not found." };
+  if (inventoryMode === "stock_only") {
+    const configuredStockIds = sizes.length
+      ? sizes.flatMap((size) => size.inventoryItemId ? [size.inventoryItemId] : [])
+      : stockInventoryItemId ? [stockInventoryItemId] : [];
+    const invalidUsage = sizes.length
+      ? sizes.some((size) => size.inventoryItemId && (!Number.isFinite(Number(size.usageAmount ?? 1)) || Number(size.usageAmount ?? 1) <= 0))
+      : Boolean(stockInventoryItemId) && (!Number.isFinite(stockUsageAmount) || stockUsageAmount <= 0);
+    if (invalidUsage || configuredStockIds.some((stockId) => !store.inventory.some((item) => item.id === stockId))) {
+      return { error: "Choose a valid stock item and usage amount, or leave the stock item unlinked for now." };
+    }
+  }
   const categoryType = normalizeMenuCategoryType(
     store.categoryTypes?.[category] ??
       Object.entries(store.categoryTypes ?? {}).find(([name]) => name.toLowerCase() === category.toLowerCase())?.[1] ??
@@ -319,6 +355,9 @@ export async function updateMenuItem(formData: FormData) {
     category,
     categoryType,
     available,
+    inventoryMode,
+    stockInventoryItemId: inventoryMode === "stock_only" && sizes.length === 0 ? stockInventoryItemId : undefined,
+    stockUsageAmount: inventoryMode === "stock_only" && sizes.length === 0 ? stockUsageAmount : undefined,
     styles: stylesFromForm(formData, category, categoryType, existing),
     addons,
     types: typesFromForm(formData),

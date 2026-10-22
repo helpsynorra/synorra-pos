@@ -64,6 +64,11 @@ export type MenuAddon = {
   image?: string;
 };
 
+export type MenuTypeOption = {
+  name: string;
+  price: number;
+};
+
 export type OrderAddon = {
   id: string;
   name: string;
@@ -82,7 +87,10 @@ export type MenuItem = {
   categoryType?: MenuCategoryType;
   image: string;
   available: boolean;
-  types?: string[];
+  inventoryMode?: "none" | "stock_only" | "stock_and_recipe";
+  stockInventoryItemId?: string;
+  stockUsageAmount?: number;
+  types?: (string | MenuTypeOption)[];
   styles?: DrinkStyle[];
   addons?: MenuAddon[];
 };

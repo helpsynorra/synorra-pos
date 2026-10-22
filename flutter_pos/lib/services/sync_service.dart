@@ -492,6 +492,38 @@ class SyncService extends ChangeNotifier {
               m.name.toLowerCase() == line.name.toLowerCase())
           .firstOrNull;
       final itemName = (menuItem?.name ?? line.name).trim();
+      if (menuItem?.inventoryMode == 'none') continue;
+      if (menuItem?.inventoryMode == 'stock_only') {
+        final selectedSize = line.addons
+            .where((addon) => addon.id?.startsWith('size:') == true && addon.qty > 0)
+            .firstOrNull;
+        final sizeSpec = selectedSize == null
+            ? null
+            : menuItem?.addons.where((addon) =>
+                addon.id == selectedSize.id ||
+                addon.name.trim().toLowerCase() == selectedSize.name.trim().toLowerCase())
+                .firstOrNull;
+        final stockId = selectedSize == null
+            ? menuItem?.stockInventoryItemId
+            : sizeSpec?.inventoryItemId ?? selectedSize.inventoryItemId;
+        final stockItem = stockId == null
+            ? null
+            : inventory.where((item) => item.id == stockId).firstOrNull;
+        final usagePerSelection = selectedSize == null
+            ? menuItem?.stockUsageAmount ?? 1
+            : sizeSpec?.usageAmount ?? selectedSize.usageAmount ?? 1;
+        final amount = usagePerSelection * line.qty * (selectedSize?.qty ?? 1);
+        if (stockItem != null && amount > 0) {
+          deductions.add({
+            'inventoryItemId': stockItem.id,
+            'name': stockItem.name,
+            'amount': amount,
+            'unit': stockItem.unit,
+          });
+        }
+        continue;
+      }
+      var hasConfiguredRecipe = false;
 
       // 1. Check recipeCostings
       Map<String, dynamic>? matchedCosting;
@@ -522,23 +554,34 @@ class SyncService extends ChangeNotifier {
         final selectedSizeKey = selectedSize == null
             ? ''
             : sizeKey(selectedSize.name);
-        final sizeCup = selectedSizeKey.isEmpty
-            ? null
-            : inventory.where((item) {
-                final itemStyle = item.inventoryType;
-                final styleMatches = style == null ||
-                    itemStyle == null ||
-                    !itemStyle.startsWith('cup_') ||
-                    itemStyle == 'cup_$style';
-                final itemSize = sizeKey(item.cupSize ?? item.name);
-                return styleMatches && itemSize == selectedSizeKey;
-              }).firstOrNull;
-
         final configuredCupId = style == 'hot'
             ? matchedCosting['hotCupInventoryItemId']?.toString()
             : style == 'iced'
                 ? matchedCosting['icedCupInventoryItemId']?.toString()
                 : matchedCosting['otherCupInventoryItemId']?.toString();
+        final extraCupIds = matchedCosting['extraCupInventoryItemIds'] is List
+            ? (matchedCosting['extraCupInventoryItemIds'] as List)
+                .map((id) => id.toString())
+                .toSet()
+            : <String>{};
+        final assignedCupIds = <String>{
+          if (configuredCupId != null && configuredCupId.isNotEmpty) configuredCupId,
+          ...extraCupIds,
+        };
+        final matchesSelectedCup = (InventoryItem item) {
+          final itemStyle = item.inventoryType;
+          final styleMatches = style == null ||
+              itemStyle == null ||
+              !itemStyle.startsWith('cup_') ||
+              itemStyle == 'cup_$style';
+          final itemSize = sizeKey(item.cupSize ?? item.name);
+          return styleMatches && itemSize == selectedSizeKey;
+        };
+        final sizeCup = selectedSizeKey.isEmpty
+            ? null
+            : inventory.where((item) => matchesSelectedCup(item) && assignedCupIds.contains(item.id)).firstOrNull ??
+                inventory.where((item) => matchesSelectedCup(item) && (style == null || item.inventoryType == 'cup_$style')).firstOrNull ??
+                inventory.where(matchesSelectedCup).firstOrNull;
         final cupStock = sizeCup ??
             (configuredCupId == null
                 ? null
@@ -552,10 +595,14 @@ class SyncService extends ChangeNotifier {
         final selectedCupRecipe = cupId != null && cupRecipes[cupId] is List
             ? cupRecipes[cupId] as List
             : null;
-        final recipeIngredients = selectedCupRecipe ??
-            (matchedCosting['ingredients'] is List
+        final hasCupSpecificRecipes = cupRecipes.isNotEmpty;
+        final recipeIngredients = cupId != null && hasCupSpecificRecipes
+            ? selectedCupRecipe ?? const <dynamic>[]
+            : (matchedCosting['ingredients'] is List
                 ? matchedCosting['ingredients'] as List
                 : const <dynamic>[]);
+        hasConfiguredRecipe = recipeIngredients.any((rawIng) =>
+            rawIng is Map && ((rawIng['amount'] as num?)?.toDouble() ?? 0) > 0);
 
         for (final rawIng in recipeIngredients) {
             if (rawIng is Map) {
@@ -582,7 +629,7 @@ class SyncService extends ChangeNotifier {
             }
           }
         // Cup from recipeCosting
-        if (cupId != null && cupId.isNotEmpty) {
+        if (hasConfiguredRecipe && cupId != null && cupId.isNotEmpty) {
           final resolvedCupStock = cupStock ??
               inventory.where((i) => i.id == cupId).firstOrNull;
           if (resolvedCupStock != null) {
@@ -595,10 +642,15 @@ class SyncService extends ChangeNotifier {
             });
           }
         }
-      } else {
+      } else if (recipeCostings.isEmpty && menuItem == null) {
+        // Once the owner has configured recipe costings, they are authoritative.
+        // Known menu items without a current costing must never resurrect a
+        // stale legacy recipe. Legacy fallback is only for non-menu orders.
         // 2. Check recipes map
         final recipeList = recipesMap[line.productId] ?? recipesMap[itemName];
         if (recipeList is List) {
+          hasConfiguredRecipe = recipeList.any((rawIng) =>
+              rawIng is Map && ((rawIng['amount'] as num?)?.toDouble() ?? 0) > 0);
           for (final rawIng in recipeList) {
             if (rawIng is Map) {
               final ingId = rawIng['inventoryItemId']?.toString() ?? '';
@@ -629,7 +681,10 @@ class SyncService extends ChangeNotifier {
             if ((c['productName']?.toString() ?? '').trim().toLowerCase() ==
                     itemName.toLowerCase() &&
                 c['ingredients'] is List) {
-              for (final rawIng in (c['ingredients'] as List)) {
+              final costingIngredients = c['ingredients'] as List;
+              hasConfiguredRecipe = costingIngredients.any((rawIng) =>
+                  rawIng is Map && ((rawIng['amount'] as num?)?.toDouble() ?? 0) > 0);
+              for (final rawIng in costingIngredients) {
                 if (rawIng is Map) {
                   final ingName = rawIng['name']?.toString() ?? '';
                   final packAmount =
@@ -661,7 +716,7 @@ class SyncService extends ChangeNotifier {
       }
 
       // 4. Addon inventory deductions configured in Admin
-      for (final addon in line.addons) {
+      if (hasConfiguredRecipe) for (final addon in line.addons) {
         if (addon.inventoryItemId != null &&
             addon.inventoryItemId!.isNotEmpty) {
           final stockItem =

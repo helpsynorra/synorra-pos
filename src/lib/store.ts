@@ -24,7 +24,7 @@ import type {
   VoidRequest,
 } from "@/lib/types";
 import { roundQty } from "@/lib/inventory";
-import { hydrateOrderLine, inferMenuCategoryType, normalizeMenuAddons, normalizeMenuCategoryType, normalizeMenuStyles, normalizeMenuTypes, parseDrinkStyle, parseMenuImageOptions, parseStoredOrderAddons, stripMenuImage } from "@/lib/menu";
+import { hydrateOrderLine, inferMenuCategoryType, normalizeMenuAddons, normalizeMenuCategoryType, normalizeMenuStyles, normalizeMenuTypes, normalizeMenuTypeOptions, parseDrinkStyle, parseMenuImageOptions, parseStoredOrderAddons, stripMenuImage } from "@/lib/menu";
 import { parsePayment } from "@/lib/payments";
 import { DEFAULT_LOGIN_GATES, normalizeLoginGates } from "@/lib/staff-gates";
 import { DEFAULT_STAFF_PERMISSIONS, DEFAULT_USERS, parseRole } from "@/lib/users";
@@ -407,7 +407,7 @@ function normalizeStore(store: StoreData): StoreData {
         ...item,
         available: item.available !== false,
         image: item.image || "/images/drinks.jpg",
-        types: normalizeMenuTypes(item),
+        types: normalizeMenuTypeOptions(item),
         styles: normalizeMenuStyles(item),
         addons: normalizeMenuAddons(item),
       }));
@@ -747,7 +747,12 @@ async function readStore(options?: { fresh?: boolean; ownerId?: string | null })
           categoryType,
           image: stripMenuImage(row.image),
           available: row.available,
-          types: normalizeMenuTypes({ types: row.types }),
+          inventoryMode: row.inventory_mode === "stock_only" || row.inventory_mode === "stock_and_recipe"
+            ? row.inventory_mode
+            : "none",
+          stockInventoryItemId: row.stock_inventory_item_id ?? undefined,
+          stockUsageAmount: row.stock_usage_amount == null ? undefined : Number(row.stock_usage_amount),
+          types: normalizeMenuTypeOptions({ types: row.types }),
           styles: normalizeMenuStyles({ category, categoryType, styles: hasStoredStyles ? storedStyles : legacy.styles }),
           addons: normalizeMenuAddons({ addons: storedAddons.length > 0 ? storedAddons : legacy.addons }),
         };
@@ -1891,12 +1896,20 @@ export async function upsertMenuItemRecord(item: MenuItem): Promise<void> {
         category_id: categoryId,
         image: stripMenuImage(item.image),
         available: item.available,
-        types: normalizeMenuTypes(item),
+        inventory_mode: item.inventoryMode ?? "none",
+        stock_inventory_item_id: item.inventoryMode === "stock_only" ? item.stockInventoryItemId ?? null : null,
+        stock_usage_amount: item.inventoryMode === "stock_only" ? item.stockUsageAmount ?? 1 : null,
+        types: normalizeMenuTypeOptions(item),
         styles: normalizeMenuStyles(item),
         addons: normalizeMenuAddons(item),
       },
       { onConflict: "id" },
     );
+    if (error && /inventory_mode|stock_inventory_item_id|stock_usage_amount/i.test(error.message) && /column|schema cache/i.test(error.message)) {
+      throw new Error(
+        "Unable to save menu item: apply Supabase migration 20261022001600_menu_item_inventory_mode.sql, then retry.",
+      );
+    }
     if (error) throw new Error(`Unable to save menu item: ${error.message}`);
     if (memoryStore) {
       const index = memoryStore.menu.findIndex((entry) => entry.id === item.id);

@@ -1,4 +1,4 @@
-import type { DrinkStyle, MenuAddon, MenuCategoryType, MenuItem, OrderAddon, OrderItem } from "@/lib/types";
+import type { DrinkStyle, MenuAddon, MenuCategoryType, MenuItem, MenuTypeOption, OrderAddon, OrderItem } from "@/lib/types";
 
 export const MENU_IMAGES = [
   { label: "Logo", src: "/images/logo.png" },
@@ -13,10 +13,20 @@ export function normalizeMenuCategoryType(value: unknown): MenuCategoryType {
 
 export function inferMenuCategoryType(category: string): MenuCategoryType {
   const normalized = String(category ?? "").trim().toLowerCase();
+  if (/\b(cups?|supplies|inventory|packaging)\b/i.test(normalized)) return "other";
   if (/food|meal|snack/i.test(normalized)) return "food";
   if (/pastr|cake|bread|dessert/i.test(normalized)) return "pastry";
   if (/drink|coffee|matcha|tea|juice|smoothie|beverage|fresh|soda|milky|yogurt|frappe|series/i.test(normalized)) return "drink";
   return "other";
+}
+
+export function menuCategoryTypeForName(category: string, configuredType?: string): MenuCategoryType {
+  // Packaging and supply categories should never be reported as drink sales,
+  // even if an older category record was accidentally tagged as a drink.
+  if (/\b(cups?|supplies|inventory|packaging)\b/i.test(String(category ?? "").trim())) {
+    return "other";
+  }
+  return normalizeMenuCategoryType(configuredType ?? inferMenuCategoryType(category));
 }
 
 export function menuCategoryTypeLabel(type: MenuCategoryType) {
@@ -117,16 +127,21 @@ export function normalizeMenuAddons(item: Pick<MenuItem, "addons"> | undefined):
   });
 }
 
-export function normalizeMenuTypes(item: Pick<MenuItem, "types"> | undefined): string[] {
+export function normalizeMenuTypeOptions(item: Pick<MenuItem, "types"> | undefined): MenuTypeOption[] {
   if (!Array.isArray(item?.types)) return [];
   const seen = new Set<string>();
   return item.types.flatMap((value) => {
-    const name = String(value ?? "").trim();
+    const row = value && typeof value === "object" ? value : { name: value, price: 0 };
+    const name = String(row.name ?? "").trim();
     const key = name.toLowerCase();
     if (!name || seen.has(key)) return [];
     seen.add(key);
-    return [name];
+    return [{ name, price: Math.max(0, Math.round(Number(row.price) || 0)) }];
   });
+}
+
+export function normalizeMenuTypes(item: Pick<MenuItem, "types"> | undefined): string[] {
+  return normalizeMenuTypeOptions(item).map((option) => option.name);
 }
 
 // Legacy rows written by another branch embed an options payload after this
@@ -169,9 +184,9 @@ export function resolveOrderAddons(
   selected?: OrderAddon[] | null,
 ): OrderAddon[] {
   const catalog = new Map(normalizeMenuAddons(menuItem).map((addon) => [addon.id, addon]));
-  for (const [index, name] of normalizeMenuTypes(menuItem).entries()) {
-    const id = `type:${addonIdFromName(name, index)}`;
-    catalog.set(id, { id, name, price: 0 });
+  for (const [index, option] of normalizeMenuTypeOptions(menuItem).entries()) {
+    const id = `type:${addonIdFromName(option.name, index)}`;
+    catalog.set(id, { id, name: option.name, price: option.price });
   }
   if (!Array.isArray(selected)) return [];
   let typeSelected = false;
@@ -212,7 +227,7 @@ function addonPriceLabel(addon: OrderAddon) {
   const qty = Math.max(1, addon.qty || 1);
   const name = qty > 1 ? `${qty}× ${addon.name}` : addon.name;
   if (!addon.price) return name;
-  return `${name} ₱${addon.price * qty}`;
+  return `${name} (+₱${addon.price * qty})`;
 }
 
 function parseAddonLabels(raw: string): OrderAddon[] {

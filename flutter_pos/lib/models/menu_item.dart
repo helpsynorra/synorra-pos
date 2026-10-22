@@ -49,6 +49,25 @@ class MenuAddon {
   };
 }
 
+class MenuTypeOption {
+  final String name;
+  final double price;
+
+  const MenuTypeOption({required this.name, this.price = 0});
+
+  factory MenuTypeOption.fromJson(dynamic value) {
+    if (value is Map) {
+      return MenuTypeOption(
+        name: value['name']?.toString() ?? '',
+        price: (value['price'] as num?)?.toDouble() ?? 0,
+      );
+    }
+    return MenuTypeOption(name: value?.toString() ?? '');
+  }
+
+  Map<String, dynamic> toJson() => {'name': name, 'price': price};
+}
+
 class MenuItem {
   final String id;
   final String name;
@@ -56,8 +75,12 @@ class MenuItem {
   final String category;
   final String image;
   final bool available;
+  final String inventoryMode;
+  final String? stockInventoryItemId;
+  final double stockUsageAmount;
   final List<String> styles; // e.g. ["hot", "iced"]
   final List<MenuAddon> addons;
+  final List<MenuTypeOption> types;
 
   const MenuItem({
     required this.id,
@@ -66,8 +89,12 @@ class MenuItem {
     required this.category,
     required this.image,
     this.available = true,
+    this.inventoryMode = 'none',
+    this.stockInventoryItemId,
+    this.stockUsageAmount = 1,
     this.styles = const [],
     this.addons = const [],
+    this.types = const [],
   });
 
   bool get isDrink => !RegExp(r'^\s*(food|pastr)', caseSensitive: false).hasMatch(category);
@@ -136,6 +163,12 @@ class MenuItem {
         }
       }
     }
+    final parsedTypes = json['types'] is List
+        ? (json['types'] as List)
+            .map(MenuTypeOption.fromJson)
+            .where((option) => option.name.trim().isNotEmpty)
+            .toList()
+        : <MenuTypeOption>[];
 
     return MenuItem(
       id: json['id'] as String? ?? '',
@@ -144,8 +177,20 @@ class MenuItem {
       category: category,
       image: legacy['image'] as String,
       available: json['available'] != false,
+      inventoryMode: json['inventoryMode']?.toString() == 'stock_only' ||
+              json['inventory_mode']?.toString() == 'stock_only'
+          ? 'stock_only'
+          : json['inventoryMode']?.toString() == 'stock_and_recipe' ||
+                  json['inventory_mode']?.toString() == 'stock_and_recipe'
+              ? 'stock_and_recipe'
+              : 'none',
+      stockInventoryItemId: json['stockInventoryItemId']?.toString() ??
+          json['stock_inventory_item_id']?.toString(),
+      stockUsageAmount: (json['stockUsageAmount'] as num?)?.toDouble() ??
+          (json['stock_usage_amount'] as num?)?.toDouble() ?? 1,
       styles: parsedStyles,
       addons: parsedAddons,
+      types: parsedTypes,
     );
   }
 
@@ -156,7 +201,12 @@ class MenuItem {
     'category': category,
     'image': image,
     'available': available,
+    'inventoryMode': inventoryMode,
+    if (stockInventoryItemId != null)
+      'stockInventoryItemId': stockInventoryItemId,
+    'stockUsageAmount': stockUsageAmount,
     'styles': styles,
     'addons': addons.map((a) => a.toJson()).toList(),
+    'types': types.map((type) => type.toJson()).toList(),
   };
 }

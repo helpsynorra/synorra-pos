@@ -74,11 +74,12 @@ class OrderItem {
       parts.add(style == 'hot' ? 'Hot' : 'Iced');
     }
     for (final addon in addons) {
-      if (addon.qty > 1) {
-        parts.add('${addon.name} x${addon.qty}');
-      } else {
-        parts.add(addon.name);
-      }
+      final quantityLabel = addon.qty > 1 ? '${addon.qty}× ${addon.name}' : addon.name;
+      final addonTotal = addon.price * addon.qty;
+      final priceLabel = addonTotal > 0
+          ? ' (+₱${addonTotal.toStringAsFixed(addonTotal.truncateToDouble() == addonTotal ? 0 : 2)})'
+          : '';
+      parts.add('$quantityLabel$priceLabel');
     }
     return parts.join(', ');
   }

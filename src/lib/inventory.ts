@@ -252,6 +252,24 @@ export function ingredientsForOrderLine(
 ): RecipeIngredient[] {
   line = hydrateOrderLine(line);
   const menuItem = (store.menu ?? []).find((item) => item.id === line.productId);
+  if (menuItem?.inventoryMode === "none") return [];
+  if (menuItem?.inventoryMode === "stock_only") {
+    const selectedSize = (line.addons ?? []).find((addon) => addon.id.startsWith("size:") && addon.qty > 0);
+    const sizeSpec = selectedSize
+      ? normalizeMenuAddons(menuItem).find((addon) => addon.id === selectedSize.id || itemNameEquals(addon.name, selectedSize.name))
+      : undefined;
+    const stockId = selectedSize
+      ? sizeSpec?.inventoryItemId ?? selectedSize.inventoryItemId
+      : menuItem.stockInventoryItemId;
+    const stockItem = (store.inventory ?? []).find((item) => item.id === stockId);
+    const usagePerSelection = selectedSize
+      ? sizeSpec?.usageAmount ?? selectedSize.usageAmount
+      : menuItem.stockUsageAmount;
+    const amount = Number(usagePerSelection ?? 1) * Math.max(1, Number(line.qty) || 1) * (selectedSize ? Math.max(1, Number(selectedSize.qty) || 1) : 1);
+    return stockItem && Number.isFinite(amount) && amount > 0
+      ? [{ inventoryItemId: stockItem.id, name: stockItem.name, amount, unit: stockItem.unit || "pcs" }]
+      : [];
+  }
   const names = [line.name, menuItem?.name].filter((value): value is string => Boolean(value));
   const normalizeDrink = (value: string) => value
     .trim()
@@ -268,8 +286,9 @@ export function ingredientsForOrderLine(
   const recipeCostings = store.recipeCostings ?? [];
   const costing = [...recipeCostings].reverse().find((entry) => entry.menuItems.some(matchesDrink));
 
-  // Configured recipe costings are authoritative; otherwise use the legacy recipe map.
-  const baseRecipe = recipeCostings.length > 0
+  // Current recipe costings are authoritative for menu items. Do not resurrect
+  // stale legacy rows for a menu item that the recipe screen shows as unassigned.
+  const baseRecipe = recipeCostings.length > 0 || menuItem
     ? costing?.ingredients ?? []
     : (store.recipes ?? {})[line.productId] ?? Object.entries(store.recipes ?? {}).find(([recipeKey]) => matchesDrink(recipeKey))?.[1] ?? [];
 
@@ -281,17 +300,33 @@ export function ingredientsForOrderLine(
   const availableStyles = menuItem ? normalizeMenuStyles(menuItem) : [];
   const inferredStyle = line.style ?? nameStyle(line.name) ?? (availableStyles.length === 1 ? availableStyles[0] : undefined);
   const selectedSize = (line.addons ?? []).find((addon) => addon.id.startsWith("size:") && addon.qty > 0);
+  const styleCupId = inferredStyle === "hot"
+    ? costing?.hotCupInventoryItemId
+    : inferredStyle === "iced"
+      ? costing?.icedCupInventoryItemId
+      : costing?.otherCupInventoryItemId;
+  const assignedCupIds = new Set([
+    styleCupId,
+    ...(costing?.extraCupInventoryItemIds ?? []),
+  ].map((id) => String(id ?? "").trim()).filter(Boolean));
+  const matchesSelectedCup = (item: InventoryItem) =>
+    looksLikeCupItem(item, store.recipeCostings) &&
+    (!inferredStyle || !item.inventoryType?.startsWith("cup_") || item.inventoryType === `cup_${inferredStyle}`) &&
+    cupSizeKey(item.cupSize ?? item.name) === cupSizeKey(selectedSize?.name ?? "");
   const sizeCup = selectedSize
-    ? inventory.find((item) =>
-        looksLikeCupItem(item, store.recipeCostings) &&
-        (!inferredStyle || !item.inventoryType?.startsWith("cup_") || item.inventoryType === `cup_${inferredStyle}`) &&
-        cupSizeKey(item.cupSize ?? item.name) === cupSizeKey(selectedSize.name),
-      )
+    ? inventory.find((item) => matchesSelectedCup(item) && assignedCupIds.has(item.id)) ??
+      inventory.find((item) => matchesSelectedCup(item) && (!inferredStyle || item.inventoryType === `cup_${inferredStyle}`)) ??
+      inventory.find(matchesSelectedCup)
     : undefined;
   const selectedCup = sizeCup ?? cupForOrderLine(inventory, costing, inferredStyle);
-  const recipe = selectedCup && costing?.cupRecipes?.[selectedCup.id]
-    ? costing.cupRecipes[selectedCup.id]
+  const cupRecipes = costing?.cupRecipes ?? {};
+  const hasCupSpecificRecipes = Object.keys(cupRecipes).length > 0;
+  const recipe = selectedCup && hasCupSpecificRecipes
+    ? cupRecipes[selectedCup.id] ?? []
     : baseRecipe;
+  // A cup selection or inventory-linked menu add-on is not a recipe.
+  // Do not consume stock until this menu item has a positive recipe line.
+  if (!recipe.some((ingredient) => Number(ingredient.amount) > 0)) return [];
   const cupIds = configuredCupIds(store.recipeCostings);
   const isCupIngredient = (ingredient: RecipeIngredient) => {
     if (cupIds.has(ingredient.inventoryItemId)) return true;

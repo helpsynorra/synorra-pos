@@ -1,5 +1,5 @@
 import { PAYMENT_METHODS, parsePayment, paymentLabel } from "@/lib/payments";
-import { addonExtra } from "@/lib/menu";
+import { addonExtra, menuCategoryTypeForName } from "@/lib/menu";
 import type { Order, PaymentMethod } from "@/lib/types";
 
 function getPhDateString(date: Date): string {
@@ -172,12 +172,8 @@ export function productStats(
 // Helper para i-filter ang Drinks lang
 export function drinkProductStats(stats: ProductStat[]): ProductStat[] {
   return stats.filter((item) => {
-    if (item.categoryType !== undefined) {
-      const type = item.categoryType.trim().toLowerCase();
-      return type === "drink" || type === "drinks";
-    }
-    const category = item.category.replace(/[^a-z]/gi, "").toLowerCase();
-    return category !== "other" && category !== "food" && !category.includes("pastr") && category !== "addons" && category !== "addson";
+    const type = menuCategoryTypeForName(item.category, item.categoryType).trim().toLowerCase();
+    return type === "drink" || type === "drinks";
   });
 }
 

@@ -11,7 +11,7 @@ import { drinkDisplayName, formatMoney, orderLineListLabel, orderLineOptionsLabe
 import { phDateString, phDateTimeLabel, phPeriodBounds, phTimestamp, type PeriodRange } from "@/lib/datetime";
 import { paymentLabel } from "@/lib/payments";
 import { ingredientsForOrderLine } from "@/lib/inventory";
-import { inferMenuCategoryType, menuCategoryTypeLabel, normalizeMenuCategoryType } from "@/lib/menu";
+import { inferMenuCategoryType, menuCategoryTypeForName, menuCategoryTypeLabel, normalizeMenuCategoryType } from "@/lib/menu";
 import { parseRole } from "@/lib/users";
 import {
   bestSellers,
@@ -343,10 +343,10 @@ export function AdminDashboard({
   );
   const analyticsMenu = store.menu.map((item) => ({
     ...item,
-    categoryType:
-      categoryTypeByName.get(item.category.trim().toLowerCase()) ??
-      item.categoryType ??
-      inferMenuCategoryType(item.category),
+    categoryType: menuCategoryTypeForName(
+      item.category,
+      categoryTypeByName.get(item.category.trim().toLowerCase()) ?? item.categoryType,
+    ),
   }));
   const productStatsList = productStats(filteredOrdersList, analyticsMenu);
   const best = bestSellers(productStatsList, 5);
@@ -416,10 +416,11 @@ export function AdminDashboard({
       ),
     ]),
   );
-  const getCategoryType = (category: string) =>
+  const getCategoryType = (category: string) => menuCategoryTypeForName(
+    category,
     categoryTypeByName.get(category.trim().toLowerCase()) ??
-    menuCategoryTypeByName.get(category.trim().toLowerCase()) ??
-    inferMenuCategoryType(category);
+      menuCategoryTypeByName.get(category.trim().toLowerCase()),
+  );
   const menuCategoryTypeByProductId = new Map(
     store.menu.map((item) => [
       item.id,

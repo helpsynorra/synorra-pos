@@ -453,7 +453,7 @@ class _CartPanelState extends State<CartPanel> {
                                       .isNotEmpty) ...[
                                     const SizedBox(height: 2),
                                     Text(
-                                      controller.cart[index].optionsSummary,
+                                      'Options: ${controller.cart[index].optionsSummary}',
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(

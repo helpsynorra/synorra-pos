@@ -32,6 +32,7 @@ import {
   normalizeMenuAddons,
   normalizeMenuStyles,
   normalizeMenuTypes,
+  normalizeMenuTypeOptions,
   orderLineListLabel,
   orderLineOptionsLabel,
   resolveOrderAddons,
@@ -461,11 +462,11 @@ export function PosClient({
           price: addon.price,
           qty: selected[addon.id] ?? 0,
         })),
-        ...normalizeMenuTypes(item).map((name, index) => ({
-          id: `type:${addonIdFromName(name, index)}`,
-          name,
-          price: 0,
-          qty: selected[`type:${addonIdFromName(name, index)}`] ?? 0,
+        ...normalizeMenuTypeOptions(item).map((option, index) => ({
+          id: `type:${addonIdFromName(option.name, index)}`,
+          name: option.name,
+          price: option.price,
+          qty: selected[`type:${addonIdFromName(option.name, index)}`] ?? 0,
         })),
       ],
     );
@@ -1163,8 +1164,8 @@ export function PosClient({
               {normalizeMenuTypes(drinkPick.item).length > 0 ? (
                 <div className="mt-5 space-y-2">
                   <p className="text-sm text-neutral-500">Types (optional)</p>
-                  {normalizeMenuTypes(drinkPick.item).map((name, index) => {
-                    const typeId = `type:${addonIdFromName(name, index)}`;
+                  {normalizeMenuTypeOptions(drinkPick.item).map((option, index) => {
+                    const typeId = `type:${addonIdFromName(option.name, index)}`;
                     const on = (drinkPick.addons[typeId] ?? 0) > 0;
                     return (
                       <button
@@ -1185,7 +1186,8 @@ export function PosClient({
                           on ? "border-black bg-neutral-50" : "border-neutral-200 bg-white"
                         }`}
                       >
-                        <span className="text-sm font-medium">{name}</span>
+                        <span className="text-sm font-medium">{option.name}</span>
+                        {option.price > 0 ? <span className="text-sm text-neutral-500">+₱{option.price}</span> : null}
                         <span
                           className={`flex h-5 w-5 items-center justify-center rounded-full border ${
                             on ? "border-black" : "border-neutral-300"
@@ -1755,7 +1757,7 @@ export function PosClient({
                       <p className="truncate text-xs">{drinkDisplayName(item)}{promoItemIndex === itemIndex ? <span className="ml-1 font-semibold text-emerald-700">· {promoItemQty ?? 1} free</span> : null}</p>
                       {orderLineOptionsLabel(item) ? (
                         <p className="text-[10px] leading-4 text-neutral-600">
-                          {orderLineOptionsLabel(item)}
+                          Options: {orderLineOptionsLabel(item)}
                         </p>
                       ) : null}
                     </div>

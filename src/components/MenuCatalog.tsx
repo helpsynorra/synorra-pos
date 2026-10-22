@@ -10,8 +10,8 @@ import {
   setMenuItemAvailable,
   updateMenuItem,
 } from "@/actions/menu";
-import { addonIdFromName, DRINK_STYLES, drinkStyleLabel, drinkStyleLabelList, formatMoney, inferMenuCategoryType, isFoodOrPastry, menuCategoryTypeLabel, normalizeMenuAddons, normalizeMenuCategoryType, normalizeMenuStyles, normalizeMenuTypes } from "@/lib/menu";
-import type { DrinkStyle, InventoryItem, MenuAddon, MenuCategoryType, MenuItem } from "@/lib/types";
+import { addonIdFromName, DRINK_STYLES, drinkStyleLabel, drinkStyleLabelList, formatMoney, inferMenuCategoryType, isFoodOrPastry, menuCategoryTypeForName, menuCategoryTypeLabel, normalizeMenuAddons, normalizeMenuCategoryType, normalizeMenuStyles, normalizeMenuTypes, normalizeMenuTypeOptions } from "@/lib/menu";
+import type { DrinkStyle, InventoryItem, MenuAddon, MenuCategoryType, MenuItem, MenuTypeOption } from "@/lib/types";
 
 type MenuCatalogProps = {
   menu: MenuItem[];
@@ -108,9 +108,12 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
   const [itemPrice, setItemPrice] = useState("");
   const [itemCategory, setItemCategory] = useState("");
   const [itemAvailable, setItemAvailable] = useState(true);
+  const [itemInventoryMode, setItemInventoryMode] = useState<"none" | "stock_only" | "stock_and_recipe">("none");
+  const [itemStockInventoryItemId, setItemStockInventoryItemId] = useState("");
+  const [itemStockUsageAmount, setItemStockUsageAmount] = useState("1");
   const [itemStyles, setItemStyles] = useState<DrinkStyle[]>([]);
   const [itemAddons, setItemAddons] = useState<MenuAddon[]>([]);
-  const [itemTypes, setItemTypes] = useState<string[]>([]);
+  const [itemTypes, setItemTypes] = useState<MenuTypeOption[]>([]);
   const [itemImage, setItemImage] = useState("");
   const [itemPhoto, setItemPhoto] = useState<File | null>(null);
 
@@ -148,7 +151,7 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
 
   function categoryTypeForName(category: string) {
     const direct = categoryTypes[category] ?? categoryTypes[category.toLowerCase()];
-    return normalizeMenuCategoryType(direct ?? inferMenuCategoryType(category));
+    return menuCategoryTypeForName(category, direct);
   }
 
   function startCreateItem() {
@@ -157,6 +160,9 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
     setItemPrice("");
     setItemCategory(filter !== "All" ? filter : categories[0] ?? "");
     setItemAvailable(true);
+    setItemInventoryMode("none");
+    setItemStockInventoryItemId("");
+    setItemStockUsageAmount("1");
     setItemStyles([]);
     setItemAddons([]);
     setItemTypes([]);
@@ -172,9 +178,16 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
     setItemPrice(String(item.price));
     setItemCategory(item.category);
     setItemAvailable(item.available !== false);
+    setItemInventoryMode(
+      item.inventoryMode === "stock_only" || item.inventoryMode === "stock_and_recipe"
+        ? item.inventoryMode
+        : "none",
+    );
+    setItemStockInventoryItemId(item.stockInventoryItemId ?? "");
+    setItemStockUsageAmount(String(item.stockUsageAmount ?? 1));
     setItemStyles(normalizeMenuStyles(item));
     setItemAddons(normalizeMenuAddons(item));
-    setItemTypes(normalizeMenuTypes(item));
+    setItemTypes(normalizeMenuTypeOptions(item));
     setItemImage(item.image);
     setItemPhoto(null);
     setNotice(null);
@@ -196,10 +209,13 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
     data.set("price", String(basePrice));
     data.set("category", itemCategory);
     data.set("available", itemAvailable ? "true" : "false");
+    data.set("inventoryMode", itemInventoryMode);
+    data.set("stockInventoryItemId", sizes.length ? "" : itemStockInventoryItemId);
+    data.set("stockUsageAmount", sizes.length ? "" : itemStockUsageAmount);
     data.set("stylesField", "1");
     for (const style of itemStyles) data.append("styles", style);
     data.set("addons", JSON.stringify(itemAddons.filter((addon) => addon.name.trim())));
-    data.set("types", JSON.stringify(itemTypes.filter((type) => type.trim())));
+    data.set("types", JSON.stringify(itemTypes.filter((type) => type.name.trim())));
     if (itemPhoto) data.set("photo", itemPhoto);
     return data;
   }
@@ -493,7 +509,7 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
 
             {editingId ? (
               <form
-                className="space-y-4 rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5"
+                className="mx-auto max-w-7xl space-y-5 rounded-2xl border border-neutral-200 bg-white p-4 sm:p-6"
                 onSubmit={(event) => {
                   event.preventDefault();
                   if (itemAddons.some((addon) => isSizeAddon(addon) && !addon.name.trim())) {
@@ -518,11 +534,19 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                   });
                 }}
               >
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">{editingId === "new" ? "New item" : "Edit item"}</p>
+                <div className="flex items-center justify-between border-b border-neutral-200 pb-3">
+                  <div>
+                    <p className="text-lg font-semibold text-neutral-900">{editingId === "new" ? "Add menu item" : "Edit menu item"}</p>
+                    <p className="mt-0.5 text-xs text-neutral-500">Fill in the sections below, then save your changes.</p>
+                  </div>
                   <button type="button" onClick={resetItemForm} className="text-xs text-neutral-500 hover:text-black">
                     Cancel
                   </button>
+                </div>
+                <section className="space-y-4 rounded-xl border border-neutral-200 bg-neutral-50/60 p-4 sm:p-5">
+                <div>
+                  <h3 className="text-sm font-semibold text-neutral-900">Item details</h3>
+                  <p className="mt-1 text-xs text-neutral-500">Set the name, category, photo, and serving style.</p>
                 </div>
                 <div className={`grid gap-3 ${itemAddons.some(isSizeAddon) ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
                   <label className="text-xs font-medium text-neutral-600">
@@ -531,10 +555,10 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                   </label>
                   {!itemAddons.some(isSizeAddon) ? (
                     <label className="text-xs font-medium text-neutral-600">
-                      <span className="mb-1.5 block">Price</span>
+                      <span className="mb-1.5 block">Base price</span>
                       <input
                         type="number"
-                        min="1"
+                        min="0"
                         step="1"
                         value={itemPrice}
                         onChange={(event) => setItemPrice(event.target.value)}
@@ -603,9 +627,14 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                     </div>
                   </div>
                 ) : null}
+                </section>
+                <section className="space-y-3 rounded-xl border border-neutral-200 bg-neutral-50/60 p-4 sm:p-5">
                 <div>
                   <div className="mb-1.5 flex items-center justify-between gap-2">
-                    <p className="text-xs font-medium text-neutral-600">Sizes and prices</p>
+                    <div>
+                      <h3 className="text-sm font-semibold text-neutral-900">Sizes and prices</h3>
+                      <p className="mt-1 text-xs text-neutral-500">Add each size with its full selling price.</p>
+                    </div>
                     <button
                       type="button"
                       onClick={() =>
@@ -618,18 +647,28 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                           },
                         ])
                       }
-                      className="text-xs font-medium text-neutral-600 hover:text-black"
+                      className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-xs font-medium text-neutral-700 hover:border-neutral-500 hover:text-black"
                     >
-                      Add size
+                      + Add size
                     </button>
                   </div>
-                  <p className="mb-2 text-xs text-neutral-400">
-                    Enter the full price for each size.
+                  <p className="mb-3 text-xs text-neutral-500">
+                    {itemInventoryMode === "stock_only"
+                      ? "You can link each size to its own stock item below."
+                      : "For example, 16 oz and 22 oz can have different prices."}
                   </p>
-                  {itemAddons.filter(isSizeAddon).map((size) => {
+                  {itemAddons.some(isSizeAddon) ? (
+                    <div className={`mb-2 hidden gap-2 px-1 text-[11px] font-medium text-neutral-500 sm:grid ${itemInventoryMode === "stock_only" ? "sm:grid-cols-[minmax(150px,1fr)_110px_minmax(180px,1fr)_110px_auto]" : "sm:grid-cols-[minmax(0,1fr)_180px_auto]"}`}>
+                      <span>Size</span><span>Full price</span>{itemInventoryMode === "stock_only" ? <><span>Stock item</span><span>Used per sale</span></> : null}<span />
+                    </div>
+                  ) : null}
+                  {itemAddons.filter(isSizeAddon).length === 0 ? (
+                    <p className="rounded-lg border border-dashed border-neutral-300 bg-white px-3 py-4 text-center text-xs text-neutral-500">No sizes added. Use the base price above for a single price.</p>
+                  ) : itemAddons.filter(isSizeAddon).map((size) => {
                     const index = itemAddons.findIndex((entry) => entry.id === size.id);
+                    const sizeStock = inventory.find((stock) => stock.id === size.inventoryItemId);
                     return (
-                      <div key={size.id} className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_180px_auto]">
+                      <div key={size.id} className={`mb-2 grid grid-cols-1 gap-2 ${itemInventoryMode === "stock_only" ? "sm:grid-cols-[minmax(150px,1fr)_110px_minmax(180px,1fr)_110px_auto]" : "sm:grid-cols-[1fr_180px_auto]"}`}>
                         <input
                           value={size.name}
                           onChange={(event) =>
@@ -656,6 +695,41 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                           aria-label="Size price"
                           className={field}
                         />
+                        {itemInventoryMode === "stock_only" ? (
+                          <>
+                            <select
+                              value={size.inventoryItemId ?? ""}
+                              onChange={(event) => {
+                                const stock = inventory.find((entry) => entry.id === event.target.value);
+                                setItemAddons((current) => current.map((entry) => entry.id === size.id
+                                  ? { ...entry, inventoryItemId: stock?.id, usageUnit: stock?.unit, usageAmount: entry.usageAmount ?? 1 }
+                                  : entry));
+                              }}
+                              className={field}
+                              aria-label={`Stock item for ${size.name || "size"}`}
+                            >
+                              <option value="">Select stock item</option>
+                              {inventory.map((stock) => <option key={stock.id} value={stock.id}>{stock.name}</option>)}
+                            </select>
+                            <label className="flex items-center gap-1 text-xs text-neutral-500">
+                              <input
+                                type="number"
+                                min="0.001"
+                                step="any"
+                                value={size.usageAmount ?? 1}
+                                onChange={(event) => {
+                                  const usageAmount = Number(event.target.value);
+                                  setItemAddons((current) => current.map((entry) => entry.id === size.id
+                                    ? { ...entry, usageAmount: Number.isFinite(usageAmount) ? usageAmount : 0, usageUnit: sizeStock?.unit ?? entry.usageUnit }
+                                    : entry));
+                                }}
+                                className={`${field} min-w-0`}
+                                aria-label={`Stock used per ${size.name || "size"}`}
+                              />
+                              {sizeStock?.unit || size.usageUnit || "pcs"}
+                            </label>
+                          </>
+                        ) : null}
                         <button
                           type="button"
                           aria-label={`Remove size ${size.name}`}
@@ -668,36 +742,55 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                     );
                   })}
                 </div>
+                </section>
+                <section className="space-y-3 rounded-xl border border-neutral-200 bg-neutral-50/60 p-4 sm:p-5">
                 <div>
                   <div className="mb-1.5 flex items-center justify-between gap-2">
-                    <p className="text-xs font-medium text-neutral-600">Types</p>
+                    <div>
+                      <h3 className="text-sm font-semibold text-neutral-900">Types</h3>
+                      <p className="mt-1 text-xs text-neutral-500">Optional choices customers can select. Set an extra price only when needed.</p>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => setItemTypes((current) => [...current, ""])}
-                      className="text-xs font-medium text-neutral-600 hover:text-black"
+                      onClick={() => setItemTypes((current) => [...current, { name: "", price: 0 }])}
+                      className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-xs font-medium text-neutral-700 hover:border-neutral-500 hover:text-black"
                     >
-                      Add type
+                      + Add type
                     </button>
                   </div>
                   {itemTypes.length === 0 ? (
-                    <p className="text-xs text-neutral-400">
-                      Optional choices customers select in POS, with no extra charge (e.g. Cheese or BBQ).
-                    </p>
+                    <p className="rounded-lg border border-dashed border-neutral-300 bg-white px-3 py-4 text-center text-xs text-neutral-500">No types added.</p>
                   ) : (
                     <div className="space-y-2">
                       {itemTypes.map((type, index) => (
-                        <div key={`type-${index}`} className="flex gap-2">
+                        <div key={`type-${index}`} className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_160px_auto]">
                           <input
-                            value={type}
+                            value={type.name}
                             onChange={(event) =>
                               setItemTypes((current) =>
                                 current.map((entry, entryIndex) =>
-                                  entryIndex === index ? event.target.value : entry,
+                                  entryIndex === index ? { ...entry, name: event.target.value } : entry,
                                 ),
                               )
                             }
                             placeholder="e.g. Cheese"
-                            className={field}
+                            className={`${field} flex-1`}
+                          />
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={type.price || ""}
+                            onChange={(event) =>
+                              setItemTypes((current) => current.map((entry, entryIndex) =>
+                                entryIndex === index
+                                  ? { ...entry, price: Math.max(0, Number(event.target.value) || 0) }
+                                  : entry,
+                              ))
+                            }
+                            placeholder="Extra price"
+                            aria-label={`Optional extra price for ${type.name || `type ${index + 1}`}`}
+                            className={`${field} w-48`}
                           />
                           <button
                             type="button"
@@ -714,9 +807,14 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                     </div>
                   )}
                 </div>
+                </section>
+                <section className="space-y-3 rounded-xl border border-neutral-200 bg-neutral-50/60 p-4 sm:p-5">
                 <div>
                   <div className="mb-1.5 flex items-center justify-between gap-2">
-                    <p className="text-xs font-medium text-neutral-600">Add-ons</p>
+                    <div>
+                      <h3 className="text-sm font-semibold text-neutral-900">Add-ons</h3>
+                      <p className="mt-1 text-xs text-neutral-500">Optional extras with their own price and optional stock deduction.</p>
+                    </div>
                     <button
                       type="button"
                       onClick={() =>
@@ -730,14 +828,14 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                           },
                         ])
                       }
-                      className="text-xs font-medium text-neutral-600 hover:text-black"
+                      className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-xs font-medium text-neutral-700 hover:border-neutral-500 hover:text-black"
                     >
-                      Add option
+                      + Add add-on
                     </button>
                   </div>
                   {itemAddons.filter((addon) => !isSizeAddon(addon)).length === 0 ? (
                     <p className="text-xs text-neutral-400">
-                      Example: Oat milk ₱30, Extra espresso ₱40. Set stock + amount so extras deduct inventory (20 ml milk → 100 ml recipe + 20 ml extra = 120 ml).
+                      e.g. Oat milk ₱30, Extra espresso ₱40.
                     </p>
                   ) : (
                     <div className="space-y-2">
@@ -853,16 +951,63 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                     </div>
                   )}
                 </div>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <label className="flex items-center gap-2 text-sm text-neutral-700">
+                </section>
+                <section className="space-y-4 rounded-xl border border-neutral-200 bg-neutral-50/60 p-4 sm:p-5">
+                  <div>
+                    <h3 className="text-sm font-semibold text-neutral-900">Inventory and availability</h3>
+                    <p className="mt-1 text-xs text-neutral-500">Choose one method if this item should use inventory. Leave both unchecked for no automatic deductions.</p>
+                  </div>
+                  <label className="flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm text-neutral-700">
                     <input
                       type="checkbox"
                       checked={itemAvailable}
                       onChange={(event) => setItemAvailable(event.target.checked)}
                       className="h-4 w-4 accent-black"
                     />
-                    Available
+                    Available for sale in POS
                   </label>
+                  <div className="grid gap-2 sm:grid-cols-2" role="group" aria-label="Inventory tracking mode">
+                    <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${itemInventoryMode === "stock_only" ? "border-neutral-900 bg-white" : "border-neutral-200 bg-white hover:border-neutral-400"}`}>
+                      <input type="checkbox" checked={itemInventoryMode === "stock_only"} onChange={() => setItemInventoryMode((current) => current === "stock_only" ? "none" : "stock_only")} className="mt-0.5 h-4 w-4 accent-black" />
+                      <span><span className="block text-sm font-medium text-neutral-800">Stock only</span><span className="mt-0.5 block text-xs text-neutral-500">Deduct the selected stock item for each sale.</span></span>
+                    </label>
+                    <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${itemInventoryMode === "stock_and_recipe" ? "border-neutral-900 bg-white" : "border-neutral-200 bg-white hover:border-neutral-400"}`}>
+                      <input type="checkbox" checked={itemInventoryMode === "stock_and_recipe"} onChange={() => setItemInventoryMode((current) => current === "stock_and_recipe" ? "none" : "stock_and_recipe")} className="mt-0.5 h-4 w-4 accent-black" />
+                      <span><span className="block text-sm font-medium text-neutral-800">Stock and recipe</span><span className="mt-0.5 block text-xs text-neutral-500">Deduct recipe ingredients when a recipe is configured.</span></span>
+                    </label>
+                  </div>
+                {itemInventoryMode === "stock_only" && !itemAddons.some(isSizeAddon) ? (
+                  <div className="grid gap-3 rounded-xl border border-neutral-200 bg-white p-3 sm:grid-cols-[minmax(0,1fr)_160px]">
+                    <label className="text-xs font-medium text-neutral-600">
+                      Stock item
+                      <select
+                        value={itemStockInventoryItemId}
+                        onChange={(event) => setItemStockInventoryItemId(event.target.value)}
+                        className={`${field} mt-1`}
+                        aria-label="Stock item for this menu product"
+                      >
+                        <option value="">Select stock item</option>
+                        {inventory.map((stock) => (
+                          <option key={stock.id} value={stock.id}>{stock.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-xs font-medium text-neutral-600">
+                      Used per sale ({inventory.find((stock) => stock.id === itemStockInventoryItemId)?.unit || "pcs"})
+                      <input
+                        type="number"
+                        min="0.001"
+                        step="any"
+                        value={itemStockUsageAmount}
+                        onChange={(event) => setItemStockUsageAmount(event.target.value)}
+                        className={`${field} mt-1`}
+                        aria-label="Stock used per sale"
+                      />
+                    </label>
+                  </div>
+                ) : null}
+                </section>
+                <div className="flex justify-end border-t border-neutral-200 pt-4">
                   <button
                     type="submit"
                     disabled={pending || !itemName.trim() || !itemCategory || categories.length === 0}

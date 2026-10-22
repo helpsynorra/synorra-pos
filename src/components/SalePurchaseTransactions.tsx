@@ -275,7 +275,7 @@ export function SalePurchaseTransactions({
     name: item.name,
     stock: item.stock,
     openingStock: item.openingStock ?? (item.purchaseUnitSize ? 10 * item.purchaseUnitSize : item.stock),
-    unit: item.unit || "pcs",
+    unit: looksLikeCupItem(item, store.recipeCostings) ? "pcs" : item.unit || "pcs",
     purchaseUnitSize: item.purchaseUnitSize,
     cupUsageAmount: item.cupUsageAmount,
     cupsMake: item.cupsMake,
@@ -336,6 +336,8 @@ export function SalePurchaseTransactions({
   const [transactionNotice, setTransactionNotice] = useState<string | null>(null);
 
   const [stocks, setStocks] = useState<StockItem[]>(persistedStocks);
+  const [stockItemFilter, setStockItemFilter] = useState("all");
+  const [cupsLeftFilter, setCupsLeftFilter] = useState("all");
   const [unitSetupDrafts, setUnitSetupDrafts] = useState<Record<string, { purchaseUnitSize: string; unit?: string; cupUsageAmount: string }>>({});
   const stocksRef = useRef(stocks);
   stocksRef.current = stocks;
@@ -782,7 +784,7 @@ export function SalePurchaseTransactions({
         name: item.name,
         stock: item.stock,
         openingStock: item.openingStock ?? existing?.openingStock,
-        unit: item.unit || existing?.unit || "pcs",
+        unit: looksLikeCupItem(item, store.recipeCostings) ? "pcs" : item.unit || existing?.unit || "pcs",
         cost: existing?.cost ?? 0,
         maxStock: existing?.maxStock ?? item.stock,
         purchaseUnitSize: item.purchaseUnitSize,
@@ -815,7 +817,7 @@ export function SalePurchaseTransactions({
     if (!itemName || !stockQty) return;
     const pieces = Number(stockQty);
     if (!Number.isFinite(pieces) || pieces < 0) return;
-    const unit = stockUnit.trim() || "pcs";
+    const unit = stockInventoryType === "cup" ? "pcs" : stockUnit.trim() || "pcs";
     const purchaseUnitSize = stockInventoryType === "cup" ? undefined : stockPurchaseUnitSize.trim() ? Number(stockPurchaseUnitSize) : undefined;
     const inventoryType = stockInventoryType === "other" ? stockOtherType.trim() || "other" : stockInventoryType === "cup" ? `cup_${stockCupType}` : stockInventoryType;
     const cupSize = stockInventoryType === "cup" ? selectedCupSize || undefined : undefined;
@@ -860,7 +862,7 @@ export function SalePurchaseTransactions({
     const nextStocks = stocks.map((item) => item.id === id ? {
       ...item,
       purchaseUnitSize: draft?.purchaseUnitSize === "" ? undefined : draft?.purchaseUnitSize !== undefined ? Number(draft.purchaseUnitSize) : item.purchaseUnitSize,
-      unit: draft?.unit ?? item.unit,
+      unit: looksLikeCupItem(item, recipeCostings) ? "pcs" : draft?.unit ?? item.unit,
       cupUsageAmount: draft?.cupUsageAmount === "" ? undefined : draft?.cupUsageAmount !== undefined ? Number(draft.cupUsageAmount) : item.cupUsageAmount,
       [field]: parsed,
     } : item);
@@ -887,10 +889,10 @@ export function SalePurchaseTransactions({
     setStockName(s.name);
     setSelectedCupSize(s.cupSize ?? menuCupSizes.find((size) => normalizeCupSize(size) === normalizeCupSize(s.name)) ?? "");
     setStockQty(toPieceQuantity(s, s.openingStock ?? s.stock).toString());
-    setStockUnit(s.unit || "pcs");
     setStockPurchaseUnitSize(s.purchaseUnitSize?.toString() ?? "");
     const savedType = s.inventoryType ?? (looksLikeCupItem(s, recipeCostings) ? "cup" : "ingredient");
     const isCup = savedType === "cup" || savedType.startsWith("cup_");
+    setStockUnit(isCup ? "pcs" : s.unit || "pcs");
     setStockInventoryType(isCup || savedType === "ingredient" ? (isCup ? "cup" : "ingredient") : "other");
     setStockCupType(savedType === "cup_iced" ? "iced" : "hot");
     setStockOtherType(!isCup && savedType !== "ingredient" ? (savedType === "other" ? s.name : savedType) : "");
@@ -1638,7 +1640,10 @@ export function SalePurchaseTransactions({
                     setStockInventoryType(type);
                     setShowCupSizes(false);
                     if (type !== "cup") setSelectedCupSize("");
-                    if (type === "cup") setStockPurchaseUnitSize("");
+                    if (type === "cup") {
+                      setStockPurchaseUnitSize("");
+                      setStockUnit("pcs");
+                    }
                   }}
                   className="w-full bg-white border border-neutral-400 rounded px-3 py-1.5 text-sm"
                 >
@@ -1725,7 +1730,7 @@ export function SalePurchaseTransactions({
               </div>
               <div>
                 <label className="block text-xs font-medium text-neutral-600 mb-1">Unit</label>
-                <input type="text" placeholder="grams, ml, pcs" value={stockUnit} onChange={(e) => setStockUnit(e.target.value)} className="w-full bg-white border border-neutral-400 rounded px-3 py-1.5 text-sm" />
+                <input type="text" placeholder="grams, ml, pcs" value={stockInventoryType === "cup" ? "pcs" : stockUnit} onChange={(e) => setStockUnit(e.target.value)} readOnly={stockInventoryType === "cup"} aria-label="Unit" className={`w-full bg-white border border-neutral-400 rounded px-3 py-1.5 text-sm ${stockInventoryType === "cup" ? "cursor-not-allowed bg-neutral-100 text-neutral-500" : ""}`} />
               </div>
               <div className="flex gap-2">
                 <button type="submit" className="flex-1 bg-black text-white px-4 py-1.5 rounded text-sm font-medium">{editStockId ? "Update" : "Add"}</button>
@@ -1734,6 +1739,30 @@ export function SalePurchaseTransactions({
             </form>
           </div>
 
+          <div className="mb-3 flex flex-wrap items-center gap-3">
+            <label htmlFor="stock-item-filter" className="text-sm font-medium text-neutral-700">Item</label>
+            <select
+              id="stock-item-filter"
+              value={stockItemFilter}
+              onChange={(event) => setStockItemFilter(event.target.value)}
+              className="min-w-56 rounded border border-neutral-300 bg-white px-3 py-2 text-sm"
+            >
+              <option value="all">All items</option>
+              {stocks.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+            <label htmlFor="cups-left-filter" className="ml-2 text-sm font-medium text-neutral-700">Cups left</label>
+            <select
+              id="cups-left-filter"
+              value={cupsLeftFilter}
+              onChange={(event) => setCupsLeftFilter(event.target.value)}
+              className="min-w-44 rounded border border-neutral-300 bg-white px-3 py-2 text-sm"
+            >
+              <option value="all">All levels</option>
+              <option value="low">Low (5 cups or less)</option>
+              <option value="available">More than 5 cups</option>
+              <option value="unconfigured">No recipe amount</option>
+            </select>
+          </div>
           <div className="overflow-x-auto rounded-lg border border-neutral-400 bg-white">
             <table className="w-full min-w-[1100px] text-left text-sm">
               <thead>
@@ -1751,7 +1780,14 @@ export function SalePurchaseTransactions({
                 </tr>
               </thead>
               <tbody>
-                {stocks.map((s) => {
+                {stocks.filter((item) => {
+                  if (stockItemFilter !== "all" && item.id !== stockItemFilter) return false;
+                  const currentCupsLeft = configuredCupsLeft(item, item.stock);
+                  if (cupsLeftFilter === "low") return currentCupsLeft != null && currentCupsLeft <= 5;
+                  if (cupsLeftFilter === "available") return currentCupsLeft != null && currentCupsLeft > 5;
+                  if (cupsLeftFilter === "unconfigured") return currentCupsLeft == null;
+                  return true;
+                }).map((s) => {
                   const { opening, restocked, used, remaining } = stockLedgerForRange({
                     itemName: s.name,
                     inventoryItemId: s.id,
@@ -1763,6 +1799,9 @@ export function SalePurchaseTransactions({
                   });
                   const isLiveDate = isLiveRange;
                   const cupsLeft = configuredCupsLeft(s, remaining);
+                  const availableAtStart = Math.max(0, opening + restocked);
+                  const isLowStock = availableAtStart > 0 && remaining <= availableAtStart * 0.2;
+                  const isLowCups = cupsLeft != null && cupsLeft <= 5;
                   return (
                     <tr key={s.id} className="border-b border-neutral-200 text-xs">
                       <td className="p-2 border-r border-neutral-200 font-medium">{s.name}</td>
@@ -1783,7 +1822,7 @@ export function SalePurchaseTransactions({
                       </td>
                       <td className="p-2 border-r border-neutral-200 text-neutral-600">{s.unit}</td>
                       <td className="p-2 border-r border-neutral-200 text-right text-neutral-600">{inventoryUsagePerPiece(s, Number(used))}</td>
-                      <td className="p-2 border-r border-neutral-200 text-right font-bold">
+                      <td className={`p-2 border-r border-neutral-200 text-right font-bold ${isLowStock ? "text-red-600" : "text-neutral-900"}`}>
                         <div className="flex items-center justify-end gap-1"><input
                           aria-label={`Remaining stock for ${s.name}`}
                           type="number"
@@ -1806,10 +1845,10 @@ export function SalePurchaseTransactions({
                             setStocks(nextStocks);
                             void persistInventory(nextStocks);
                           }}
-                          className="w-24 bg-white border border-neutral-400 rounded px-2 py-1 text-right font-bold"
+                          className={`w-24 bg-white border border-neutral-400 rounded px-2 py-1 text-right font-bold ${isLowStock ? "text-red-600" : "text-neutral-900"}`}
                         /><span className="font-normal">pcs</span></div>
                       </td>
-                      <td className="p-3 border-r border-neutral-200 text-right text-neutral-600">
+                      <td className={`p-3 border-r border-neutral-200 text-right ${isLowCups ? "font-semibold text-red-600" : "text-neutral-600"}`}>
                         {s.unit.trim().toLowerCase() === "pcs" || cupsLeft == null ? "—" : `${cupsLeft.toFixed(1)} cups`}
                       </td>
                       <td className="p-3 border-r border-neutral-200 text-center">

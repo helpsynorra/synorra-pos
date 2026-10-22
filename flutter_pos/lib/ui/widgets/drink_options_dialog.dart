@@ -22,6 +22,7 @@ class DrinkOptionsDialog extends StatefulWidget {
 
 class _DrinkOptionsDialogState extends State<DrinkOptionsDialog> {
   String? _selectedStyle;
+  String? _selectedType;
   final Map<String, int> _addonQuantities = {};
   int _qty = 1;
 
@@ -50,6 +51,8 @@ class _DrinkOptionsDialogState extends State<DrinkOptionsDialog> {
           : addon.price;
       extraTotal += price * q;
     }
+    final selectedType = widget.item.types.where((type) => type.name == _selectedType).firstOrNull;
+    if (selectedType != null) extraTotal += selectedType.price;
     final unitPrice = widget.item.price + extraTotal;
     final totalPrice = unitPrice * _qty;
 
@@ -162,6 +165,23 @@ class _DrinkOptionsDialogState extends State<DrinkOptionsDialog> {
                 ],
 
                 // Dynamic Add-ons Section (Only shown when configured in Admin for this item)
+                if (widget.item.types.isNotEmpty) ...[
+                  const Text('TYPES (OPTIONAL)', style: TextStyle(
+                    fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8,
+                    color: SynorraTheme.textMuted,
+                  )),
+                  const SizedBox(height: 8),
+                  ...widget.item.types.map((type) => RadioListTile<String>(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(type.name),
+                    secondary: type.price > 0 ? Text('+₱${type.price.toStringAsFixed(0)}') : null,
+                    value: type.name,
+                    groupValue: _selectedType,
+                    onChanged: (value) => setState(() => _selectedType = value),
+                  )),
+                  const SizedBox(height: 12),
+                ],
+
                 if (sizesList.isNotEmpty) ...[
                   const Text(
                     'SIZE',
@@ -205,7 +225,7 @@ class _DrinkOptionsDialogState extends State<DrinkOptionsDialog> {
 
                 if (addonsList.isNotEmpty) ...[
                   const Text(
-                    'ADD-ONS & MODIFIERS',
+                    'ADD-ONS',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
@@ -375,6 +395,17 @@ class _DrinkOptionsDialogState extends State<DrinkOptionsDialog> {
                               ));
                             }
                           });
+                          final type = widget.item.types.where((entry) => entry.name == _selectedType).firstOrNull;
+                          if (type != null) {
+                            final slug = type.name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-').replaceAll(RegExp(r'^-+|-+$'), '');
+                            final index = widget.item.types.indexOf(type);
+                            addons.add(OrderAddonSelection(
+                              id: 'type:${slug.isEmpty ? 'addon' : slug}-$index',
+                              name: type.name,
+                              qty: 1,
+                              price: type.price,
+                            ));
+                          }
                           widget.onConfirm(_selectedStyle, addons, _qty);
                           Navigator.pop(context);
                               },
