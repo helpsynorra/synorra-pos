@@ -581,7 +581,6 @@ class SyncService extends ChangeNotifier {
               }
             }
           }
-        }
         // Cup from recipeCosting
         if (cupId != null && cupId.isNotEmpty) {
           final resolvedCupStock = cupStock ??
