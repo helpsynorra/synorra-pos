@@ -39,4 +39,4 @@ same random value of at least 32 characters in both the Synorra and Commune
 server environments. Keep it out of Flutter build defines and browser-visible
 environment variables. Commune can override the Synorra endpoint with
 `SYNORRA_PROMOTION_API_URL`; the default is
-`https://synorra-pos.vercel.app/api/commune-promotions`.
+`https://https://synorra-pos.click/api/commune-promotions`.

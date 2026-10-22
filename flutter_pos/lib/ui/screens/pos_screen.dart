@@ -60,7 +60,7 @@ class _PosScreenState extends State<PosScreen> {
   }
 
   Future<void> _openBackOffice() async {
-    final uri = Uri.parse('https://synorra-pos.vercel.app/back-office');
+    final uri = Uri.parse('https://synorra-pos.click/back-office');
     try {
       final launched = await launchUrl(
         uri,

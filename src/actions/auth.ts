@@ -71,7 +71,7 @@ export async function requestOwnerPasswordReset(
         .insert({ staff_user_id: owner.id, token_hash: tokenHash, expires_at: expiresAt });
       if (insertError) throw insertError;
 
-      const appUrl = (process.env.APP_URL || "https://synorra-pos.vercel.app").replace(/\/+$/, "");
+      const appUrl = (process.env.APP_URL || "https://synorra-pos.click").replace(/\/+$/, "");
       const resetUrl = `${appUrl}/back-office/reset-password?token=${token}`;
       const mailer = nodemailer.createTransport({
         service: "gmail",
