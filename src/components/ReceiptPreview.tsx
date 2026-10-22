@@ -11,9 +11,25 @@ import {
   type PaperWidth,
   type ReceiptTicket,
 } from "@/lib/escpos";
-import { drinkDisplayName, hydrateOrderLine, orderLineOptionsLabel } from "@/lib/menu";
+import { drinkDisplayName, hydrateOrderLine } from "@/lib/menu";
 import { paymentLabel } from "@/lib/payments";
-import type { PrintJob } from "@/lib/types";
+import type { OrderItem, PrintJob } from "@/lib/types";
+
+function receiptOptions(item: OrderItem) {
+  const hydrated = hydrateOrderLine(item);
+  const size = hydrated.addons?.find((addon) => addon.id.startsWith("size:"));
+  const addons = (hydrated.addons ?? []).filter((addon) => !addon.id.startsWith("size:"));
+  const style = hydrated.style ? hydrated.style[0].toUpperCase() + hydrated.style.slice(1) : "";
+  return {
+    sizeLine: [style, size?.name].filter(Boolean).join(") "),
+    addons: addons.map((addon) => {
+      const quantity = Math.max(1, addon.qty || 1);
+      const name = quantity > 1 ? `${quantity} x ${addon.name}` : addon.name;
+      const total = addon.price * quantity;
+      return `+ ${name}${total > 0 ? ` ${receiptMoney(total)}` : ""}`;
+    }),
+  };
+}
 
 type ReceiptPreviewProps = {
   ticket: ReceiptTicket;
@@ -101,18 +117,20 @@ function CustomerSlip({ ticket }: { ticket: ReceiptTicket }) {
       {ticket.serviceMode ? <p className="text-center font-semibold">{ticket.serviceMode === "take-out" ? "Take out" : "Dine in"}</p> : null}
       <Rule />
       <Row left="Item" right="Amount" strong />
-      {ticket.items.map((item, index) => (
-        <div key={`${item.productId}-${index}`} className="mt-2">
-          <p>{drinkDisplayName(item)}</p>
-          {orderLineOptionsLabel(item) ? (
-            <p className="text-[10px] text-neutral-600">{orderLineOptionsLabel(item)}</p>
-          ) : null}
-          <Row
-            left={`  ${item.qty} x ${receiptMoney(item.price)}`}
-            right={receiptMoney(item.price * item.qty)}
-          />
-        </div>
-      ))}
+      {ticket.items.map((item, index) => {
+        const details = receiptOptions(item);
+        return (
+          <div key={`${item.productId}-${index}`} className="mt-2">
+            <p>{drinkDisplayName(item)}</p>
+            {details.sizeLine ? <p className="text-[10px] text-neutral-600">{details.sizeLine}</p> : null}
+            {details.addons.length > 0 ? <p className="text-[10px] text-neutral-600">Add-ons {details.addons.join(", ")}</p> : null}
+            <Row
+              left={`  ${item.qty} x ${receiptMoney(item.price)}`}
+              right={receiptMoney(item.price * item.qty)}
+            />
+          </div>
+        );
+      })}
       <Rule />
       <Row left="Subtotal" right={receiptMoney(ticket.subtotal)} />
       {ticket.discount > 0 ? (
@@ -201,23 +219,22 @@ function BaristaSlip({ ticket }: { ticket: ReceiptTicket }) {
       </p>
       <ul className="mt-1">
         {ticket.items.map((item) => {
-          const style = hydrateOrderLine(item).style;
-          const options = orderLineOptionsLabel(item)
-            .replace(/^(hot|iced)(,\s*)?/i, "")
-            .trim();
+          const hydrated = hydrateOrderLine(item);
+          const sizeAddon = hydrated.addons?.find((addon) => addon.id.startsWith("size:"));
+          const sizeName = sizeAddon?.name ?? /\(?-?\s*(\d+(?:\.\d+)?\s*oz)\)?/i.exec(hydrated.name)?.[1]?.replace(/\s+/g, "");
+          const itemName = hydrated.name.replace(/\s*\(?-?\s*\d+(?:\.\d+)?\s*oz\)?/i, "").trim();
+          const style = hydrated.style ? `(${hydrated.style.toUpperCase()}) ` : "";
+          const labelAddons = (hydrated.addons ?? [])
+            .filter((addon) => !addon.id.startsWith("size:"))
+            .map((addon) => `+${Math.max(1, addon.qty || 1)} ${addon.name}`);
           return (
             <li
               key={item.productId}
               className="flex items-baseline gap-2 border-b border-dashed border-neutral-200 py-1"
             >
               <span className="min-w-0 leading-4 uppercase">
-                {style ? `(${style.toUpperCase()}) ` : ""}
-                {item.qty}X {drinkDisplayName(item)}
-                {options ? (
-                  <span className="mt-0.5 block text-[10px] font-normal normal-case text-neutral-600">
-                    +{options}
-                  </span>
-                ) : null}
+                {style}{item.qty}X {itemName || drinkDisplayName(item)}{sizeName ? ` (-${sizeName})` : ""}
+                {labelAddons.length > 0 ? <span className="mt-0.5 block text-[10px] font-normal normal-case text-neutral-600">{labelAddons.join(", ")}</span> : null}
               </span>
             </li>
           );

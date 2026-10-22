@@ -244,10 +244,20 @@ class PrinterService {
 
     // Drink style / size
     final style = item.style?.toString().trim();
+    String? sizeName;
+    for (final addon in item.addons) {
+      if (addon.id?.startsWith('size:') == true) {
+        sizeName = addon.name.toString().trim();
+        break;
+      }
+    }
 
-    if (style != null && style.isNotEmpty) {
+    if ((style != null && style.isNotEmpty) || (sizeName != null && sizeName.isNotEmpty)) {
+      final styleLabel = style == null || style.isEmpty
+          ? sizeName!
+          : '${style[0].toUpperCase()}${style.substring(1)}${sizeName == null ? '' : ') $sizeName'}';
       final styleLines = _wrap(
-        '• ${style.toUpperCase()}',
+        styleLabel,
         width: receiptWidth - 2,
       );
 
@@ -256,15 +266,20 @@ class PrinterService {
       }
     }
 
-    // Add-ons
-    if (item.addons.isNotEmpty) {
-      for (final addon in item.addons) {
+    // Only real add-ons get a plus sign and price. Cup sizes are printed above.
+    final regularAddons = item.addons
+        .where((addon) => addon.id?.startsWith('size:') != true)
+        .toList();
+    if (regularAddons.isNotEmpty) {
+      for (final addon in regularAddons) {
         final addonName = addon.name.toString().trim();
         final addonQty = addon.qty;
 
         final addonTotal = addon.price * addon.qty * item.qty;
 
-        final addonText = '+ $addonName x$addonQty';
+        final quantityLabel = addonQty > 1 ? '$addonQty x ' : '';
+        final priceLabel = addonTotal > 0 ? ' ${_money(addonTotal)}' : '';
+        final addonText = 'Add-ons + $quantityLabel$addonName$priceLabel';
 
         final addonLines = _wrap(
           addonText,
@@ -274,16 +289,7 @@ class PrinterService {
         for (var i = 0; i < addonLines.length; i++) {
           final line = addonLines[i];
 
-          if (i == 0) {
-            buffer.writeln(
-              _row(
-                '  $line',
-                _money(addonTotal),
-              ),
-            );
-          } else {
-            buffer.writeln('    $line');
-          }
+          buffer.writeln(i == 0 ? '  $line' : '    $line');
         }
       }
     }
@@ -564,11 +570,23 @@ class PrinterService {
     buffer.writeln(_cupLine());
 
     // QUANTITY + ITEM
-    final itemName = item.name.toString().trim().toUpperCase();
+    final rawItemName = item.name.toString().trim();
     final style = item.style?.toString().trim();
-    final drinkName = style != null && style.isNotEmpty
-        ? '(${style.toUpperCase()}) 1X $itemName'
-        : '1X $itemName';
+    final sizeAddon = item.addons.cast<dynamic?>().firstWhere(
+      (addon) => addon?.id?.toString().startsWith('size:') == true,
+      orElse: () => null,
+    );
+    final sizeName = sizeAddon?.name?.toString().trim() ??
+        RegExp(r'\(?-?\s*(\d+(?:\.\d+)?\s*oz)\)?', caseSensitive: false)
+            .firstMatch(rawItemName)
+            ?.group(1)
+            ?.replaceAll(RegExp(r'\s+'), '');
+    final itemName = rawItemName
+        .replaceAll(RegExp(r'\s*\(?-?\s*\d+(?:\.\d+)?\s*oz\)?', caseSensitive: false), '')
+        .trim()
+        .toUpperCase();
+    final drinkName = '${style != null && style.isNotEmpty ? '(${style.toUpperCase()}) ' : ''}'
+        '1X $itemName${sizeName != null && sizeName.isNotEmpty ? ' (-$sizeName)' : ''}';
 
     final itemLines = _cupWrap(
       drinkName,
@@ -580,8 +598,11 @@ class PrinterService {
     }
 
     // ADD-ONS
-    if (item.addons.isNotEmpty) {
-      final addonDetails = item.addons.map((addon) {
+    final labelAddons = item.addons
+        .where((addon) => addon.id?.startsWith('size:') != true)
+        .toList();
+    if (labelAddons.isNotEmpty) {
+      final addonDetails = labelAddons.map((addon) {
         final addonName = addon.name.toString().trim();
         return '+${addon.qty} $addonName';
       }).join(', ');

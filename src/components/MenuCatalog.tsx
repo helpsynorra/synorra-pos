@@ -10,7 +10,7 @@ import {
   setMenuItemAvailable,
   updateMenuItem,
 } from "@/actions/menu";
-import { addonIdFromName, DRINK_STYLES, drinkStyleLabel, drinkStyleLabelList, formatMoney, inferMenuCategoryType, isFoodOrPastry, menuCategoryTypeForName, menuCategoryTypeLabel, normalizeMenuAddons, normalizeMenuCategoryType, normalizeMenuStyles, normalizeMenuTypes, normalizeMenuTypeOptions } from "@/lib/menu";
+import { addonIdFromName, DRINK_STYLES, drinkStyleLabel, drinkStyleLabelList, formatMoney, inferMenuCategoryType, isFoodOrPastry, menuCategoryTypeLabel, normalizeMenuAddons, normalizeMenuCategoryType, normalizeMenuStyles, normalizeMenuTypes, normalizeMenuTypeOptions } from "@/lib/menu";
 import type { DrinkStyle, InventoryItem, MenuAddon, MenuCategoryType, MenuItem, MenuTypeOption } from "@/lib/types";
 
 type MenuCatalogProps = {
@@ -151,7 +151,7 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
 
   function categoryTypeForName(category: string) {
     const direct = categoryTypes[category] ?? categoryTypes[category.toLowerCase()];
-    return menuCategoryTypeForName(category, direct);
+    return normalizeMenuCategoryType(direct ?? inferMenuCategoryType(category));
   }
 
   function startCreateItem() {
@@ -558,7 +558,7 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                       <span className="mb-1.5 block">Base price</span>
                       <input
                         type="number"
-                        min="0"
+                        min="1"
                         step="1"
                         value={itemPrice}
                         onChange={(event) => setItemPrice(event.target.value)}
@@ -956,16 +956,7 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                   <div>
                     <h3 className="text-sm font-semibold text-neutral-900">Inventory and availability</h3>
                     <p className="mt-1 text-xs text-neutral-500">Choose one method if this item should use inventory. Leave both unchecked for no automatic deductions.</p>
-                  </div>
-                  <label className="flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm text-neutral-700">
-                    <input
-                      type="checkbox"
-                      checked={itemAvailable}
-                      onChange={(event) => setItemAvailable(event.target.checked)}
-                      className="h-4 w-4 accent-black"
-                    />
-                    Available for sale in POS
-                  </label>
+                   </div>
                   <div className="grid gap-2 sm:grid-cols-2" role="group" aria-label="Inventory tracking mode">
                     <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${itemInventoryMode === "stock_only" ? "border-neutral-900 bg-white" : "border-neutral-200 bg-white hover:border-neutral-400"}`}>
                       <input type="checkbox" checked={itemInventoryMode === "stock_only"} onChange={() => setItemInventoryMode((current) => current === "stock_only" ? "none" : "stock_only")} className="mt-0.5 h-4 w-4 accent-black" />
@@ -1007,7 +998,16 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                   </div>
                 ) : null}
                 </section>
-                <div className="flex justify-end border-t border-neutral-200 pt-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <label className="flex items-center gap-2 text-sm text-neutral-700">
+                    <input
+                      type="checkbox"
+                      checked={itemAvailable}
+                      onChange={(event) => setItemAvailable(event.target.checked)}
+                      className="h-4 w-4 accent-black"
+                    />
+                    Available
+                  </label>
                   <button
                     type="submit"
                     disabled={pending || !itemName.trim() || !itemCategory || categories.length === 0}

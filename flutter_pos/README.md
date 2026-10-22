@@ -27,14 +27,14 @@ A standalone, local-first Flutter Point-of-Sale (POS) terminal application for *
   - **Cash** (with quick tender preset buttons: ₱500, ₱1,000, ₱2,000, custom tendered keypad, and real-time change calculation).
   - **GCash** (e-wallet QR/ref reference integration).
   - **Maya** (e-wallet integration).
-- **Cart & Modifiers**:
+- **Cart **:
   - Hot / Iced drink style selector.
-  - Add-ons & modifiers with quantity increments and price adjustments.
+  - Add-ons with quantity increments and price adjustments.
   - Real-time line item total, subtotal, and total due calculation.
 - **Order Actions**:
   - **Proceed Order**: Finalizes sale, assigns ticket sequence, deducts inventory, queues for sync, and triggers receipt view.
   - **Void Order**: Filter active orders by ticket number or item, require manager credentials, restore inventory stock, and update Supabase.
-  - **Print / Reprint**: Full ESC/POS thermal receipt formatting with ticket number, barista, itemized modifiers, and store branding.
+  - **Print / Reprint**: Full ESC/POS thermal receipt formatting with ticket number, barista, itemized , and store branding.
 - **Sidebar Menus**:
   - **POS Terminal**: Main cash register and catalog interface.
   - **Stock Inventory**: Live ingredient stock levels, low-stock warnings, and unit costs.

@@ -7,7 +7,7 @@ import type { Order, RecipeIngredient, StoreData } from "@/lib/types";
 
 function inventoryUsagePerPiece(item: StockItem, used: number) {
   const unitSize = Number(item.purchaseUnitSize);
-  return unitSize > 0 ? `${(used / unitSize).toFixed(2)} pc` : "—";
+  return unitSize > 0 ? `${(used / unitSize).toFixed(3)} pc` : "—";
 }
 
 function configuredUsagePerUnit(item: StockItem) {
@@ -35,6 +35,16 @@ function normalizeCupSize(value: string) {
 
 function toPieceQuantity(item: Pick<StockItem, "purchaseUnitSize">, amount: number) {
   return amount / pieceSize(item);
+}
+
+function formatPieceQuantity(amount: number) {
+  return formatRemainingQuantity({ unit: "pcs" }, amount);
+}
+
+function formatRemainingQuantity(item: Pick<StockItem, "unit">, amount: number) {
+  return item.unit.trim().toLowerCase() === "pcs"
+    ? formatQty(amount)
+    : (Number(amount) || 0).toFixed(2);
 }
 
 function toBaseQuantity(item: Pick<StockItem, "purchaseUnitSize">, pieces: number) {
@@ -506,7 +516,8 @@ export function SalePurchaseTransactions({
 
         return (
           normalizedCategory !== "addons" &&
-          normalizedCategory !== "addson"
+          normalizedCategory !== "addson" &&
+          item.inventoryMode === "stock_and_recipe"
         );
       }),
     [recipeMenu],
@@ -1827,7 +1838,7 @@ export function SalePurchaseTransactions({
                           aria-label={`Remaining stock for ${s.name}`}
                           type="number"
                           min="0"
-                          value={toPieceQuantity(s, remaining).toFixed(2)}
+                          value={formatRemainingQuantity(s, toPieceQuantity(s, remaining))}
                           readOnly={!isLiveDate}
                           onChange={(e) => {
                             if (!isLiveDate) return;
@@ -2006,7 +2017,7 @@ export function SalePurchaseTransactions({
                                     <th className="px-3 py-2 pl-10">Item Name</th>
                                     <th className="px-3 py-2 text-right">Used Amount</th>
                                     <th className="px-3 py-2 text-center">Unit</th>
-                                    <th className="px-3 py-2 text-right">Remaining</th>
+                                    <th className="px-3 py-2 text-right">Remaining Stock Pcs</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -2017,18 +2028,27 @@ export function SalePurchaseTransactions({
                                       </td>
                                     </tr>
                                   ) : (
-                                    group.items.map((usage, index) => (
-                                      <tr key={`${usage.id}-${index}`}>
-                                        <td className="px-3 py-2 pl-10 font-medium">{usage.itemName}</td>
-                                        <td className="px-3 py-2 text-right font-bold text-red-600">
-                                          -{formatQty(usage.usedAmount)}
-                                        </td>
-                                        <td className="px-3 py-2 text-center text-neutral-600">{usage.unit}</td>
-                                        <td className="px-3 py-2 text-right font-semibold">
-                                          {formatQty(usage.remaining)}
-                                        </td>
-                                      </tr>
-                                    ))
+                                    group.items.map((usage, index) => {
+                                      const inventoryItem = stocks.find((item) =>
+                                        usage.inventoryItemId
+                                          ? item.id === usage.inventoryItemId
+                                          : itemNameEquals(item.name, usage.itemName),
+                                      );
+                                      const showPurchasePieces = Boolean(inventoryItem && Number(inventoryItem.purchaseUnitSize) > 0);
+                                      const remainingAmount = showPurchasePieces ? toPieceQuantity(inventoryItem!, usage.remaining) : usage.remaining;
+                                      return (
+                                        <tr key={`${usage.id}-${index}`}>
+                                          <td className="px-3 py-2 pl-10 font-medium">{usage.itemName}</td>
+                                          <td className="px-3 py-2 text-right font-bold text-red-600">
+                                            -{formatQty(usage.usedAmount)}
+                                          </td>
+                                          <td className="px-3 py-2 text-center text-neutral-600">{usage.unit}</td>
+                                          <td className="px-3 py-2 text-right font-semibold">
+                                            {showPurchasePieces ? formatPieceQuantity(remainingAmount) : formatRemainingQuantity(usage, remainingAmount)}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })
                                   )}
                                 </tbody>
                               </table>
