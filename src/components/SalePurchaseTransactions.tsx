@@ -545,7 +545,7 @@ export function SalePurchaseTransactions({
     [recipeCostings, stocks],
   );
   const otherInventoryItems = useMemo(
-    () => stocks.filter((item) => Boolean(item.inventoryType) && item.inventoryType !== "cup" && !item.inventoryType.startsWith("cup_") && item.inventoryType !== "ingredient"),
+    () => stocks.filter((item) => item.inventoryType && item.inventoryType !== "cup" && !item.inventoryType.startsWith("cup_") && item.inventoryType !== "ingredient"),
     [stocks],
   );
   const hotCupInventoryItems = useMemo(
