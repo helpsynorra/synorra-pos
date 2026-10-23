@@ -31,6 +31,7 @@ flutter:
   uses-material-design: true
   assets:
     - lib/src/images/logo.png
+    - lib/src/images/sn-logo-transparent.png
     - lib/src/images/logo.jpg
     - lib/src/images/computer.jpg
     - lib/src/images/logo_wordmark.png
@@ -38,6 +39,7 @@ flutter:
     - lib/src/images/logo-symbol-transparent.png
     - lib/src/images/logo-wordmark-transparent.png
     - lib/src/images/logo-app-transparent.png
+    - lib/src/images/logo-app-square.png
     - lib/src/images/computer-transparent.png
     - lib/src/images/bg-plant.png
     - lib/src/images/logo-wordmark-cropped.png
@@ -45,9 +47,9 @@ flutter:
 
 flutter_launcher_icons:
   android: true
-  image_path: lib/src/images/logo-app.jpg
-  image_path_android: lib/src/images/logo-app.jpg
+  image_path: lib/src/images/logo-app-square.png
+  image_path_android: lib/src/images/logo-app-square.png
   min_sdk_android: 21
   adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: lib/src/images/logo-app.jpg
+  adaptive_icon_foreground: lib/src/images/logo-app-square.png
   adaptive_icon_foreground_inset: 0

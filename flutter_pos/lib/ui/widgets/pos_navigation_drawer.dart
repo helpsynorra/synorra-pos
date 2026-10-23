@@ -2,7 +2,7 @@
 
 import 'package:flutter/material.dart';
 
-enum PosSection { terminal, stock, restock }
+enum PosSection { terminal, stock, restock, orderHistory }
 
 typedef PosDrawerBuilder = Widget Function(PosSection section);
 
@@ -22,6 +22,7 @@ class PosNavigationDrawer extends StatelessWidget {
   final VoidCallback onOpenTerminal;
   final VoidCallback onOpenStock;
   final VoidCallback onOpenRestock;
+  final VoidCallback onOpenOrderHistory;
   final VoidCallback onOpenBaristas;
   final VoidCallback onOpenBackOffice;
   final VoidCallback onOpenHelpCenter;
@@ -47,6 +48,7 @@ class PosNavigationDrawer extends StatelessWidget {
     required this.onOpenTerminal,
     required this.onOpenStock,
     required this.onOpenRestock,
+    required this.onOpenOrderHistory,
     required this.onOpenBaristas,
     required this.onOpenBackOffice,
     required this.onOpenHelpCenter,
@@ -93,8 +95,7 @@ class PosNavigationDrawer extends StatelessWidget {
                     onTap: () =>
                         _select(context, PosSection.terminal, onOpenTerminal),
                   ),
-                  if (inventoryFeaturesEnabled &&
-                      (stockInventoryEnabled || restockInventoryEnabled)) ...[
+                  ...[
                     const SizedBox(height: 20),
                     _sectionLabel('INVENTORY'),
                     if (stockInventoryEnabled)
@@ -108,12 +109,23 @@ class PosNavigationDrawer extends StatelessWidget {
                     if (restockInventoryEnabled)
                       _row(
                         icon: Icons.add_shopping_cart_outlined,
-                        title: 'Restock inventory',
+                        title: 'Restock Inventory History',
                         selected: selectedSection == PosSection.restock,
                         onTap: () =>
                             _select(context, PosSection.restock, onOpenRestock),
                       ),
+                   
                   ],
+                      const SizedBox(height: 20),
+                    _sectionLabel('ORDER HISTORY'),
+                    if (stockInventoryEnabled)
+                      _row(
+                      icon: Icons.receipt_long_outlined,
+                      title: 'Order History',
+                      selected: selectedSection == PosSection.orderHistory,
+                      onTap: () => _select(
+                          context, PosSection.orderHistory, onOpenOrderHistory),
+                    ),
                   const SizedBox(height: 20),
                   _sectionLabel('STAFF & SHIFT'),
                   _row(
@@ -343,9 +355,9 @@ class PosNavigationDrawer extends StatelessWidget {
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Image.asset(
-                'lib/src/images/logo.png',
-                width: 24,
-                height: 22,
+                'lib/src/images/logo-wordmark-cropped.png',
+                width: 120,
+                height: 33,
                 fit: BoxFit.contain,
                 semanticLabel: 'Synorra',
               ),

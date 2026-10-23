@@ -25,6 +25,8 @@ class RestockScreen extends StatefulWidget {
 }
 
 class _RestockScreenState extends State<RestockScreen> {
+  static const int _restocksPerPage = 30;
+  int _visibleRestockCount = _restocksPerPage;
   String _filterMode = 'range';
   String _range = 'Today';
   static const List<String> _rangeOptions = [
@@ -47,9 +49,6 @@ class _RestockScreenState extends State<RestockScreen> {
     );
     widget.controller.addListener(_onControllerChange);
     widget.controller.syncService.addListener(_onControllerChange);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) widget.controller.syncService.syncAll();
-    });
   }
 
   @override
@@ -83,16 +82,8 @@ class _RestockScreenState extends State<RestockScreen> {
     if (selected == null || !mounted) return;
     setState(() {
       _dateController.text = DateFormat('MM/dd/yyyy').format(selected);
+      _visibleRestockCount = _restocksPerPage;
     });
-  }
-
-  bool _matchesDateFilter(RestockRecord record) {
-    if (_filterMode == 'date') {
-      final selectedDate = _parseSelectedDate() ?? ManilaTime.today();
-      return ManilaTime.matchesRange(record.date, 'Today', selectedDate);
-    }
-    return ManilaTime.matchesRange(
-        record.date, _activeRange, ManilaTime.today());
   }
 
   String _formatDateTime(String iso) {
@@ -190,8 +181,16 @@ class _RestockScreenState extends State<RestockScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final filteredRestocks =
-        widget.controller.restocks.where(_matchesDateFilter).toList();
+    final today = ManilaTime.today();
+    final rangeAnchor = _filterMode == 'date'
+        ? _parseSelectedDate() ?? today
+        : today;
+    final filterRange = _filterMode == 'date' ? 'Today' : _activeRange;
+    final filteredRestocks = widget.controller.restocks
+        .where((record) =>
+            ManilaTime.matchesRange(record.date, filterRange, rangeAnchor))
+        .toList();
+    final visibleRestocks = filteredRestocks.take(_visibleRestockCount).toList();
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -239,7 +238,10 @@ class _RestockScreenState extends State<RestockScreen> {
                     selected: {_filterMode},
                     showSelectedIcon: false,
                     onSelectionChanged: (selection) {
-                      setState(() => _filterMode = selection.first);
+                      setState(() {
+                        _filterMode = selection.first;
+                        _visibleRestockCount = _restocksPerPage;
+                      });
                     },
                   ),
                   Container(
@@ -264,7 +266,12 @@ class _RestockScreenState extends State<RestockScreen> {
                         }).toList(),
                         onChanged: _filterMode == 'range'
                             ? (val) {
-                                if (val != null) setState(() => _range = val);
+                                if (val != null) {
+                                  setState(() {
+                                    _range = val;
+                                    _visibleRestockCount = _restocksPerPage;
+                                  });
+                                }
                               }
                             : null,
                       ),
@@ -336,7 +343,7 @@ class _RestockScreenState extends State<RestockScreen> {
                     }
                     return Column(
                       children:
-                          filteredRestocks.map(_buildRestockCard).toList(),
+                          visibleRestocks.map(_buildRestockCard).toList(),
                     );
                   }
 
@@ -412,11 +419,11 @@ class _RestockScreenState extends State<RestockScreen> {
                           ListView.separated(
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
-                            itemCount: filteredRestocks.length,
+                            itemCount: visibleRestocks.length,
                             separatorBuilder: (context, index) =>
                                 const Divider(height: 1),
                             itemBuilder: (context, index) {
-                              final r = filteredRestocks[index];
+                              final r = visibleRestocks[index];
                               return Padding(
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 16, vertical: 10),
@@ -485,6 +492,17 @@ class _RestockScreenState extends State<RestockScreen> {
                   );
                 },
               ),
+              if (visibleRestocks.length < filteredRestocks.length)
+                Center(
+                  child: TextButton(
+                    onPressed: () => setState(() {
+                      _visibleRestockCount += _restocksPerPage;
+                    }),
+                    child: Text(
+                      'Load more (${filteredRestocks.length - visibleRestocks.length} remaining)',
+                    ),
+                  ),
+                ),
             ],
           ),
         ),

@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="NONE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="d996a9c5-7840-4e21-93d7-f7a28b6b4026" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/flutter_pos/lib/src/images/bg-plant.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/flutter_pos/android/.gradle/8.14.3/executionHistory/executionHistory.bin" beforeDir="false" afterPath="$PROJECT_DIR$/flutter_pos/android/.gradle/8.14.3/executionHistory/executionHistory.bin" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/flutter_pos/android/.gradle/8.14.3/executionHistory/executionHistory.lock" beforeDir="false" afterPath="$PROJECT_DIR$/flutter_pos/android/.gradle/8.14.3/executionHistory/executionHistory.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/flutter_pos/android/.gradle/8.14.3/fileHashes/fileHashes.bin" beforeDir="false" afterPath="$PROJECT_DIR$/flutter_pos/android/.gradle/8.14.3/fileHashes/fileHashes.bin" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/flutter_pos/android/.gradle/8.14.3/fileHashes/fileHashes.lock" beforeDir="false" afterPath="$PROJECT_DIR$/flutter_pos/android/.gradle/8.14.3/fileHashes/fileHashes.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/flutter_pos/android/.gradle/buildOutputCleanup/buildOutputCleanup.lock" beforeDir="false" afterPath="$PROJECT_DIR$/flutter_pos/android/.gradle/buildOutputCleanup/buildOutputCleanup.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/flutter_pos/android/.gradle/buildOutputCleanup/outputFiles.bin" beforeDir="false" afterPath="$PROJECT_DIR$/flutter_pos/android/.gradle/buildOutputCleanup/outputFiles.bin" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/flutter_pos/lib/services/local_storage_service.dart" beforeDir="false" afterPath="$PROJECT_DIR$/flutter_pos/lib/services/local_storage_service.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/flutter_pos/lib/services/sync_service.dart" beforeDir="false" afterPath="$PROJECT_DIR$/flutter_pos/lib/services/sync_service.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/flutter_pos/lib/src/images/bg-plant.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/flutter_pos/lib/ui/screens/login_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/flutter_pos/lib/ui/screens/login_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/flutter_pos/lib/ui/widgets/drink_options_dialog.dart" beforeDir="false" afterPath="$PROJECT_DIR$/flutter_pos/lib/ui/widgets/drink_options_dialog.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/flutter_pos/lib/ui/widgets/product_card.dart" beforeDir="false" afterPath="$PROJECT_DIR$/flutter_pos/lib/ui/widgets/product_card.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/flutter_pos/pubspec.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/flutter_pos/pubspec.yaml" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="ClangdSettings">
+    <option name="formatViaClangd" value="false" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 8,
+  &quot;fromUser&quot;: false
+}</component>
+  <component name="ProjectId" id="3L5OdesJnIFNB6mDCuZqSdO9nlh" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;DEBUGGABLE_DEVICE&quot;: &quot;tecno_kl8h-130707055R002652&quot;,
+    &quot;DEBUGGABLE_PROCESS&quot;: &quot;com.synorra.pos&quot;,
+    &quot;DEBUGGER_ID&quot;: &quot;Java&quot;,
+    &quot;Flutter.main.dart.executor&quot;: &quot;Debug&quot;,
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.cidr.known.project.marker&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.readMode.enableVisualFormatting&quot;: &quot;true&quot;,
+    &quot;SHOW_ALL_PROCESSES&quot;: &quot;true&quot;,
+    &quot;cf.first.check.clang-format&quot;: &quot;false&quot;,
+    &quot;cidr.known.project.marker&quot;: &quot;true&quot;,
+    &quot;com.google.services.firebase.aqiPopupShown&quot;: &quot;true&quot;,
+    &quot;dart.analysis.tool.window.visible&quot;: &quot;false&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;io.flutter.reload.alreadyRun&quot;: &quot;true&quot;,
+    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;C:/chiiran/synorra_pos/flutter_pos/lib/src/images&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.general&quot;,
+    &quot;show.migrate.to.gradle.popup&quot;: &quot;false&quot;
+  }
+}</component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\chiiran\synorra_pos\flutter_pos\lib\src\images" />
+    </key>
+  </component>
+  <component name="RunManager">
+    <configuration name="main.dart" type="FlutterRunConfigurationType" factoryName="Flutter">
+      <option name="filePath" value="$PROJECT_DIR$/flutter_pos/lib/main.dart" />
+      <method v="2" />
+    </configuration>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="d996a9c5-7840-4e21-93d7-f7a28b6b4026" name="Changes" comment="" />
+      <created>1792740554069</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1792740554069</updated>
+    </task>
+    <servers />
+  </component>
+</project>

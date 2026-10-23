@@ -25,6 +25,8 @@ class StockScreen extends StatefulWidget {
 }
 
 class _StockScreenState extends State<StockScreen> {
+  static const int _inventoryPerPage = 30;
+  int _visibleInventoryCount = _inventoryPerPage;
   String _filterMode = 'range';
   String _range = 'Today';
   static const List<String> _rangeOptions = [
@@ -40,6 +42,13 @@ class _StockScreenState extends State<StockScreen> {
   String get _filterRange => _filterMode == 'date' ? 'Date' : _activeRange;
   late final TextEditingController _dateController;
   String? _editingItemId;
+  Map<String, Map<String, double>>? _ledgerCache;
+  String? _ledgerCacheRange;
+  DateTime? _ledgerCacheDate;
+  bool _ledgerLoading = true;
+  int _ledgerGeneration = 0;
+  String? _ledgerRequestedRange;
+  DateTime? _ledgerRequestedDate;
 
   // Add/Edit stock item inputs (matching Admin Stock Inventory fields)
   final TextEditingController _nameController = TextEditingController();
@@ -58,17 +67,16 @@ class _StockScreenState extends State<StockScreen> {
       text: DateFormat('MM/dd/yyyy').format(ManilaTime.now()),
     );
     widget.controller.addListener(_onControllerChange);
-    widget.controller.syncService.addListener(_onControllerChange);
-    // Trigger immediate refresh from Admin database
+    widget.controller.syncService.addListener(_onSyncStatusChange);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) widget.controller.syncService.syncAll();
+      if (mounted) _scheduleLedgerCalculation();
     });
   }
 
   @override
   void dispose() {
     widget.controller.removeListener(_onControllerChange);
-    widget.controller.syncService.removeListener(_onControllerChange);
+    widget.controller.syncService.removeListener(_onSyncStatusChange);
     _dateController.dispose();
     _nameController.dispose();
     _totalUnitController.dispose();
@@ -82,7 +90,51 @@ class _StockScreenState extends State<StockScreen> {
   }
 
   void _onControllerChange() {
+    _ledgerCache = null;
+    _ledgerGeneration++;
+    _ledgerLoading = false;
+    _ledgerRequestedRange = null;
+    _ledgerRequestedDate = null;
     if (mounted) setState(() {});
+  }
+
+  void _onSyncStatusChange() {
+    if (mounted) setState(() {});
+  }
+
+  void _scheduleLedgerCalculation() {
+    final range = _filterRange;
+    final selectedDate = _filterMode == 'date' ? _parseSelectedDate() : null;
+    if (_ledgerCache != null &&
+        _ledgerCacheRange == range &&
+        _ledgerCacheDate == selectedDate) {
+      return;
+    }
+    if (_ledgerLoading &&
+        _ledgerRequestedRange == range &&
+        _ledgerRequestedDate == selectedDate) {
+      return;
+    }
+
+    final generation = ++_ledgerGeneration;
+    _ledgerLoading = true;
+    _ledgerRequestedRange = range;
+    _ledgerRequestedDate = selectedDate;
+    Future<void>.delayed(const Duration(milliseconds: 250), () {
+      if (!mounted || generation != _ledgerGeneration) return;
+      final ledger = widget.controller.getStockLedgers(
+        widget.controller.inventory,
+        range: range,
+        selectedDate: selectedDate,
+      );
+      if (!mounted || generation != _ledgerGeneration) return;
+      setState(() {
+        _ledgerCache = ledger;
+        _ledgerCacheRange = range;
+        _ledgerCacheDate = selectedDate;
+        _ledgerLoading = false;
+      });
+    });
   }
 
   String _computedCupsMakeLabel() {
@@ -114,6 +166,7 @@ class _StockScreenState extends State<StockScreen> {
     if (selected == null || !mounted) return;
     setState(() {
       _dateController.text = DateFormat('MM/dd/yyyy').format(selected);
+      _visibleInventoryCount = _inventoryPerPage;
     });
   }
 
@@ -225,10 +278,17 @@ class _StockScreenState extends State<StockScreen> {
   Widget build(BuildContext context) {
     final inventory = widget.controller.inventory;
     final selectedDate = _filterMode == 'date' ? _parseSelectedDate() : null;
-    final totalCupsUsed = widget.controller.getTotalCupsUsed(
-      range: _filterRange,
-      selectedDate: selectedDate,
-    );
+    _scheduleLedgerCalculation();
+    final ledgerReady = _ledgerCache != null &&
+        _ledgerCacheRange == _filterRange &&
+        _ledgerCacheDate == selectedDate;
+    final ledgers = ledgerReady
+        ? _ledgerCache!
+        : const <String, Map<String, double>>{};
+    final totalCupsUsed = inventory.fold<double>(0, (total, item) {
+      if (!widget.controller.isCupInventoryItem(item)) return total;
+      return total + (ledgers[item.id]?['usedPerUnit'] ?? 0.0);
+    });
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -276,7 +336,10 @@ class _StockScreenState extends State<StockScreen> {
                     selected: {_filterMode},
                     showSelectedIcon: false,
                     onSelectionChanged: (selection) {
-                      setState(() => _filterMode = selection.first);
+                      setState(() {
+                        _filterMode = selection.first;
+                        _visibleInventoryCount = _inventoryPerPage;
+                      });
                     },
                   ),
                   Container(
@@ -301,7 +364,12 @@ class _StockScreenState extends State<StockScreen> {
                         }).toList(),
                         onChanged: _filterMode == 'range'
                             ? (val) {
-                                if (val != null) setState(() => _range = val);
+                                if (val != null) {
+                                  setState(() {
+                                    _range = val;
+                                    _visibleInventoryCount = _inventoryPerPage;
+                                  });
+                                }
                               }
                             : null,
                       ),
@@ -376,7 +444,9 @@ class _StockScreenState extends State<StockScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${totalCupsUsed.toStringAsFixed(2)} cups',
+                      ledgerReady
+                          ? '${totalCupsUsed.toStringAsFixed(2)} cups'
+                          : 'Loading…',
                       style: const TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
@@ -561,11 +631,23 @@ class _StockScreenState extends State<StockScreen> {
               // Stock Inventory Table (Matches Admin Panel 100%)
               LayoutBuilder(
                 builder: (context, constraints) {
+                  final visibleInventory =
+                      inventory.take(_visibleInventoryCount).toList();
+                  if (!ledgerReady) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 40),
+                      child: Center(
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    );
+                  }
                   if (constraints.maxWidth < 720) {
                     return Column(
-                      children: inventory
+                      children: visibleInventory
                           .map(
-                              (item) => _buildInventoryCard(item, selectedDate))
+                              (item) => _buildInventoryCard(
+                                item, selectedDate, ledgers[item.id] ?? const {},
+                              ))
                           .toList(),
                     );
                   }
@@ -594,12 +676,9 @@ class _StockScreenState extends State<StockScreen> {
                         DataColumn(label: Text('Restock')),
                         DataColumn(label: Text('Actions')),
                       ],
-                      rows: inventory.map((item) {
-                        final ledger = widget.controller.getStockLedger(
-                          item,
-                          range: _filterRange,
-                          selectedDate: selectedDate,
-                        );
+                      rows: visibleInventory.map((item) {
+                        final ledger =
+                            ledgers[item.id] ?? const <String, double>{};
                         final openingPcs = ledger['openingPcs'] ?? 0.0;
                         final restockedPcs = ledger['restockedPcs'] ?? 0.0;
                         final usedPerUnit = ledger['usedPerUnit'] ?? 0.0;
@@ -800,6 +879,17 @@ class _StockScreenState extends State<StockScreen> {
                   );
                 },
               ),
+              if (_visibleInventoryCount < inventory.length)
+                Center(
+                  child: TextButton(
+                    onPressed: () => setState(() {
+                      _visibleInventoryCount += _inventoryPerPage;
+                    }),
+                    child: Text(
+                      'Load more (${inventory.length - _visibleInventoryCount} remaining)',
+                    ),
+                  ),
+                ),
               if (inventory.isEmpty)
                 Container(
                   width: double.infinity,
@@ -818,12 +908,11 @@ class _StockScreenState extends State<StockScreen> {
     );
   }
 
-  Widget _buildInventoryCard(InventoryItem item, DateTime? selectedDate) {
-    final ledger = widget.controller.getStockLedger(
-      item,
-      range: _filterRange,
-      selectedDate: selectedDate,
-    );
+  Widget _buildInventoryCard(
+    InventoryItem item,
+    DateTime? selectedDate,
+    Map<String, double> ledger,
+  ) {
     final openingPcs = ledger['openingPcs'] ?? 0.0;
     final restockedPcs = ledger['restockedPcs'] ?? 0.0;
     final usedPerUnit = ledger['usedPerUnit'] ?? 0.0;

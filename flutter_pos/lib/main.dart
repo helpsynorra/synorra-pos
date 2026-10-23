@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'services/local_storage_service.dart';
 import 'services/supabase_service.dart';
@@ -59,7 +61,17 @@ class SynorraPosApp extends StatelessWidget {
           if (snapshot.hasData) {
             return _ReadyApp(controller: snapshot.data!);
           }
-          return const Scaffold(backgroundColor: Color(0xFFF8FAFC));
+          return Scaffold(
+            backgroundColor: Colors.white,
+            body: Center(
+              child: Image.asset(
+                'lib/src/images/sn-logo-transparent.png',
+                width: 240,
+                height: 110,
+                fit: BoxFit.contain,
+              ),
+            ),
+          );
         },
       ),
     );
@@ -80,8 +92,17 @@ class _ReadyAppState extends State<_ReadyApp> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) widget.controller.syncService.start();
+      if (mounted) unawaited(_startBackgroundServices());
     });
+  }
+
+  Future<void> _startBackgroundServices() async {
+    try {
+      await widget.controller.localStorage.migrateLegacyStaffCredentials();
+    } catch (_) {
+      // Keep startup available if an old credential cannot be migrated.
+    }
+    if (mounted) widget.controller.syncService.start();
   }
 
   @override

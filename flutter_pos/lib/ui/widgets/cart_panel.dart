@@ -540,17 +540,22 @@ class _CartPanelState extends State<CartPanel> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (controller.cart.isNotEmpty &&
-                    controller.syncService.hasPermission('promotionsEnabled') &&
+                if (controller.syncService.hasPermission('promotionsEnabled') &&
                     controller.syncService.hasPermission('promotionDiscount'))
                   Row(
                     children: [
                       Expanded(
                         child: controller.promoLabel == null
                             ? TextButton.icon(
-                                onPressed: _showPromotionDialog,
+                                onPressed: controller.cart.isEmpty
+                                    ? null
+                                    : _showPromotionDialog,
                                 icon: const Icon(Icons.local_offer_outlined, size: 17),
-                                label: const Text('Apply promo voucher'),
+                                label: Text(
+                                  controller.cart.isEmpty
+                                      ? 'Add an item to use a promotion'
+                                      : 'Apply promo voucher',
+                                ),
                               )
                             : Row(
                                 children: [

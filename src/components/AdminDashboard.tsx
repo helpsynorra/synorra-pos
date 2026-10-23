@@ -493,6 +493,12 @@ export function AdminDashboard({
       return orderTime >= startOfPeriod.getTime() && orderTime <= now.getTime();
     })
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const orderOwnerName = (order: Order) => {
+    const owner = store.users.find(
+      (user) => user.id === order.ownerId && user.role === "cashier",
+    );
+    return owner?.name || owner?.username || "—";
+  };
   const recentOrderTotal = (order: Order) =>
     typeof order.subtotal === "number" && Number.isFinite(order.subtotal)
       ? Math.max(0, order.subtotal - (order.discount ?? 0))
@@ -1171,7 +1177,7 @@ export function AdminDashboard({
               <p className="min-w-0">Order ID</p>
               <p className="min-w-0">Items</p>
               <p className="min-w-0">Status</p>
-              <p className="min-w-0">Reason</p>
+              <p className="min-w-0">Cashier in Charge</p>
               {showPromoVoucher ? <p className="min-w-0">Promo voucher</p> : null}
               <p className="min-w-0">Payment</p>
               <p className="min-w-0">Service</p>
@@ -1187,7 +1193,9 @@ export function AdminDashboard({
                     <p className="text-sm leading-5 text-neutral-700">
                       {phDateTimeLabel(order.createdAt)}
                     </p>
-                    <p className="mt-0.5 text-xs text-neutral-500 lg:hidden">{order.baristaName}</p>
+                    <p className="mt-0.5 text-xs text-neutral-500 lg:hidden">
+                      Owner: {orderOwnerName(order)}
+                    </p>
                     {isVoided(order) ? (
                       <p className="mt-0.5 text-sm font-medium text-neutral-400 line-through lg:hidden">
                         {orderIdLabel(order)}
@@ -1197,7 +1205,7 @@ export function AdminDashboard({
                     )}
                   </div>
                   <p className="hidden min-w-0 break-words text-sm text-neutral-700 lg:block">
-                    {order.baristaName}
+                    {orderOwnerName(order)}
                   </p>
                   <p className="hidden min-w-0 text-sm font-medium lg:block">
                     {isVoided(order) ? (
@@ -1230,8 +1238,8 @@ export function AdminDashboard({
                     </span>
                   </div>
                   <p className="min-w-0 break-words text-xs text-neutral-500 lg:text-sm">
-                    <span className="lg:hidden">Reason: </span>
-                    {isVoided(order) ? order.voidReason?.trim() || "—" : "—"}
+                    <span className="lg:hidden">Cashier in Charge: </span>
+                    {order.baristaName || "—"}
                   </p>
                   {showPromoVoucher ? (
                     <p className="min-w-0 break-words text-xs text-neutral-500 lg:text-sm">

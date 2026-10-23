@@ -282,105 +282,184 @@ class PosController extends ChangeNotifier {
   }
 
   double getTotalCupsUsed({String range = 'Today', DateTime? selectedDate}) {
+    final ledgers = getStockLedgers(
+      inventory,
+      range: range,
+      selectedDate: selectedDate,
+    );
     double total = 0.0;
     for (final item in inventory) {
       if (isCupInventoryItem(item)) {
-        final ledger =
-            getStockLedger(item, range: range, selectedDate: selectedDate);
-        total += ledger['usedPerUnit'] ?? 0.0;
+        total += ledgers[item.id]?['usedPerUnit'] ?? 0.0;
       }
     }
     return total;
   }
 
-  // --- Stock Ledger Calculation (Matches Admin SalePurchaseTransactions.tsx 100%) ---
+  // Calculate the shared transaction indexes once for the whole Stock screen.
+  Map<String, Map<String, double>> getStockLedgers(
+    Iterable<InventoryItem> items, {
+    String range = 'Today',
+    DateTime? selectedDate,
+  }) {
+    final restockedById = <String, double>{};
+    final restockedByName = <String, double>{};
+    final restockedByIdAndName = <String, double>{};
+    final usedById = <String, double>{};
+    final usedByName = <String, double>{};
+    final usedByIdAndName = <String, double>{};
+    final loggedOrderIds = <String>{};
+
+    void addAmount(
+      Map<String, double> byId,
+      Map<String, double> byName,
+      Map<String, double> byIdAndName,
+      String id,
+      String name,
+      double amount,
+    ) {
+      if (id.isNotEmpty) {
+        byId.update(id, (value) => value + amount, ifAbsent: () => amount);
+      }
+      if (name.isNotEmpty) {
+        byName.update(name, (value) => value + amount, ifAbsent: () => amount);
+      }
+      if (id.isNotEmpty && name.isNotEmpty) {
+        final key = '$id\u0000$name';
+        byIdAndName.update(
+          key,
+          (value) => value + amount,
+          ifAbsent: () => amount,
+        );
+      }
+    }
+
+    double amountFor(
+      Map<String, double> byId,
+      Map<String, double> byName,
+      Map<String, double> byIdAndName,
+      InventoryItem item,
+    ) {
+      final name = item.name.trim().toLowerCase();
+      final pairKey = '${item.id}\u0000$name';
+      return (byId[item.id] ?? 0) +
+          (byName[name] ?? 0) -
+          (byIdAndName[pairKey] ?? 0);
+    }
+
+    for (final record in restocks) {
+      if (!_isInRange(record.date, range, selectedDate)) continue;
+      addAmount(
+        restockedById,
+        restockedByName,
+        restockedByIdAndName,
+        record.inventoryItemId ?? '',
+        record.itemName.trim().toLowerCase(),
+        record.quantityAdded,
+      );
+    }
+
+    final usageLogs = recipesData['usageLogs'] is List
+        ? (recipesData['usageLogs'] as List)
+            .whereType<Map>()
+            .map((entry) => Map<String, dynamic>.from(entry))
+        : const <Map<String, dynamic>>[];
+    for (final usage in usageLogs) {
+      final orderId = usage['orderId']?.toString() ?? '';
+      if (orderId.isNotEmpty) loggedOrderIds.add(orderId);
+      if (!_isInRange(usage['date']?.toString() ?? '', range, selectedDate)) {
+        continue;
+      }
+      addAmount(
+        usedById,
+        usedByName,
+        usedByIdAndName,
+        usage['inventoryItemId']?.toString() ?? '',
+        (usage['itemName']?.toString() ?? '').trim().toLowerCase(),
+        (usage['usedAmount'] as num?)?.toDouble() ?? 0.0,
+      );
+    }
+
+    final fallbackOrders = orders.where((order) {
+      return !order.voided &&
+          !loggedOrderIds.contains(order.id) &&
+          _isInRange(order.createdAt, range, selectedDate);
+    }).toList();
+    if (fallbackOrders.isNotEmpty) {
+      for (final deduction
+          in syncService.buildDeductionsForOrders(fallbackOrders)) {
+        addAmount(
+          usedById,
+          usedByName,
+          usedByIdAndName,
+          deduction['inventoryItemId']?.toString() ?? '',
+          (deduction['itemName']?.toString() ?? '').trim().toLowerCase(),
+          (deduction['amount'] as num?)?.toDouble() ?? 0.0,
+        );
+      }
+    }
+
+    final result = <String, Map<String, double>>{};
+    for (final item in items) {
+      final totalRestocked = amountFor(
+        restockedById,
+        restockedByName,
+        restockedByIdAndName,
+        item,
+      );
+      final totalUsed = amountFor(
+        usedById,
+        usedByName,
+        usedByIdAndName,
+        item,
+      );
+      final pieceSize =
+          (item.purchaseUnitSize != null && item.purchaseUnitSize! > 0)
+              ? item.purchaseUnitSize!
+              : 1.0;
+      final remainingBase = item.stock;
+      final openingBase =
+          (remainingBase - totalRestocked + totalUsed)
+              .clamp(0.0, double.infinity);
+      final openingPcs = openingBase / pieceSize;
+      final restockedPcs = totalRestocked / pieceSize;
+      final usedPcs =
+          (item.purchaseUnitSize != null && item.purchaseUnitSize! > 0)
+              ? totalUsed / item.purchaseUnitSize!
+              : -1.0;
+      final remainingPcs = (remainingBase / pieceSize)
+          .clamp(0.0, double.infinity);
+
+      double? cupsLeft;
+      if (item.unit.trim().toLowerCase() != 'pcs') {
+        if (item.cupUsageAmount != null && item.cupUsageAmount! > 0) {
+          cupsLeft = remainingBase / item.cupUsageAmount!;
+        } else if (item.cupsMake != null && item.cupsMake! > 0) {
+          cupsLeft = item.cupsMake!;
+        }
+      }
+      result[item.id] = {
+        'openingPcs': openingPcs,
+        'restockedPcs': restockedPcs,
+        'usedPerUnit': totalUsed,
+        'usedPcs': usedPcs,
+        'remainingPcs': remainingPcs,
+        'cupsLeft': cupsLeft ?? -1.0,
+      };
+    }
+    return result;
+  }
+
   Map<String, double> getStockLedger(
     InventoryItem item, {
     String range = 'Today',
     DateTime? selectedDate,
   }) {
-    final itemRestocks = restocks.where((r) =>
-        (r.inventoryItemId != null && r.inventoryItemId == item.id) ||
-        r.itemName.trim().toLowerCase() == item.name.trim().toLowerCase());
-
-    double totalRestockedInRange = 0;
-    for (final r in itemRestocks) {
-      if (_isInRange(r.date, range, selectedDate)) {
-        totalRestockedInRange += r.quantityAdded;
-      }
-    }
-
-    double totalUsedInRange = 0;
-    final usageLogs = (recipesData['usageLogs'] is List)
-        ? (recipesData['usageLogs'] as List)
-            .whereType<Map>()
-            .map((e) => Map<String, dynamic>.from(e))
-            .toList()
-        : <Map<String, dynamic>>[];
-
-    final loggedOrderIds = <String>{};
-    for (final u in usageLogs) {
-      final oid = u['orderId']?.toString() ?? '';
-      if (oid.isNotEmpty) loggedOrderIds.add(oid);
-      final uItemId = u['inventoryItemId']?.toString() ?? '';
-      final uItemName = (u['itemName']?.toString() ?? '').trim().toLowerCase();
-      final matches = (uItemId.isNotEmpty && uItemId == item.id) ||
-          uItemName == item.name.trim().toLowerCase();
-      if (matches &&
-          _isInRange(u['date']?.toString() ?? '', range, selectedDate)) {
-        totalUsedInRange += (u['usedAmount'] as num?)?.toDouble() ?? 0.0;
-      }
-    }
-
-    for (final order in orders) {
-      if (order.voided || loggedOrderIds.contains(order.id)) continue;
-      if (!_isInRange(order.createdAt, range, selectedDate)) continue;
-      final deductions = syncService.buildDeductionsForOrder(order);
-      for (final d in deductions) {
-        if (d['inventoryItemId'] == item.id ||
-            (d['itemName']?.toString() ?? '').trim().toLowerCase() ==
-                item.name.trim().toLowerCase()) {
-          totalUsedInRange += (d['amount'] as num?)?.toDouble() ?? 0.0;
-        }
-      }
-    }
-
-    final double pieceSize =
-        (item.purchaseUnitSize != null && item.purchaseUnitSize! > 0)
-            ? item.purchaseUnitSize!
-            : 1.0;
-    final double remainingBase = item.stock;
-    final double openingBase =
-        (remainingBase - totalRestockedInRange + totalUsedInRange)
-            .clamp(0.0, double.infinity);
-
-    final double openingPcs = openingBase / pieceSize;
-    final double restockedPcs = totalRestockedInRange / pieceSize;
-    final double usedPcs =
-        (item.purchaseUnitSize != null && item.purchaseUnitSize! > 0)
-            ? (totalUsedInRange / item.purchaseUnitSize!)
-            : -1.0;
-    final double remainingPcs =
-        (remainingBase / pieceSize).clamp(0.0, double.infinity);
-
-    // Exact Cups Left calculation from Admin (configuredCupsLeft or cupsMake if unit != 'pcs')
-    double? cupsLeft;
-    if (item.unit.trim().toLowerCase() != 'pcs') {
-      if (item.cupUsageAmount != null && item.cupUsageAmount! > 0) {
-        cupsLeft = remainingBase / item.cupUsageAmount!;
-      } else if (item.cupsMake != null && item.cupsMake! > 0) {
-        cupsLeft = item.cupsMake!;
-      }
-    }
-
-    return {
-      'openingPcs': openingPcs,
-      'restockedPcs': restockedPcs,
-      'usedPerUnit': totalUsedInRange,
-      'usedPcs': usedPcs,
-      'remainingPcs': remainingPcs,
-      'cupsLeft': cupsLeft ?? -1.0,
-    };
+    return getStockLedgers(
+      [item],
+      range: range,
+      selectedDate: selectedDate,
+    )[item.id]!;
   }
 
   // --- Filtered Menu ---
@@ -940,6 +1019,11 @@ class PosController extends ChangeNotifier {
     }).firstOrNull;
     if (staff == null || !accepts(staff)) return null;
 
+    try {
+      await localStorage.migrateLegacyStaffCredentials();
+    } catch (_) {
+      // Still try the secure credential store if legacy migration fails.
+    }
     final savedPassword =
         await localStorage.getOfflineStaffCredential(staff.id);
     return savedPassword == password ? staff : null;
@@ -957,6 +1041,11 @@ class PosController extends ChangeNotifier {
     }).firstOrNull;
     if (staff == null) return null;
 
+    try {
+      await localStorage.migrateLegacyStaffCredentials();
+    } catch (_) {
+      // Still try the secure credential store if legacy migration fails.
+    }
     final savedPassword =
         await localStorage.getOfflineStaffCredential(staff.id);
     return savedPassword == password ? staff : null;

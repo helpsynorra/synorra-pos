@@ -351,7 +351,7 @@ export async function POST(req: NextRequest) {
       if (!user || !user.password) {
         console.warn("POS staff authentication rejected: staff account unavailable.");
         return NextResponse.json(
-          { ok: false, error: "Invalid staff credentials." },
+          { ok: false, error: "Invalid email or password" },
           { status: 401, headers: corsHeaders },
         );
       }
@@ -363,7 +363,7 @@ export async function POST(req: NextRequest) {
       if (!validPassword) {
         console.warn("POS staff authentication rejected: password mismatch.");
         return NextResponse.json(
-          { ok: false, error: "Invalid staff credentials." },
+          { ok: false, error: "Invalid email or password" },
           { status: 401, headers: corsHeaders },
         );
       }

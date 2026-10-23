@@ -103,8 +103,8 @@ class _LoginScreenState extends State<LoginScreen>
         password.isEmpty ||
         (_isNewLogin && username.isEmpty)) {
       setState(() => _errorMessage = _isNewLogin
-          ? 'Please enter your Owner email, username, and password'
-          : 'Please enter your Owner email and password');
+          ? 'Please enter your email, username, and password'
+          : 'Please enter your email and password');
       return;
     }
     if (_isNewLogin && !_acceptedLegal) {
@@ -306,7 +306,7 @@ class _LoginScreenState extends State<LoginScreen>
     const navy = Color(0xFF1B294A);
     final screenWidth = MediaQuery.sizeOf(context).width;
     final compact = MediaQuery.sizeOf(context).height < 780;
-    final tabletLayout = screenWidth >= 760 && screenWidth < 1600;
+    final tabletLayout = screenWidth > 760 && screenWidth < 1600;
     final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     final double logoSize = (screenWidth * 0.28).clamp(112.0, 156.0).toDouble();
     final verticalGap = compact ? 12.0 : 16.0;
@@ -330,16 +330,21 @@ class _LoginScreenState extends State<LoginScreen>
         );
         final statusReady = progress >= 0.62;
         final blur = (1 - reveal) * 10;
+        final mobileAuthForm = screenWidth <= 760 &&
+            (_showMobileAuthForm || _mustChangePassword);
 
         return AnnotatedRegion<SystemUiOverlayStyle>(
           value: SystemUiOverlayStyle(
             statusBarColor: Colors.transparent,
             statusBarIconBrightness: Brightness.dark,
-            systemNavigationBarColor: const Color(0xFFF8FAFC),
+            systemNavigationBarColor:
+                mobileAuthForm ? Colors.white : const Color(0xFFF8FAFC),
             systemNavigationBarIconBrightness: Brightness.dark,
           ),
           child: Scaffold(
-            backgroundColor: const Color(0xFFF4F6F9),
+            backgroundColor: mobileAuthForm
+                ? Colors.white
+                : const Color(0xFFF4F6F9),
             // Keep the brand panel's height and artwork fixed while typing on
             // tablet. The right-side form scrolls above the keyboard instead.
             resizeToAvoidBottomInset: !tabletLayout,
@@ -372,6 +377,50 @@ class _LoginScreenState extends State<LoginScreen>
                     child: const _LoginBackdropCircle(size: 600),
                   ),
                 ),
+                if (mobileAuthForm)
+                  Positioned.fill(
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        const ColoredBox(color: Colors.white),
+                        Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          height: MediaQuery.sizeOf(context).height * 0.72,
+                          child: ShaderMask(
+                            shaderCallback: (Rect bounds) =>
+                                const LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              stops: [0.0, 0.68, 0.88, 1.0],
+                              colors: [
+                                Colors.black,
+                                Colors.black,
+                                Color(0xAA000000),
+                                Colors.transparent,
+                              ],
+                            ).createShader(bounds),
+                            blendMode: BlendMode.dstIn,
+                            child: ImageFiltered(
+                              imageFilter: ui.ImageFilter.blur(
+                                sigmaX: 1.0,
+                                sigmaY: 2.0,
+                              ),
+                              child: Transform.scale(
+                                scale: 1.75,
+                                child: Image.asset(
+                                  'lib/src/images/bg-plant.png',
+                                  fit: BoxFit.cover,
+                                  alignment: const Alignment(1.10, 3.03),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 IgnorePointer(
                   ignoring: reveal < 1 || _isLoading || _isTransitioning,
                   child: Opacity(
@@ -384,7 +433,7 @@ class _LoginScreenState extends State<LoginScreen>
                           // The keyboard must not change the left panel's
                           // available height on tablet.
                           bottom: !tabletLayout,
-                          child: screenWidth < 760
+                          child: screenWidth <= 760
                               ? _buildMobileLoginContent(
                                   progress: progress,
                                   screenWidth: screenWidth,
@@ -505,7 +554,7 @@ class _LoginScreenState extends State<LoginScreen>
                                                 tabletLayout
                                                     ? (_isNewLogin
                                                         ? 'Create your SynOrra POS account'
-                                                        : 'Log in to your SynOrra POS account')
+                                                        : 'Log in to your account')
                                                     : 'Build Smarter. Grow Together.',
                                                 textAlign: tabletLayout
                                                     ? TextAlign.left
@@ -1053,29 +1102,6 @@ class _LoginScreenState extends State<LoginScreen>
     const navy = Color(0xFF14294B);
     const muted = Color(0xFF627895);
 
-    Widget benefit(IconData icon, String label) => Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE5F0FF),
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                child: Icon(icon, size: 19, color: const Color(0xFF1766CE)),
-              ),
-              const SizedBox(height: 9),
-              Text(label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      color: navy, fontSize: 11, fontWeight: FontWeight.w700)),
-            ],
-          ),
-        );
-
     return Container(
       padding: const EdgeInsets.fromLTRB(34, 30, 28, 24),
       decoration: BoxDecoration(
@@ -1087,42 +1113,75 @@ class _LoginScreenState extends State<LoginScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Image.asset(
-                'lib/src/images/logo-app-transparent.png',
-                width: 108,
-                height: 108,
-                fit: BoxFit.contain,
-              ),
-              const SizedBox(width: 6),
-              Padding(
-                // Align the wordmark, divider, and POS label on one left edge.
-                padding: const EdgeInsets.only(left: 5),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Image.asset(
-                      'lib/src/images/logo-wordmark-cropped.png',
-                      width: 180,
-                      height: 49,
-                      fit: BoxFit.contain,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              const lockupWidth = 138.0 + 18.0 + 200.0;
+              final scale = (constraints.maxWidth / lockupWidth)
+                  .clamp(0.55, 1.0)
+                  .toDouble() *
+                  0.9;
+              final markSize = 138 * scale;
+              final wordmarkWidth = 200 * scale;
+              final wordmarkHeight = 56 * scale;
+
+              return SizedBox(
+                height: 146 * scale,
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: Padding(
+                    padding: EdgeInsets.only(top: 12 * scale),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        ClipRect(
+                          child: SizedBox(
+                            width: markSize,
+                            height: markSize,
+                            child: Transform.scale(
+                              scale: 1.65,
+                              child: Image.asset(
+                                'lib/src/images/logo-app-square.png',
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 18 * scale),
+                        Padding(
+                          padding: EdgeInsets.only(top: 20 * scale),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Image.asset(
+                                'lib/src/images/logo-wordmark-cropped.png',
+                                width: wordmarkWidth,
+                                height: wordmarkHeight,
+                                fit: BoxFit.contain,
+                              ),
+                              Container(
+                                width: wordmarkWidth,
+                                height: 1,
+                                margin: EdgeInsets.symmetric(vertical: 2 * scale),
+                                color: Colors.black,
+                              ),
+                              Text(
+                                'POS',
+                                style: TextStyle(
+                                  color: Colors.black,
+                                  fontSize: 26 * scale,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    Container(
-                      width: 180,
-                      height: 1,
-                      margin: const EdgeInsets.symmetric(vertical: 2),
-                      color: Colors.black,
-                    ),
-                    const Text('POS',
-                        style: TextStyle(
-                            color: Colors.black,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold)),
-                  ],
+                  ),
                 ),
-              ),
-            ],
+              );
+            },
           ),
           const SizedBox(height: 26),
           Text(
@@ -1171,73 +1230,60 @@ class _LoginScreenState extends State<LoginScreen>
         final compact = constraints.maxHeight < 720;
         final authForm = _showMobileAuthForm || _mustChangePassword;
         final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+        final phoneLanding = screenWidth <= 760 && !authForm;
+        final compactLanding = phoneLanding && constraints.maxHeight < 680;
         final compactAuth = authForm && keyboardOpen;
         final signUp = authForm && _isNewLogin && !_mustChangePassword;
         final tightForm = constraints.maxHeight < 540;
-        final horizontalPadding = screenWidth < 380 ? 16.0 : 20.0;
+        final horizontalPadding = phoneLanding
+            ? 0.0
+            : (screenWidth < 380 ? 16.0 : 20.0);
         final fieldGap = tightForm ? 5.0 : 10.0;
 
-        Widget logo({double size = 96, double wordmarkFont = 34}) => Row(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ClipRect(
-                  child: SizedBox(
-                    width: size,
-                    height: size,
-                    child: OverflowBox(
-                      alignment: Alignment.centerLeft,
-                      minWidth: size * 1.24,
-                      maxWidth: size * 1.24,
-                      minHeight: size,
-                      maxHeight: size,
-                      child: Image.asset(
-                        'lib/src/images/logo-symbol-transparent.png',
-                        width: size * 1.24,
-                        height: size,
-                        fit: BoxFit.fill,
-                      ),
+        Widget logo({double size = 96, double wordmarkFont = 34}) {
+          final wordmarkWidth = wordmarkFont * 3.6;
+          final wordmarkHeight = wordmarkWidth / 3.67;
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Image.asset(
+                'lib/src/images/logo-app-transparent.png',
+                width: size * 0.75,
+                height: size * 0.75,
+                fit: BoxFit.contain,
+              ),
+              const SizedBox(width: 8),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Image.asset(
+                    'lib/src/images/logo-wordmark-cropped.png',
+                    width: wordmarkWidth,
+                    height: wordmarkHeight,
+                    fit: BoxFit.contain,
+                  ),
+                  Container(
+                    width: wordmarkWidth,
+                    height: 1.2,
+                    margin: const EdgeInsets.symmetric(vertical: 2),
+                    color: Colors.black,
+                  ),
+                  Text(
+                    'POS',
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontSize: (wordmarkHeight * 0.58).clamp(12.0, 20.0),
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.8,
                     ),
                   ),
-                ),
-                const SizedBox(width: 0),
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Image.asset(
-                      'lib/src/images/logo-wordmark-transparent.png',
-                      width: wordmarkFont * 4.3,
-                      height: wordmarkFont * 1.15,
-                      fit: BoxFit.cover,
-                    ),
-                    Container(
-                      width: wordmarkFont * 3.25,
-                      height: 1,
-                      margin: EdgeInsets.only(
-                        left: wordmarkFont * 4.3 * (34 / 437),
-                      ),
-                      color: Colors.black,
-                    ),
-                    Padding(
-                      padding: EdgeInsets.only(
-                        left: wordmarkFont * 4.3 * (34 / 437),
-                        top: 2,
-                      ),
-                      child: Text(
-                        'POS',
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontSize: wordmarkFont * 0.58,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            );
+                ],
+              ),
+            ],
+          );
+        }
 
         Widget field(String label, TextField input) => Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1250,26 +1296,53 @@ class _LoginScreenState extends State<LoginScreen>
 
         final brand = Padding(
           padding: EdgeInsets.only(
-            top: compactAuth ? 4 : (authForm ? 12 : 40),
-            bottom: compactAuth ? 4 : (compact ? 6 : 12),
+            top: compactLanding
+                ? 8
+                : compactAuth
+                ? 4
+                : (authForm ? 12 : (phoneLanding ? 40.0 : 40.0)),
+            bottom: compactLanding
+                ? 2
+                : (compactAuth ? 4 : (compact ? 6 : 12)),
           ),
           child: _entrance(
             progress,
             start: 0.2,
             end: 0.48,
             offsetY: 12,
-            child: logo(
-              size: compactAuth ? 56 : (authForm ? 76 : 96),
-              wordmarkFont: compactAuth ? 22 : (authForm ? 29 : 34),
-            ),
+            child: phoneLanding
+                ? Transform.translate(
+                    offset: compactLanding ? Offset.zero : const Offset(0, 20),
+                    child: SizedBox(
+                      width: math.min(
+                        screenWidth * 0.68,
+                        compactLanding ? 340.0 : double.infinity,
+                      ),
+                      height: math.min(
+                        screenWidth * 0.30,
+                        compactLanding ? 150.0 : double.infinity,
+                      ),
+                      child: Image.asset(
+                        'lib/src/images/sn-logo-transparent.png',
+                        fit: BoxFit.contain,
+                        semanticLabel: 'Synorra POS',
+                      ),
+                    ),
+                  )
+                : logo(
+                    size: compactAuth ? 56 : (authForm ? 76 : 96),
+                    wordmarkFont: compactAuth ? 22 : (authForm ? 29 : 34),
+                  ),
           ),
         );
 
-        final artHeight = signUp
-            ? 80.0
-            : authForm
-                ? (compact ? 150.0 : 180.0)
-                : (screenWidth < 390 ? 180.0 : 200.0);
+        final artHeight = phoneLanding
+            ? (compactLanding ? 118.0 : (screenWidth < 390 ? 150.0 : 170.0))
+            : (signUp
+                ? 80.0
+                : (authForm
+                    ? (compact ? 150.0 : 180.0)
+                    : (screenWidth < 390 ? 180.0 : 200.0)));
         final heroImageWidth = math.min(
           screenWidth * 1.12,
           artHeight * 2.24,
@@ -1278,24 +1351,40 @@ class _LoginScreenState extends State<LoginScreen>
 
         final formCard = Container(
           width: double.infinity,
-          padding: EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: tightForm ? 12 : 20,
-          ),
+          margin: phoneLanding ? const EdgeInsets.fromLTRB(20, 0, 20, 0) : null,
+          padding: phoneLanding
+              ? EdgeInsets.fromLTRB(24, compactLanding ? 12 : 24, 24,
+                  compactLanding ? 12 : 24)
+              : EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: tightForm ? 12 : 20,
+                ),
           decoration: BoxDecoration(
-            color: const Color(0xFFF4F6F9),
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(28),
-              bottom: Radius.circular(16),
-            ),
-            border: Border.all(color: const Color(0xFFE7EBF2)),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x0D1B2A4A),
-                blurRadius: 24,
-                offset: Offset(0, 8),
-              ),
-            ],
+            color: phoneLanding || (authForm && screenWidth <= 760)
+                ? Colors.white
+                : const Color(0xFFF4F6F9),
+            borderRadius: phoneLanding
+                ? BorderRadius.circular(24)
+                : const BorderRadius.vertical(
+                    top: Radius.circular(28),
+                    bottom: Radius.circular(16),
+                  ),
+            border: Border.all(color: const Color(0xFFECEFF5), width: 1.2),
+            boxShadow: phoneLanding
+                ? const [
+                    BoxShadow(
+                      color: Color(0x171B2A4A),
+                      blurRadius: 24,
+                      offset: Offset(0, 8),
+                    ),
+                  ]
+                : const [
+                    BoxShadow(
+                      color: Color(0x0F1B2A4A),
+                      blurRadius: 32,
+                      offset: Offset(0, -6),
+                    ),
+                  ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1303,13 +1392,15 @@ class _LoginScreenState extends State<LoginScreen>
             children: [
               if (!_showMobileAuthForm && !_mustChangePassword) ...[
                 SizedBox(
-                  height: 52,
+                  height: compactLanding ? 42 : (phoneLanding ? 48 : 52),
                   child: ElevatedButton(
                     onPressed:
                         _isLoading ? null : () => _openMobileAuthForm(false),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: navy,
                       foregroundColor: Colors.white,
+                      elevation: 2,
+                      shadowColor: const Color(0x221B2A4A),
                       shape: const StadiumBorder(),
                     ),
                     child: const Text(
@@ -1317,25 +1408,27 @@ class _LoginScreenState extends State<LoginScreen>
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
+                        letterSpacing: 0.3,
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
-                Row(
+                if (!phoneLanding) const SizedBox(height: 16),
+                if (!phoneLanding) Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const Text(
                       "Don't have an account?",
                       style: TextStyle(color: Color(0xFF53627F), fontSize: 13),
                     ),
+                    const SizedBox(width: 4),
                     TextButton(
                       onPressed:
                           _isLoading ? null : () => _openMobileAuthForm(true),
                       style: TextButton.styleFrom(
                         minimumSize: Size.zero,
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 5, vertical: 6),
+                            horizontal: 4, vertical: 4),
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                       child: const Text(
@@ -1525,7 +1618,7 @@ class _LoginScreenState extends State<LoginScreen>
                 ],
                 SizedBox(height: tightForm ? 9 : 15),
                 SizedBox(
-                  height: 52,
+                  height: phoneLanding ? 48 : 52,
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : _handleLogin,
                     style: ElevatedButton.styleFrom(
@@ -1594,6 +1687,144 @@ class _LoginScreenState extends State<LoginScreen>
             ],
           ),
         );
+
+        if (phoneLanding) {
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF4F6F9),
+                ),
+              ),
+              Positioned(
+                top: -100,
+                right: -100,
+                child: Container(
+                  width: 380,
+                  height: 380,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [Color(0xFFE2EDFC), Color(0x00E2EDFC)],
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: -24,
+                left: 0,
+                right: 0,
+                height: constraints.maxHeight * 0.74,
+                child: ShaderMask(
+                  shaderCallback: (Rect bounds) => const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    stops: [0.0, 0.70, 0.88, 1.0],
+                    colors: [
+                      Colors.black,
+                      Colors.black,
+                      Color(0xAA000000),
+                      Colors.transparent,
+                    ],
+                  ).createShader(bounds),
+                  blendMode: BlendMode.dstIn,
+                  child: Transform.scale(
+                    scale: 1.75,
+                    child: ImageFiltered(
+                      imageFilter: ui.ImageFilter.blur(sigmaX: 1.0, sigmaY: 2.0),
+                      child: Image.asset(
+                        'lib/src/images/bg-plant.png',
+                        fit: BoxFit.cover,
+                        alignment: const Alignment(1.10, 3.03),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  brand,
+                  Expanded(
+                    child: Center(
+                      child: Container(
+                        constraints: BoxConstraints(
+                          maxWidth: 480,
+                          maxHeight: compactLanding ? 190 : 300,
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: _entrance(
+                          progress,
+                          start: 0.3,
+                          end: 0.6,
+                          offsetY: 16,
+                          child: Transform.scale(
+                            scale: compactLanding ? 1.08 : 1.45,
+                            child: Image.asset(
+                              'lib/src/images/computer-transparent.png',
+                              fit: BoxFit.contain,
+                              semanticLabel: 'Synorra point of sale terminal',
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.only(
+                      top: compactLanding ? 0 : 4,
+                      bottom: compactLanding ? 2 : 8,
+                    ),
+                    child: Text(
+                      'Welcome!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: navy,
+                        fontSize: compactLanding ? 18 : 22,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  formCard,
+                  if (!_showMobileAuthForm && !_mustChangePassword) ...[
+                    SizedBox(height: compactLanding ? 2 : 8),
+                    Padding(
+                      padding: EdgeInsets.only(bottom: compactLanding ? 2 : 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Text(
+                            "Don't have an account?",
+                            style: TextStyle(color: Color(0xFF53627F), fontSize: 13),
+                          ),
+                          const SizedBox(width: 4),
+                          TextButton(
+                            onPressed: _isLoading ? null : () => _openMobileAuthForm(true),
+                            style: TextButton.styleFrom(
+                              minimumSize: Size.zero,
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            child: const Text(
+                              'Sign Up',
+                              style: TextStyle(
+                                color: navy,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          );
+        }
 
         final scrollTop = compactAuth ? 8.0 : 40.0;
         final scrollBottom = compactAuth ? 12.0 : 20.0;

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'local_storage_service.dart';
+import 'offline_image_cache.dart';
 import 'supabase_service.dart';
 import '../models/menu_item.dart';
 import '../models/order.dart';
@@ -52,7 +53,22 @@ class SyncService extends ChangeNotifier {
   SyncService({
     required this.localStorage,
     required this.supabaseService,
-  });
+  }) {
+    final cachedSettings = localStorage.getCachedPosFeatureSettings();
+    if (cachedSettings != null) {
+      inventoryFeaturesEnabled =
+          cachedSettings['inventoryFeaturesEnabled'] != false;
+      printButtonHidden = cachedSettings['printButtonHidden'] == true;
+      final cachedPermissions = cachedSettings['permissions'];
+      if (cachedPermissions is Map) {
+        for (final key in ownerPermissions.keys.toList()) {
+          if (cachedPermissions.containsKey(key)) {
+            ownerPermissions[key] = cachedPermissions[key] == true;
+          }
+        }
+      }
+    }
+  }
 
   void start() {
     updatePendingCount();
@@ -69,8 +85,8 @@ class SyncService extends ChangeNotifier {
       }
     });
 
-    // Real-time auto-sync every 5 seconds when online
-    _periodicSyncTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    // Keep remote data fresh without repeatedly loading the full store on the UI
+    _periodicSyncTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (isOnline && status != SyncStatus.syncing) {
         syncAll();
       }
@@ -288,6 +304,11 @@ class SyncService extends ChangeNotifier {
           inventoryFeaturesEnabled =
               posState['inventoryFeaturesEnabled'] != false;
           printButtonHidden = posState['printButtonHidden'] == true;
+          await localStorage.saveCachedPosFeatureSettings(
+            inventoryFeaturesEnabled: inventoryFeaturesEnabled,
+            printButtonHidden: printButtonHidden,
+            permissions: ownerPermissions,
+          );
         }
         if (fullStore['menu'] is List) {
           final freshMenu = (fullStore['menu'] as List)
@@ -295,6 +316,14 @@ class SyncService extends ChangeNotifier {
               .map((e) => MenuItem.fromJson(Map<String, dynamic>.from(e)))
               .toList();
           await localStorage.saveMenu(freshMenu);
+          // Warm persistent image cache while the device is online. Downloads
+          // run in the background so menu synchronization is not delayed.
+          unawaited(OfflineImageCache.cacheUrls(
+            freshMenu.expand((item) => [
+              item.image,
+              ...item.addons.map((addon) => addon.image ?? ''),
+            ]),
+          ));
         }
 
         if (fullStore['categories'] is List) {
@@ -334,9 +363,6 @@ class SyncService extends ChangeNotifier {
               );
           final permissions = (ownerUser ?? activeUser)?['permissions'];
           promotionCodes = [];
-          for (final key in ownerPermissions.keys.toList()) {
-            ownerPermissions[key] = true;
-          }
           if (permissions is Map) {
             for (final key in ownerPermissions.keys.toList()) {
               ownerPermissions[key] = permissions[key] != false;
@@ -351,6 +377,11 @@ class SyncService extends ChangeNotifier {
                   .map((entry) => Map<String, dynamic>.from(entry))
                   .toList();
             }
+            await localStorage.saveCachedPosFeatureSettings(
+              inventoryFeaturesEnabled: inventoryFeaturesEnabled,
+              printButtonHidden: printButtonHidden,
+              permissions: ownerPermissions,
+            );
           }
           final freshStaff = (fullStore['users'] as List)
               .whereType<Map>()
@@ -464,11 +495,23 @@ class SyncService extends ChangeNotifier {
   }
 
   List<Map<String, dynamic>> buildDeductionsForItems(List<OrderItem> items) {
-    final deductions = <Map<String, dynamic>>[];
     final inventory = localStorage.getInventory();
     final recipesData = localStorage.getRecipesData();
     final menu = localStorage.getMenu();
+    return _buildDeductionsForItemsUsingSnapshot(
+      items,
+      inventory: inventory,
+      recipesData: recipesData,
+      menu: menu,
+    );
+  }
 
+  Iterable<Map<String, dynamic>> buildDeductionsForOrders(
+    Iterable<Order> orders,
+  ) sync* {
+    final inventory = localStorage.getInventory();
+    final recipesData = localStorage.getRecipesData();
+    final menu = localStorage.getMenu();
     final recipeCostings = (recipesData['recipeCostings'] is List)
         ? (recipesData['recipeCostings'] as List)
             .whereType<Map>()
@@ -484,6 +527,49 @@ class SyncService extends ChangeNotifier {
             .map((e) => Map<String, dynamic>.from(e))
             .toList()
         : <Map<String, dynamic>>[];
+
+    for (final order in orders) {
+      yield* _buildDeductionsForItemsUsingSnapshot(
+        order.items,
+        inventory: inventory,
+        recipesData: recipesData,
+        menu: menu,
+        recipeCostings: recipeCostings,
+        recipesMap: recipesMap,
+        costings: costings,
+      );
+    }
+  }
+
+  List<Map<String, dynamic>> _buildDeductionsForItemsUsingSnapshot(
+    List<OrderItem> items, {
+    required List<InventoryItem> inventory,
+    required Map<String, dynamic> recipesData,
+    required List<MenuItem> menu,
+    List<Map<String, dynamic>>? recipeCostings,
+    Map<String, dynamic>? recipesMap,
+    List<Map<String, dynamic>>? costings,
+  }) {
+    final deductions = <Map<String, dynamic>>[];
+
+    final preparedRecipeCostings = recipeCostings ??
+        ((recipesData['recipeCostings'] is List)
+            ? (recipesData['recipeCostings'] as List)
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList()
+            : <Map<String, dynamic>>[]);
+    final preparedRecipesMap = recipesMap ??
+        ((recipesData['recipes'] is Map)
+            ? Map<String, dynamic>.from(recipesData['recipes'] as Map)
+            : <String, dynamic>{});
+    final preparedCostings = costings ??
+        ((recipesData['costings'] is List)
+            ? (recipesData['costings'] as List)
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList()
+            : <Map<String, dynamic>>[]);
 
     for (final line in items) {
       final menuItem = menu
@@ -527,7 +613,7 @@ class SyncService extends ChangeNotifier {
 
       // 1. Check recipeCostings
       Map<String, dynamic>? matchedCosting;
-      for (final rc in recipeCostings) {
+      for (final rc in preparedRecipeCostings) {
         final menuItems = (rc['menuItems'] is List)
             ? (rc['menuItems'] as List)
                 .map((e) => e.toString().trim().toLowerCase())
@@ -642,12 +728,13 @@ class SyncService extends ChangeNotifier {
             });
           }
         }
-      } else if (recipeCostings.isEmpty && menuItem == null) {
+      } else if (preparedRecipeCostings.isEmpty && menuItem == null) {
         // Once the owner has configured recipe costings, they are authoritative.
         // Known menu items without a current costing must never resurrect a
         // stale legacy recipe. Legacy fallback is only for non-menu orders.
         // 2. Check recipes map
-        final recipeList = recipesMap[line.productId] ?? recipesMap[itemName];
+        final recipeList = preparedRecipesMap[line.productId] ??
+            preparedRecipesMap[itemName];
         if (recipeList is List) {
           hasConfiguredRecipe = recipeList.any((rawIng) =>
               rawIng is Map && ((rawIng['amount'] as num?)?.toDouble() ?? 0) > 0);
@@ -677,7 +764,7 @@ class SyncService extends ChangeNotifier {
           }
         } else {
           // 3. Check costings
-          for (final c in costings) {
+          for (final c in preparedCostings) {
             if ((c['productName']?.toString() ?? '').trim().toLowerCase() ==
                     itemName.toLowerCase() &&
                 c['ingredients'] is List) {

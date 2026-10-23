@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../models/menu_item.dart';
 import '../../models/order_item.dart';
 import '../theme.dart';
+import 'offline_cached_image.dart';
 
 class DrinkOptionsDialog extends StatefulWidget {
   final MenuItem item;
@@ -199,7 +200,17 @@ class _DrinkOptionsDialogState extends State<DrinkOptionsDialog> {
                       contentPadding: EdgeInsets.zero,
                       leading: size.image == null || size.image!.isEmpty
                           ? const Icon(Icons.local_cafe_outlined)
-                          : ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(size.image!, width: 48, height: 48, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.local_cafe_outlined))),
+                          : ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: OfflineCachedImage(
+                                url: size.image!,
+                                width: 48,
+                                height: 48,
+                                fit: BoxFit.cover,
+                                placeholder: const Icon(Icons.local_cafe_outlined),
+                                errorWidget: const Icon(Icons.local_cafe_outlined),
+                              ),
+                            ),
                       title: Text(size.name),
                       subtitle: Text('₱${size.price.toStringAsFixed(0)}'),
                       trailing: Radio<String>(

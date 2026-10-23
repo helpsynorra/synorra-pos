@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/supabase_config.dart';
@@ -34,6 +35,7 @@ class LocalStorageService {
   static const String _keyPosOpen = 'v2_cache_pos_is_open';
   static const String _keyPosOpenedBy = 'v2_cache_pos_opened_by';
   static const String _keyPosOpenedAt = 'v2_cache_pos_opened_at';
+  static const String _keyPosFeatureSettings = 'v1_cache_pos_feature_settings';
   static const String _keyActiveStaffId = 'v1_active_staff_id';
   static const String _keyActiveStoreOwnerId = 'v1_active_store_owner_id';
   static const String _keyActiveStaffProfile = 'v1_active_staff_profile';
@@ -52,10 +54,15 @@ class LocalStorageService {
   static const String _keyAdminApiUrl = 'admin_api_url';
 
   late SharedPreferences _prefs;
+  Future<void>? _legacyCredentialMigration;
 
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
-    await _removeLegacyCachedStaffPasswords();
+  }
+
+  Future<void> migrateLegacyStaffCredentials() {
+    return _legacyCredentialMigration ??=
+        _removeLegacyCachedStaffPasswords();
   }
 
   Future<void> _removeLegacyCachedStaffPasswords() async {
@@ -117,7 +124,7 @@ class LocalStorageService {
         _keyMenu, _keyCategories, _keyCategoryOrder, _keyInventory, _keyOrders,
         _keyStaff, _keyVoidRequests, _keyRestocks, _keyLoginActivity,
         _keyPrintJobs, _keyRecipesData, _keyPosOpen, _keyPosOpenedBy,
-        _keyPosOpenedAt, _keyActiveCheckout,
+        _keyPosOpenedAt, _keyPosFeatureSettings, _keyActiveCheckout,
       ]) {
         await _prefs.remove(key);
       }
@@ -182,6 +189,31 @@ class LocalStorageService {
     await _prefs.setBool(_keyPosOpen, isOpen);
     if (openedBy != null) await _prefs.setString(_keyPosOpenedBy, openedBy);
     if (openedAt != null) await _prefs.setString(_keyPosOpenedAt, openedAt);
+  }
+
+  Map<String, dynamic>? getCachedPosFeatureSettings() {
+    final raw = _prefs.getString(_keyPosFeatureSettings);
+    if (raw == null) return null;
+    try {
+      return Map<String, dynamic>.from(jsonDecode(raw) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveCachedPosFeatureSettings({
+    required bool inventoryFeaturesEnabled,
+    required bool printButtonHidden,
+    required Map<String, bool> permissions,
+  }) async {
+    await _prefs.setString(
+      _keyPosFeatureSettings,
+      jsonEncode({
+        'inventoryFeaturesEnabled': inventoryFeaturesEnabled,
+        'printButtonHidden': printButtonHidden,
+        'permissions': permissions,
+      }),
+    );
   }
 
   Future<void> saveActiveCheckout({

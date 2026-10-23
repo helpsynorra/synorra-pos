@@ -34,6 +34,13 @@ export const metadata: Metadata = {
   title: "Synorra POS | Run your store with clarity",
   description:
     "Manage checkout, sales, inventory, recipes, and staff in one clear point-of-sale system.",
+  icons: {
+    icon: {
+      url: "/images/logo-app-square.png",
+      type: "image/png",
+      sizes: "1024x1024",
+    },
+  },
 };
 
 export default function RootLayout({

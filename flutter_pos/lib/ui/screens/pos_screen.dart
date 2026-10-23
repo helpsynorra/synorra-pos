@@ -20,6 +20,7 @@ import '../widgets/pos_app_bar.dart';
 import '../../services/bluetooth_printer_service.dart';
 import 'stock_screen.dart';
 import 'restock_screen.dart';
+import 'order_history_screen.dart';
 import 'login_screen.dart';
 import 'support_account_screens.dart';
 
@@ -407,9 +408,8 @@ class _PosScreenState extends State<PosScreen> {
 
   void _navigateToStock() {
     if (!widget.controller.syncService.hasPermission('stockInventory')) return;
-    _navigateToPos();
-    Navigator.of(context).push(
-      MaterialPageRoute(
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute<void>(
         builder: (_) => StockScreen(
           controller: widget.controller,
           drawerBuilder: _buildPosDrawer,
@@ -417,16 +417,14 @@ class _PosScreenState extends State<PosScreen> {
           onVoid: _openVoidDialog,
         ),
       ),
+      (route) => route.isFirst,
     );
   }
 
   void _navigateToRestock() {
-    if (!widget.controller.syncService.hasPermission('restockInventory'))
-      // ignore: curly_braces_in_flow_control_structures
-      return;
-    _navigateToPos();
-    Navigator.of(context).push(
-      MaterialPageRoute(
+    if (!widget.controller.syncService.hasPermission('restockInventory')) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute<void>(
         builder: (_) => RestockScreen(
           controller: widget.controller,
           drawerBuilder: _buildPosDrawer,
@@ -434,6 +432,19 @@ class _PosScreenState extends State<PosScreen> {
           onVoid: _openVoidDialog,
         ),
       ),
+      (route) => route.isFirst,
+    );
+  }
+
+  void _navigateToOrderHistory() {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute<void>(
+        builder: (_) => OrderHistoryScreen(
+          controller: widget.controller,
+          drawerBuilder: _buildPosDrawer,
+        ),
+      ),
+      (route) => route.isFirst,
     );
   }
 
@@ -465,6 +476,7 @@ class _PosScreenState extends State<PosScreen> {
       onOpenTerminal: _navigateToPos,
       onOpenStock: _navigateToStock,
       onOpenRestock: _navigateToRestock,
+      onOpenOrderHistory: _navigateToOrderHistory,
       onOpenBaristas: _openBaristaShiftDialog,
       onOpenBackOffice: _openBackOffice,
       onOpenHelpCenter: _openHelpCenter,
