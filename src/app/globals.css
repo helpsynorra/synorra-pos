@@ -34,6 +34,13 @@ nav::-webkit-scrollbar {
   display: none;
 }
 
+.synorra-gradient-panel {
+  background:
+    radial-gradient(ellipse at 100% 100%, rgb(25 91 118 / 24%), transparent 68%),
+    radial-gradient(ellipse at 4% 4%, rgb(112 35 57 / 10%), transparent 58%),
+    linear-gradient(108deg, #10192f 0%, #111d37 52%, #15354b 100%);
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

@@ -343,7 +343,7 @@ class PosNavigationDrawer extends StatelessWidget {
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Image.asset(
-                'lib/src/images/logo-app-transparent.png',
+                'lib/src/images/logo.png',
                 width: 24,
                 height: 22,
                 fit: BoxFit.contain,

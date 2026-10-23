@@ -268,7 +268,7 @@ class _PosScreenState extends State<PosScreen> {
           return widget.controller.authenticateStaffForPurpose(
             username,
             password,
-            accepts: (staff) => staff.canAccessBaristaShift,
+            accepts: (staff) => staff.canClockShift,
           );
         },
         onPunch: (staff, type) async {
@@ -540,7 +540,7 @@ class _PosScreenState extends State<PosScreen> {
                             padding: const EdgeInsets.all(24),
                             child: Text(
                               sync.status == SyncStatus.syncing
-                                  ? 'Syncing menu from Admin...'
+                                  ? 'Syncing'
                                   : 'No menu items found in this category.',
                               textAlign: TextAlign.center,
                               style: const TextStyle(

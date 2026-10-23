@@ -5,7 +5,7 @@ class StaffUser {
   final String password;
   final bool passwordChanged;
   final String name;
-  final String role; // 'admin', 'cashier', 'barista'
+  final String role; // 'admin', 'cashier' (Owner), 'pos_cashier', 'barista'
   final String title;
 
   const StaffUser({
@@ -22,6 +22,7 @@ class StaffUser {
   bool get canUsePos => role == 'cashier';
   bool get canLoginToPos => canUsePos;
   bool get canAccessBaristaShift => role == 'barista';
+  bool get canClockShift => role == 'barista' || role == 'pos_cashier';
   bool get isManager => role == 'admin';
 
   static String parseRole(String rawRole, String title, String username) {
@@ -29,6 +30,7 @@ class StaffUser {
         '${rawRole.toLowerCase()} ${title.toLowerCase()} ${username.toLowerCase()}';
     final explicitRole = rawRole.trim().toLowerCase();
     if (explicitRole == 'admin') return 'admin';
+    if (explicitRole == 'pos_cashier') return 'pos_cashier';
     if (explicitRole == 'cashier') return 'cashier';
     final roleAndTitle = '${rawRole.toLowerCase()} ${title.toLowerCase()}';
     if (roleAndTitle.contains('admin')) return 'admin';
@@ -62,6 +64,8 @@ class StaffUser {
           ? 'Admin'
           : resolvedRole == 'cashier'
               ? 'Owner'
+              : resolvedRole == 'pos_cashier'
+                  ? 'Cashier'
               : (rawTitle.isNotEmpty ? rawTitle : 'Barista'),
     );
   }

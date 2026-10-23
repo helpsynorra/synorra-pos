@@ -22,6 +22,7 @@ class _BaristaShiftDialogState extends State<BaristaShiftDialog> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   StaffUser? _clockOutTarget;
+  String? _selectedRole;
   String? _error;
   bool _isLoading = false;
 
@@ -37,11 +38,12 @@ class _BaristaShiftDialogState extends State<BaristaShiftDialog> {
       _usernameController.text.trim(),
       _passwordController.text,
     );
-    return staff?.canAccessBaristaShift == true ? staff : null;
+    return staff?.canClockShift == true ? staff : null;
   }
 
   Future<void> _handleClockIn() async {
     if (_isLoading) return;
+    if (_selectedRole == null) return;
     if (_usernameController.text.trim().isEmpty ||
         _passwordController.text.isEmpty) {
       setState(() => _error = 'Please enter both username and password');
@@ -54,10 +56,9 @@ class _BaristaShiftDialogState extends State<BaristaShiftDialog> {
     });
     try {
       final staff = await _authenticateBarista();
-      if (staff == null) {
+      if (staff == null || staff.role != _selectedRole) {
         if (mounted) {
-          setState(
-              () => _error = 'Use valid credentials for a Barista account.');
+          setState(() => _error = 'Those details do not match the selected staff role.');
         }
         return;
       }
@@ -74,7 +75,17 @@ class _BaristaShiftDialogState extends State<BaristaShiftDialog> {
   void _selectClockOutTarget(StaffUser barista) {
     setState(() {
       _clockOutTarget = barista;
+      _selectedRole = barista.role;
       _usernameController.text = barista.username;
+      _passwordController.clear();
+      _error = null;
+    });
+  }
+
+  void _selectStaffRole(String role) {
+    setState(() {
+      _selectedRole = role;
+      _usernameController.clear();
       _passwordController.clear();
       _error = null;
     });
@@ -94,7 +105,7 @@ class _BaristaShiftDialogState extends State<BaristaShiftDialog> {
       if (staff == null || staff.id != onShift.id) {
         if (mounted) {
           setState(() => _error =
-              'Only the Barista on shift can clock out with their credentials.');
+              'Only the staff member on shift can clock out with their credentials.');
         }
         return;
       }
@@ -116,7 +127,7 @@ class _BaristaShiftDialogState extends State<BaristaShiftDialog> {
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       child: Container(
         width: 440,
-        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 28),
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -126,7 +137,7 @@ class _BaristaShiftDialogState extends State<BaristaShiftDialog> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
-                    'Baristas',
+                    'Staff on Shift / Team',
                     style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
@@ -156,7 +167,7 @@ class _BaristaShiftDialogState extends State<BaristaShiftDialog> {
                               size: 8, color: Color(0xFF16A34A)),
                           const SizedBox(width: 8),
                           Expanded(
-                              child: Text('${barista.name} is on shift',
+                              child: Text('${barista.name} · ${barista.title} is on shift',
                                   style: const TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.w600))),
@@ -170,68 +181,101 @@ class _BaristaShiftDialogState extends State<BaristaShiftDialog> {
                       ),
                     ))
               else ...[
-                const Text('No barista is on shift yet.',
+                const Text('No staff member is on shift yet.',
                     style: TextStyle(fontSize: 13, color: Color(0xFF6B7280))),
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
               ],
-              Text(
-                _clockOutTarget == null ? 'CLOCK IN' : 'CLOCK OUT',
-                style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF9CA3AF)),
-              ),
-              const SizedBox(height: 12),
-              const Text('Username',
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFF374151))),
-              const SizedBox(height: 6),
-              TextField(
-                controller: _usernameController,
-                decoration: InputDecoration(
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
+              if (_clockOutTarget == null && _selectedRole == null) ...[
+                const Text('Choose your staff role to continue.',
+                    style: TextStyle(fontSize: 13, color: Color(0xFF6B7280))),
+                const SizedBox(height: 18),
+                _roleButton('Cashier', 'pos_cashier'),
+                const SizedBox(height: 10),
+                _roleButton('Barista', 'barista'),
+              ] else ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _clockOutTarget == null ? 'STAFF LOGIN' : 'STAFF LOGOUT',
+                      style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF718096)),
+                    ),
+                    if (_clockOutTarget == null)
+                      TextButton(
+                        onPressed: _isLoading
+                            ? null
+                            : () => setState(() {
+                                  _selectedRole = null;
+                                  _error = null;
+                                  _usernameController.clear();
+                                  _passwordController.clear();
+                                }),
+                        child: const Text('Change role'),
+                      ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 16),
-              const Text('Password',
-                  style: TextStyle(
+                const SizedBox(height: 8),
+                Text(
+                  _clockOutTarget == null
+                      ? 'Sign in as ${_selectedRole == 'pos_cashier' ? 'Cashier' : 'Barista'}'
+                      : 'Confirm your identity to clock out',
+                  style: const TextStyle(
                       fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFF374151))),
-              const SizedBox(height: 6),
-              TextField(
-                controller: _passwordController,
-                obscureText: true,
-                decoration: InputDecoration(
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF24324A)),
                 ),
-                onSubmitted: (_) async {
-                  if (_clockOutTarget == null) {
-                    await _handleClockIn();
-                  } else {
-                    await _handleClockOut();
-                  }
-                },
-              ),
+                const SizedBox(height: 14),
+                const Text('Username',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _usernameController,
+                  textInputAction: TextInputAction.next,
+                  decoration: InputDecoration(
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 12),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text('Password',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _passwordController,
+                  obscureText: true,
+                  textInputAction: TextInputAction.done,
+                  decoration: InputDecoration(
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 12),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onSubmitted: (_) async {
+                    if (_clockOutTarget == null) {
+                      await _handleClockIn();
+                    } else {
+                      await _handleClockOut();
+                    }
+                  },
+                ),
+              ],
               if (_error != null) ...[
                 const SizedBox(height: 10),
                 Text(_error!,
                     style: const TextStyle(
                         color: Color(0xFFDC2626), fontSize: 12)),
               ],
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                height: 44,
-                child: ElevatedButton(
+              if (_selectedRole != null || _clockOutTarget != null) ...[
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: ElevatedButton(
                   onPressed: _isLoading
                       ? null
                       : () {
@@ -242,7 +286,7 @@ class _BaristaShiftDialogState extends State<BaristaShiftDialog> {
                           }
                         },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black,
+                    backgroundColor: const Color(0xFF101D37),
                     foregroundColor: Colors.white,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
@@ -259,11 +303,35 @@ class _BaristaShiftDialogState extends State<BaristaShiftDialog> {
                         )
                       : Text(
                           _clockOutTarget == null ? 'Clock in' : 'Clock out'),
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _roleButton(String label, String role) {
+    final selected = _selectedRole == role;
+    return SizedBox(
+      width: double.infinity,
+      height: 48,
+      child: ElevatedButton(
+        onPressed: _isLoading ? null : () => _selectStaffRole(role),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: selected
+              ? const Color(0xFF101D37)
+              : const Color(0xFF172843),
+          foregroundColor: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+        ),
+        child: Text(label,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
       ),
     );
   }

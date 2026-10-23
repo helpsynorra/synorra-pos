@@ -281,6 +281,36 @@ export async function updateStaffUser(input: {
   return { ok: true };
 }
 
+export async function updateStaffPassword(userId: string, password: string) {
+  const session = await getSession();
+  if (!session || session.role !== "cashier") {
+    throw new Error("Only the Owner can change staff passwords.");
+  }
+  const nextPassword = String(password ?? "").trim();
+  if (nextPassword.length < 4 || nextPassword.length > 128) {
+    return { error: "Password must be between 4 and 128 characters." };
+  }
+
+  const store = await getFreshStore({ ownerId: session.userId });
+  const user = store.users.find((entry) => entry.id === userId);
+  if (!user || (user.role !== "barista" && user.role !== "pos_cashier") || (user.ownerId && user.ownerId !== session.userId)) {
+    return { error: "Staff account not found in your workspace." };
+  }
+
+  try {
+    await upsertStaffUserRecord({
+      ...user,
+      password: await bcrypt.hash(nextPassword, 12),
+      passwordChanged: true,
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Could not change staff password." };
+  }
+
+  refresh();
+  return { ok: true };
+}
+
 export async function updateOwnerPermissions(userId: string, permissions: StaffPermissions) {
   await requireAdmin();
   const store = await getFreshStore({ ownerId: userId });

@@ -343,7 +343,7 @@ export async function POST(req: NextRequest) {
       const identifier = username || email;
       const user = store.users.find(
         (u) =>
-          (u.role === "cashier" || u.role === "admin") &&
+          ["cashier", "admin", "barista", "pos_cashier"].includes(u.role) &&
           (u.username.trim().toLowerCase() === identifier ||
             u.name.trim().toLowerCase() === identifier ||
             Boolean(u.email && u.email.trim().toLowerCase() === identifier)),
@@ -453,14 +453,14 @@ export async function POST(req: NextRequest) {
 
     const tenantId = claims.role === "cashier"
       ? claims.userId
-      : claims.role === "barista"
+      : claims.role === "barista" || claims.role === "pos_cashier"
         ? await ownerIdForStaff(claims.userId)
         : await legacyOwnerId();
     if (!tenantId) {
       return NextResponse.json({ ok: false, error: "This account is not assigned to an Owner store." }, { status: 403, headers: corsHeaders });
     }
     return await withStoreTenant(tenantId, async () => {
-    if (claims.role === "barista" && action !== "barista_shift_activity") {
+    if ((claims.role === "barista" || claims.role === "pos_cashier") && action !== "barista_shift_activity") {
       return NextResponse.json(
         { ok: false, error: "This account cannot perform POS actions." },
         { status: 403, headers: corsHeaders },
@@ -949,25 +949,26 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "login_activity" || action === "barista_shift_activity") {
-      const isBaristaShift = action === "barista_shift_activity";
+      const isStaffShift = action === "barista_shift_activity";
       const raw = body.activity ?? body;
       let staff: Awaited<ReturnType<typeof getFreshStore>>["users"][number] | undefined;
       let requestedUserId = claims.userId;
-      if (isBaristaShift) {
+      if (isStaffShift) {
         requestedUserId = typeof raw.userId === "string" ? raw.userId : "";
-        const isOwnBaristaShift =
-          claims.role === "barista" && requestedUserId === claims.userId;
+        const isOwnStaffShift =
+          (claims.role === "barista" || claims.role === "pos_cashier") &&
+          requestedUserId === claims.userId;
         if (
           !["cashier", "admin"].includes(claims.role) &&
-          !isOwnBaristaShift
+          !isOwnStaffShift
         ) {
-          return NextResponse.json({ ok: false, error: "Owner access required to record a barista shift." }, { status: 403, headers: corsHeaders });
+          return NextResponse.json({ ok: false, error: "Owner access required to record a staff shift." }, { status: 403, headers: corsHeaders });
         }
         const store = await getFreshStore();
         staff = store.users.find((user) => user.id === requestedUserId);
         const staffRole = staff ? parseRole(String(staff.title ?? ""), staff.role) : null;
-        if ((!staff && !isOwnBaristaShift) || (staff && staffRole !== "barista")) {
-          return NextResponse.json({ ok: false, error: "Barista account not found." }, { status: 404, headers: corsHeaders });
+        if ((!staff && !isOwnStaffShift) || (staff && staffRole !== "barista" && staffRole !== "pos_cashier")) {
+          return NextResponse.json({ ok: false, error: "Staff account not found." }, { status: 404, headers: corsHeaders });
         }
       }
       const entry = {
@@ -982,7 +983,7 @@ export async function POST(req: NextRequest) {
         at: phIsoTimestamp(String(raw.at ?? "")) || new Date().toISOString(),
       };
       await insertLoginActivityRecord(entry);
-      if (!isBaristaShift && entry.type === "login") {
+      if (!isStaffShift && entry.type === "login") {
         await updateStore((store) => {
           store.pos.isOpen = true;
           store.pos.openedBy = entry.name;

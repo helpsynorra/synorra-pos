@@ -842,7 +842,8 @@ class SupabaseService {
   Future<bool> pushLoginActivity(LoginActivity activity) async {
     try {
       final result = await _postPosApi({
-        'action': activity.role.trim().toLowerCase() == 'barista'
+        'action': const {'barista', 'pos_cashier'}
+                .contains(activity.role.trim().toLowerCase())
             ? 'barista_shift_activity'
             : 'login_activity',
         'activity': activity.toJson(),

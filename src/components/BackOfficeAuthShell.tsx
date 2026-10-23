@@ -9,7 +9,7 @@ export function BackOfficeAuthShell({
   children: ReactNode;
 }) {
   return (
-    <main className="relative grid min-h-svh grid-cols-1 place-items-center overflow-hidden bg-[#f5f8fd] px-4 py-8 sm:px-6 sm:py-12 xl:grid-cols-[minmax(0,1.1fr)_minmax(460px,0.9fr)] xl:gap-12 xl:px-12 xl:py-10 2xl:gap-20 2xl:px-20">
+    <main className="relative grid min-h-svh grid-cols-1 place-items-center overflow-hidden bg-[#f5f8fd] px-4 py-8 sm:px-6 sm:py-12 md:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] md:place-items-stretch md:gap-4 md:px-5 md:py-6 lg:gap-8 lg:px-8 lg:py-8 xl:grid-cols-[minmax(0,1.1fr)_minmax(460px,0.9fr)] xl:gap-12 xl:px-12 xl:py-10 2xl:gap-20 2xl:px-20">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute -left-44 -top-56 h-[620px] w-[620px] rounded-full bg-[#dceeff]/85 blur-[90px]"
@@ -18,7 +18,7 @@ export function BackOfficeAuthShell({
         aria-hidden="true"
         className="pointer-events-none absolute -bottom-[380px] -right-44 h-[760px] w-[760px] rounded-full bg-[#dfe3ff]/80 blur-[100px]"
       />
-      <div aria-hidden="true" className="relative z-10 mb-5 hidden h-28 w-56 items-end justify-center md:flex xl:hidden">
+      <div aria-hidden="true" className="relative z-10 mb-5 hidden h-28 w-56 items-end justify-center sm:flex md:hidden">
         <div className="absolute bottom-3 h-5 w-48 -skew-x-12 rounded-full bg-[#b7c9df]/45 blur-md" />
         <div className="relative z-10 h-20 w-40 -skew-y-6 rounded-2xl border border-white bg-gradient-to-br from-white to-[#dbe6f2] p-2.5 shadow-[10px_14px_25px_rgba(47,72,107,0.18)]">
           <div className="h-full rounded-xl border border-[#d8e2ef] bg-white p-2">
@@ -30,22 +30,22 @@ export function BackOfficeAuthShell({
         </div>
         <div className="absolute bottom-1 h-3 w-36 -skew-x-12 rounded-b-lg bg-[#aebfd3]" />
       </div>
-      <section className="relative z-10 hidden min-h-[min(760px,calc(100svh-80px))] w-full flex-col justify-center xl:flex">
-        <Image src="/images/logo.png" alt="Synorra POS" width={360} height={360} priority className="h-[58px] w-[188px] object-cover object-left" />
-        <p className="mt-12 text-xs font-bold tracking-[0.25em] text-[#6c83a0] uppercase">Point of sale · inventory · team</p>
-        <h1 className="mt-4 max-w-xl text-5xl font-semibold leading-[1.08] tracking-tight text-[#17243e] 2xl:text-6xl">A smoother day starts at the counter.</h1>
-        <p className="mt-5 max-w-lg text-base leading-7 text-[#7086a1]">Sign in to manage your shop, serve customers, and keep every order moving.</p>
-        <div aria-hidden="true" className="relative mt-14 h-[330px] w-full max-w-[650px]">
+      <section className="relative z-10 hidden min-h-[min(760px,calc(100svh-80px))] w-full flex-col justify-center md:flex md:min-h-0 md:justify-start md:pt-3 xl:min-h-[min(760px,calc(100svh-80px))] xl:justify-center xl:py-0">
+        <Image src="/images/logo-transparent.png" alt="Synorra POS" width={360} height={360} priority className="h-[58px] w-[188px] object-cover object-left" />
+        <p className="mt-8 text-[10px] font-bold tracking-[0.2em] text-[#6c83a0] uppercase lg:mt-12 lg:text-xs lg:tracking-[0.25em]">Point of sale · inventory · team</p>
+        <h1 className="mt-3 max-w-xl text-3xl font-semibold leading-[1.08] tracking-tight text-[#17243e] lg:mt-4 lg:text-5xl 2xl:text-6xl">A smoother day starts at the counter.</h1>
+        <p className="mt-4 max-w-lg text-sm leading-6 text-[#7086a1] lg:mt-5 lg:text-base lg:leading-7">Sign in to manage your shop, serve customers, and keep every order moving.</p>
+        <div aria-hidden="true" className="relative mt-4 h-[260px] w-full max-w-[650px]">
           <div className="absolute bottom-7 left-10 right-8 h-14 -skew-x-12 rounded-full bg-[#b7c9df]/45 blur-xl" />
-          <div className="absolute bottom-14 left-16 h-44 w-[min(72%,420px)] -skew-y-6 rounded-[28px] border border-white bg-gradient-to-br from-white via-[#edf3fa] to-[#dbe6f2] p-5 shadow-[18px_24px_50px_rgba(47,72,107,0.2)]">
-            <div className="h-full rounded-2xl border border-[#d8e2ef] bg-white p-4 shadow-inner">
+          <div className="relative z-10 ml-8 mt-10 h-52 w-[min(72%,420px)] rounded-[28px] border border-white bg-gradient-to-br from-white via-[#edf3fa] to-[#dbe6f2] p-4 shadow-[18px_24px_50px_rgba(47,72,107,0.2)] lg:p-5">
+            <div className="h-full rounded-2xl border border-[#d8e2ef] bg-white p-3 shadow-inner lg:p-4">
               <div className="flex items-center justify-between border-b border-[#e7edf5] pb-3">
                 <span className="text-xs font-bold tracking-wide text-[#243958]">REGISTER</span>
                 <span className="flex items-center gap-1.5 text-[10px] text-[#54836f]"><span className="size-2 rounded-full bg-emerald-500" /> READY</span>
               </div>
               <div className="mt-4 grid grid-cols-3 gap-2">
-                <span className="h-14 rounded-xl bg-[#f1f5fa]" /><span className="h-14 rounded-xl bg-[#f1f5fa]" /><span className="h-14 rounded-xl bg-[#f1f5fa]" />
-                <span className="h-14 rounded-xl bg-[#f1f5fa]" /><span className="h-14 rounded-xl bg-[#f1f5fa]" /><span className="h-14 rounded-xl bg-[#1d2b45]" />
+                <span className="h-9 rounded-xl bg-[#f1f5fa]" /><span className="h-9 rounded-xl bg-[#f1f5fa]" /><span className="h-9 rounded-xl bg-[#f1f5fa]" />
+                <span className="h-9 rounded-xl bg-[#f1f5fa]" /><span className="h-9 rounded-xl bg-[#f1f5fa]" /><span className="h-9 rounded-xl bg-[#1d2b45]" />
               </div>
             </div>
           </div>
@@ -53,10 +53,10 @@ export function BackOfficeAuthShell({
           <div className="absolute bottom-0 left-[29%] h-5 w-[40%] -skew-x-12 rounded-b-xl bg-[#aebfd3]" />
         </div>
       </section>
-      <section className="relative z-10 w-full max-w-[620px] rounded-[26px] border border-white/80 bg-white/95 px-6 py-7 shadow-[0_24px_80px_rgba(51,91,143,0.14)] backdrop-blur-sm sm:px-10 sm:py-9 xl:mx-auto xl:max-w-[560px]">
+      <section className="relative z-10 w-full max-w-[620px] rounded-[26px] border border-white/80 bg-white/95 px-6 py-7 shadow-[0_24px_80px_rgba(51,91,143,0.14)] backdrop-blur-sm sm:px-10 sm:py-9 md:mx-auto md:h-fit md:max-w-[560px] md:self-center md:px-6 md:py-7 lg:px-8 xl:max-w-[560px] xl:px-10 xl:py-9">
         <header className="mb-7 flex flex-col items-center text-center">
           <Image
-            src="/images/logo.png"
+            src="/images/logo-transparent.png"
             alt="Synorra"
             width={360}
             height={360}
@@ -81,9 +81,7 @@ export function BackOfficeAuthShell({
         </header>
         {children}
       </section>
-      <p className="relative z-10 mt-6 text-center text-xs text-[#7f9bb9] xl:col-span-2 xl:mt-0">
-        &copy; 2026 Synorra. All rights reserved.
-      </p>
+
     </main>
   );
 }

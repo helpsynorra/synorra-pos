@@ -20,6 +20,7 @@ import {
   generateOwnerPromotionCode,
   getCommunePromotionCodes,
   updateStaffUser,
+  updateStaffPassword,
   updateLoginGates,
 } from "@/actions/users";
 import type { PublicStaffUser } from "@/lib/users";
@@ -124,6 +125,8 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<StaffRole>(defaultStaffRole);
   const [password, setPassword] = useState("");
+  const [changingPasswordId, setChangingPasswordId] = useState<string | null>(null);
+  const [staffPasswordDraft, setStaffPasswordDraft] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [adminPath, setAdminPath] = useState(adminLoginPath);
   const [permissionState, setPermissionState] = useState<Record<string, StaffPermissions>>(
@@ -356,7 +359,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
               <button
                 type="button"
                 onClick={startCreate}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#101d37] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-slate-900/10 transition hover:-translate-y-0.5 hover:bg-[#243a5e]"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#b90c0c] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-red-900/10 transition hover:-translate-y-0.5 hover:bg-[#970909]"
               >
                 <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" aria-hidden="true"><path d="M12 5v14M5 12h14" strokeWidth="2" strokeLinecap="round" /></svg>
                 Add staff
@@ -489,7 +492,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                   <button
                     type="submit"
                     disabled={pending}
-                    className="inline-flex items-center gap-2 rounded-xl bg-[#101d37] px-6 py-3 text-sm font-bold text-white shadow-lg shadow-slate-900/15 transition hover:bg-[#243a5e] disabled:cursor-wait disabled:opacity-50"
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#b90c0c] px-6 py-3 text-sm font-bold text-white shadow-lg shadow-red-900/10 transition hover:bg-[#970909] disabled:cursor-wait disabled:opacity-50"
                   >
                     {pending ? "Saving…" : editingId === "new" ? "Add staff member" : "Save changes"}
                     {!pending ? <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" aria-hidden="true"><path d="m9 18 6-6-6-6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg> : null}
@@ -500,7 +503,8 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
 
             <div className="grid gap-3 min-[1025px]:grid-cols-2">
               {visibleUsers.map((user) => (
-                <div key={user.id} className="group flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-[#b8cce4] hover:shadow-lg hover:shadow-slate-900/5 sm:p-5">
+                <div key={user.id} className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-[#b8cce4] hover:shadow-lg hover:shadow-slate-900/5 sm:p-5">
+                  <div className="flex items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-3.5">
                     <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#101d37] to-[#58789d] text-base font-bold text-white shadow-md shadow-[#dce8f7]">
                       {user.name.trim().charAt(0).toUpperCase() || "S"}
@@ -521,6 +525,19 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
+                    {session.role === "cashier" && (user.role === "barista" || user.role === "pos_cashier") ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setChangingPasswordId((current) => current === user.id ? null : user.id);
+                          setStaffPasswordDraft("");
+                          setNotice(null);
+                        }}
+                        className="rounded-lg px-2.5 py-2 text-xs font-semibold text-[#58789d] transition hover:bg-[#edf4fc] hover:text-[#243a5e]"
+                      >
+                        {changingPasswordId === user.id ? "Cancel" : "Change password"}
+                      </button>
+                    ) : null}
                     {user.role === "cashier" && showViewPermissionsButton ? (
                       <button
                         type="button"
@@ -537,12 +554,13 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                       type="button"
                       aria-label={`Edit ${user.name}`}
                       onClick={() => startEdit(user)}
-                      className="flex h-9 w-9 items-center justify-center rounded-xl text-neutral-400 hover:bg-neutral-100 hover:text-black"
+                      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl px-2.5 text-xs font-semibold text-[#58789d] transition hover:bg-[#edf4fc] hover:text-[#243a5e]"
                     >
                       <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor">
                         <path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3Z" strokeWidth="1.7" strokeLinejoin="round" />
                         <path d="M13.5 6.5l3 3" strokeWidth="1.7" />
                       </svg>
+                      Edit
                     </button> : null}
                     {showDeleteStaffButton && (!baristaOnlyStaffActions || user.role === "barista" || user.role === "pos_cashier") ? <button
                       type="button"
@@ -570,6 +588,48 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                       </svg>
                     </button> : null}
                   </div>
+                </div>
+                  {changingPasswordId === user.id ? (
+                    <form
+                      className="mt-4 flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:items-end"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        const nextPassword = staffPasswordDraft;
+                        startTransition(async () => {
+                          const result = await updateStaffPassword(user.id, nextPassword);
+                          if ("error" in result && result.error) {
+                            setNotice(result.error);
+                            return;
+                          }
+                          setChangingPasswordId(null);
+                          setStaffPasswordDraft("");
+                          setNotice(`Password changed for ${user.name}.`);
+                        });
+                      }}
+                    >
+                      <label className="min-w-0 flex-1 space-y-1.5 text-xs font-semibold text-slate-600">
+                        <span className="block">New password for {user.name}</span>
+                        <input
+                          type="password"
+                          autoComplete="new-password"
+                          minLength={4}
+                          maxLength={128}
+                          required
+                          value={staffPasswordDraft}
+                          onChange={(event) => setStaffPasswordDraft(event.target.value)}
+                          className={staffField}
+                          placeholder="Enter a new password"
+                        />
+                      </label>
+                      <button
+                        type="submit"
+                        disabled={pending || staffPasswordDraft.length < 4}
+                        className="rounded-xl bg-[#b90c0c] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#970909] disabled:cursor-wait disabled:opacity-50"
+                      >
+                        {pending ? "Saving…" : "Save password"}
+                      </button>
+                    </form>
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -717,7 +777,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                           if (generatedPromos.length) setCommunePromoCodes((current) => [...generatedPromos, ...current]);
                           setNotice("error" in result && result.error ? (generatedPromos.length ? `${result.error} ${generatedPromos.length} voucher(s) were created.` : result.error) : `${generatedPromos.length} Commune voucher(s) generated.`);
                         })}
-                        className="h-12 self-end whitespace-nowrap rounded-xl bg-[#4353ff] px-5 text-xs font-semibold text-white shadow-[0_5px_14px_rgba(67,83,255,0.22)] transition hover:bg-[#3345ed] disabled:opacity-40"
+                        className="h-12 self-end whitespace-nowrap rounded-xl bg-[#b90c0c] px-5 text-xs font-semibold text-white shadow-[0_5px_14px_rgba(185,12,12,0.18)] transition hover:bg-[#970909] disabled:opacity-40"
                       >Generate codes</button>
                     </div>
                   </div>
@@ -1444,7 +1504,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                             }
                             setNotice(`${generatedPromos.length} promo voucher(s) generated.`);
                           })}
-                          className={isAdminConsole ? "h-12 whitespace-nowrap self-end rounded-xl bg-[#4353ff] px-5 text-xs font-semibold text-white shadow-[0_5px_14px_rgba(67,83,255,0.22)] transition hover:bg-[#3345ed] disabled:opacity-40" : "rounded-full bg-black px-4 py-2 text-xs font-medium text-white disabled:opacity-40"}
+                          className={isAdminConsole ? "h-12 whitespace-nowrap self-end rounded-xl bg-[#b90c0c] px-5 text-xs font-semibold text-white shadow-[0_5px_14px_rgba(185,12,12,0.18)] transition hover:bg-[#970909] disabled:opacity-40" : "rounded-full bg-[#b90c0c] px-4 py-2 text-xs font-medium text-white hover:bg-[#970909] disabled:opacity-40"}
                         >Generate codes</button>
                       </div>
                       <div className={isAdminConsole ? "overflow-hidden rounded-xl border border-[#e3eaf4]" : "divide-y divide-neutral-100 rounded-xl border border-neutral-200"}>

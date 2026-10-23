@@ -27,6 +27,8 @@ class _LoginScreenState extends State<LoginScreen>
   final _passwordController = TextEditingController();
   final _newPasswordController = TextEditingController();
   final _emailFocusNode = FocusNode();
+  final _tabletPasswordFocusNode = FocusNode();
+  final _tabletAuthScrollController = ScrollController();
   String? _errorMessage;
   bool _isLoading = false;
   bool _isTransitioning = false;
@@ -52,6 +54,19 @@ class _LoginScreenState extends State<LoginScreen>
       vsync: this,
       duration: const Duration(milliseconds: 400),
     );
+    _tabletPasswordFocusNode.addListener(_scrollTabletPasswordIntoView);
+  }
+
+  void _scrollTabletPasswordIntoView() {
+    if (!_tabletPasswordFocusNode.hasFocus) return;
+    Future<void>.delayed(const Duration(milliseconds: 250), () {
+      if (!mounted || !_tabletAuthScrollController.hasClients) return;
+      _tabletAuthScrollController.animateTo(
+        _tabletAuthScrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
+    });
   }
 
   @override
@@ -69,6 +84,9 @@ class _LoginScreenState extends State<LoginScreen>
     _passwordController.dispose();
     _newPasswordController.dispose();
     _emailFocusNode.dispose();
+    _tabletPasswordFocusNode.removeListener(_scrollTabletPasswordIntoView);
+    _tabletPasswordFocusNode.dispose();
+    _tabletAuthScrollController.dispose();
     _launchController.dispose();
     _authController.dispose();
     _successController.dispose();
@@ -288,6 +306,8 @@ class _LoginScreenState extends State<LoginScreen>
     const navy = Color(0xFF1B294A);
     final screenWidth = MediaQuery.sizeOf(context).width;
     final compact = MediaQuery.sizeOf(context).height < 780;
+    final tabletLayout = screenWidth >= 760 && screenWidth < 1600;
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     final double logoSize = (screenWidth * 0.28).clamp(112.0, 156.0).toDouble();
     final verticalGap = compact ? 12.0 : 16.0;
 
@@ -320,7 +340,9 @@ class _LoginScreenState extends State<LoginScreen>
           ),
           child: Scaffold(
             backgroundColor: const Color(0xFFF4F6F9),
-            resizeToAvoidBottomInset: true,
+            // Keep the brand panel's height and artwork fixed while typing on
+            // tablet. The right-side form scrolls above the keyboard instead.
+            resizeToAvoidBottomInset: !tabletLayout,
             body: Stack(
               children: [
                 const Positioned.fill(
@@ -359,44 +381,76 @@ class _LoginScreenState extends State<LoginScreen>
                           ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
                       child: RepaintBoundary(
                         child: SafeArea(
-                          child: screenWidth < 900
+                          // The keyboard must not change the left panel's
+                          // available height on tablet.
+                          bottom: !tabletLayout,
+                          child: screenWidth < 760
                               ? _buildMobileLoginContent(
                                   progress: progress,
                                   screenWidth: screenWidth,
                                 )
-                              : Center(
-                                  child: SingleChildScrollView(
+                              : Row(
+                                  children: [
+                                    if (tabletLayout)
+                                      Expanded(
+                                        flex: 1,
+                                        child: _buildTabletBrandPanel(),
+                                      ),
+                                    Expanded(
+                                      flex: 1,
+                                        child: ColoredBox(
+                                          color: tabletLayout
+                                              ? Colors.white
+                                              : Colors.transparent,
+                                          child: Center(
+                                            child: SingleChildScrollView(
+                                    controller: tabletLayout
+                                        ? _tabletAuthScrollController
+                                        : null,
                                     padding: EdgeInsets.symmetric(
-                                      horizontal: screenWidth < 420 ? 28 : 44,
+                                      horizontal: tabletLayout
+                                          ? 20
+                                          : (screenWidth < 420 ? 28 : 44),
                                       vertical: compact ? 18 : 32,
+                                    ).copyWith(
+                                      bottom: tabletLayout && keyboardOpen
+                                          ? MediaQuery.viewInsetsOf(context)
+                                                  .bottom +
+                                              24
+                                          : (compact ? 18 : 32),
                                     ),
                                     child: ConstrainedBox(
                                       constraints:
                                           const BoxConstraints(maxWidth: 560),
                                       child: Container(
-                                        padding: EdgeInsets.all(
-                                            screenWidth < 420 ? 24 : 36),
-                                        decoration: BoxDecoration(
-                                          color: const Color.fromRGBO(
-                                              255, 255, 255, 0.88),
-                                          borderRadius:
-                                              BorderRadius.circular(32),
-                                          border: Border.all(
-                                              color: const Color(0xFFDCE5F0)),
-                                          boxShadow: const [
-                                            BoxShadow(
-                                              color: Color(0x1A263B65),
-                                              blurRadius: 42,
-                                              offset: Offset(0, 20),
-                                            ),
-                                          ],
-                                        ),
+                                        padding: EdgeInsets.all(tabletLayout
+                                            ? 10
+                                            : (screenWidth < 420 ? 24 : 36)),
+                                        decoration: tabletLayout
+                                            ? null
+                                            : BoxDecoration(
+                                                color: const Color.fromRGBO(
+                                                    255, 255, 255, 0.88),
+                                                borderRadius:
+                                                    BorderRadius.circular(32),
+                                                border: Border.all(
+                                                    color: const Color(
+                                                        0xFFDCE5F0)),
+                                                boxShadow: const [
+                                                  BoxShadow(
+                                                    color: Color(0x1A263B65),
+                                                    blurRadius: 42,
+                                                    offset: Offset(0, 20),
+                                                  ),
+                                                ],
+                                              ),
                                         child: Column(
                                           mainAxisSize: MainAxisSize.min,
                                           crossAxisAlignment:
                                               CrossAxisAlignment.stretch,
                                           children: [
-                                            Center(
+                                            if (!tabletLayout)
+                                              Center(
                                               child: Container(
                                                 width: logoSize,
                                                 height: logoSize,
@@ -423,13 +477,21 @@ class _LoginScreenState extends State<LoginScreen>
                                               ),
                                             ),
                                             SizedBox(height: verticalGap),
-                                            const Text(
-                                              'SYNORRA - POS',
-                                              textAlign: TextAlign.center,
+                                            Text(
+                                              tabletLayout
+                                                  ? (_isNewLogin
+                                                      ? 'Create Your Account'
+                                                      : 'Welcome Back!')
+                                                  : 'SYNORRA - POS',
+                                              textAlign: tabletLayout
+                                                  ? TextAlign.left
+                                                  : TextAlign.center,
                                               style: TextStyle(
                                                 color: navy,
-                                                fontSize: 20,
-                                                fontWeight: FontWeight.w500,
+                                                fontSize: tabletLayout ? 27 : 20,
+                                                fontWeight: tabletLayout
+                                                    ? FontWeight.w700
+                                                    : FontWeight.w500,
                                                 letterSpacing: 1.4,
                                               ),
                                             ),
@@ -439,11 +501,19 @@ class _LoginScreenState extends State<LoginScreen>
                                               start: 0.47,
                                               end: 0.65,
                                               offsetY: 10,
-                                              child: const Text(
-                                                'Build Smarter. Grow Together.',
-                                                textAlign: TextAlign.center,
+                                              child: Text(
+                                                tabletLayout
+                                                    ? (_isNewLogin
+                                                        ? 'Create your SynOrra POS account'
+                                                        : 'Log in to your SynOrra POS account')
+                                                    : 'Build Smarter. Grow Together.',
+                                                textAlign: tabletLayout
+                                                    ? TextAlign.left
+                                                    : TextAlign.center,
                                                 style: TextStyle(
-                                                  color: Color(0xFF9AA6BF),
+                                                  color: tabletLayout
+                                                      ? navy
+                                                      : Color(0xFF9AA6BF),
                                                   fontSize: 15,
                                                   letterSpacing: 0.4,
                                                 ),
@@ -451,15 +521,18 @@ class _LoginScreenState extends State<LoginScreen>
                                             ),
                                             SizedBox(height: compact ? 28 : 42),
                                             if (!_mustChangePassword) ...[
-                                              _entrance(
-                                                progress,
-                                                start: 0.49,
-                                                end: 0.73,
-                                                offsetY: 20,
-                                                child: _loginModeSelector(navy),
-                                              ),
+                                              if (!tabletLayout)
+                                                _entrance(
+                                                  progress,
+                                                  start: 0.49,
+                                                  end: 0.73,
+                                                  offsetY: 20,
+                                                  child: _loginModeSelector(navy),
+                                                ),
                                               SizedBox(
-                                                  height: compact ? 24 : 34),
+                                                  height: tabletLayout
+                                                      ? 8
+                                                      : (compact ? 24 : 34)),
                                             ] else ...[
                                               const Text(
                                                 'Credentials verified. Set a new password to finish signing in.',
@@ -600,6 +673,9 @@ class _LoginScreenState extends State<LoginScreen>
                                                       TextField(
                                                         controller:
                                                             _passwordController,
+                                                        focusNode: tabletLayout
+                                                            ? _tabletPasswordFocusNode
+                                                            : null,
                                                         obscureText:
                                                             _obscurePassword,
                                                         textInputAction:
@@ -767,25 +843,48 @@ class _LoginScreenState extends State<LoginScreen>
                                               offsetY: 18,
                                               child: SizedBox(
                                                 height: 62,
-                                                child: ElevatedButton(
-                                                  onPressed: _isLoading
-                                                      ? null
-                                                      : _handleLogin,
-                                                  style:
-                                                      ElevatedButton.styleFrom(
-                                                    backgroundColor: navy,
-                                                    foregroundColor:
-                                                        Colors.white,
-                                                    disabledBackgroundColor:
-                                                        const Color.fromRGBO(
-                                                            27, 41, 74, 0.65),
-                                                    elevation: 12,
-                                                    shadowColor:
-                                                        const Color(0x33203255),
-                                                    shape:
-                                                        const StadiumBorder(),
+                                                child: DecoratedBox(
+                                                  decoration: BoxDecoration(
+                                                    gradient: tabletLayout
+                                                        ? const LinearGradient(
+                                                            colors: [
+                                                              Color(0xFF0E438E),
+                                                              Color(0xFF1768D2),
+                                                            ],
+                                                          )
+                                                        : null,
+                                                    borderRadius:
+                                                        BorderRadius.circular(40),
                                                   ),
-                                                  child: AnimatedSwitcher(
+                                                  child: ElevatedButton(
+                                                    onPressed: _isLoading
+                                                        ? null
+                                                        : _handleLogin,
+                                                    style: ElevatedButton
+                                                        .styleFrom(
+                                                      backgroundColor:
+                                                          tabletLayout
+                                                              ? Colors
+                                                                  .transparent
+                                                              : navy,
+                                                      foregroundColor:
+                                                          Colors.white,
+                                                      disabledBackgroundColor:
+                                                          tabletLayout
+                                                              ? Colors
+                                                                  .transparent
+                                                              : const Color
+                                                                  .fromRGBO(27,
+                                                                      41, 74, 0.65),
+                                                      elevation: tabletLayout
+                                                          ? 0
+                                                          : 12,
+                                                      shadowColor: const Color(
+                                                          0x33203255),
+                                                      shape:
+                                                          const StadiumBorder(),
+                                                    ),
+                                                    child: AnimatedSwitcher(
                                                     duration: const Duration(
                                                         milliseconds: 220),
                                                     switchInCurve:
@@ -824,6 +923,10 @@ class _LoginScreenState extends State<LoginScreen>
                                                               Text(
                                                                 _mustChangePassword
                                                                     ? 'Save password'
+                                                                : tabletLayout
+                                                                    ? (_isNewLogin
+                                                                        ? 'Sign Up'
+                                                                        : 'Log In')
                                                                     : _isNewLogin
                                                                         ? 'Register'
                                                                         : 'Sign In',
@@ -842,15 +945,62 @@ class _LoginScreenState extends State<LoginScreen>
                                                                   size: 24),
                                                             ],
                                                           ),
+                                                    ),
                                                   ),
                                                 ),
                                               ),
                                             ),
+                                            if (tabletLayout &&
+                                                !_mustChangePassword)
+                                              Padding(
+                                                padding: const EdgeInsets.only(
+                                                    top: 20),
+                                                child: Wrap(
+                                                  alignment:
+                                                      WrapAlignment.center,
+                                                  crossAxisAlignment:
+                                                      WrapCrossAlignment.center,
+                                                  children: [
+                                                    Text(
+                                                      _isNewLogin
+                                                          ? 'Already have an account?'
+                                                          : 'Don\'t have an account?',
+                                                      style: const TextStyle(
+                                                        color:
+                                                            Color(0xFF71819B),
+                                                        fontSize: 14,
+                                                      ),
+                                                    ),
+                                                    TextButton(
+                                                      onPressed: _isLoading
+                                                          ? null
+                                                          : () =>
+                                                              _selectLoginMode(
+                                                                  !_isNewLogin),
+                                                      child: Text(
+                                                        _isNewLogin
+                                                            ? 'Log In'
+                                                            : 'Sign Up',
+                                                        style: const TextStyle(
+                                                          color: Color(
+                                                              0xFF1456B7),
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
                                           ],
                                         ),
                                       ),
                                     ),
-                                  ),
+                                      ),
+                                    ),
+                                    ),
+                                    ),
+                                  ],
                                 ),
                         ),
                       ),
@@ -896,6 +1046,117 @@ class _LoginScreenState extends State<LoginScreen>
           ),
         );
       },
+    );
+  }
+
+  Widget _buildTabletBrandPanel() {
+    const navy = Color(0xFF14294B);
+    const muted = Color(0xFF627895);
+
+    Widget benefit(IconData icon, String label) => Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE5F0FF),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: Icon(icon, size: 19, color: const Color(0xFF1766CE)),
+              ),
+              const SizedBox(height: 9),
+              Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      color: navy, fontSize: 11, fontWeight: FontWeight.w700)),
+            ],
+          ),
+        );
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(34, 30, 28, 24),
+      decoration: BoxDecoration(
+        image: const DecorationImage(
+          image: AssetImage('lib/src/images/bg-plant.png'),
+          fit: BoxFit.cover,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Image.asset(
+                'lib/src/images/logo-app-transparent.png',
+                width: 108,
+                height: 108,
+                fit: BoxFit.contain,
+              ),
+              const SizedBox(width: 6),
+              Padding(
+                // Align the wordmark, divider, and POS label on one left edge.
+                padding: const EdgeInsets.only(left: 5),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Image.asset(
+                      'lib/src/images/logo-wordmark-cropped.png',
+                      width: 180,
+                      height: 49,
+                      fit: BoxFit.contain,
+                    ),
+                    Container(
+                      width: 180,
+                      height: 1,
+                      margin: const EdgeInsets.symmetric(vertical: 2),
+                      color: Colors.black,
+                    ),
+                    const Text('POS',
+                        style: TextStyle(
+                            color: Colors.black,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 26),
+          Text(
+            'Smarter POS.\nBetter Business.',
+            style: TextStyle(
+              color: navy,
+              fontSize: 29,
+              height: 1.13,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.6,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Fast, secure and easy-to-use point of sale for your everyday operations.',
+            style: TextStyle(
+              color: muted,
+              fontSize: 14,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: Center(
+              child: Image.asset(
+                'lib/src/images/computer-transparent.png',
+                fit: BoxFit.contain,
+                alignment: Alignment.center,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+      ),
     );
   }
 

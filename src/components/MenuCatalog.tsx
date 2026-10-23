@@ -251,7 +251,7 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
             <button
               type="button"
               onClick={startCreateItem}
-              className="rounded-full bg-[#101d37] px-4 py-2 text-sm font-medium text-white hover:bg-[#243a5e]"
+              className="rounded-full bg-[#b90c0c] px-4 py-2 text-sm font-medium text-white hover:bg-[#970909]"
             >
               Add item
             </button>
@@ -307,7 +307,7 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
               <button
                 type="submit"
                 disabled={pending || !newCategory.trim()}
-                className="w-full rounded-full bg-[#101d37] px-4 py-2 text-sm font-medium text-white hover:bg-[#243a5e] disabled:opacity-40 lg:w-auto"
+                className="w-full rounded-full bg-[#b90c0c] px-4 py-2 text-sm font-medium text-white hover:bg-[#970909] disabled:opacity-40 lg:w-auto"
               >
                 {pending ? "Saving..." : "Add category"}
               </button>
@@ -1011,7 +1011,7 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                   <button
                     type="submit"
                     disabled={pending || !itemName.trim() || !itemCategory || categories.length === 0}
-                    className="rounded-full bg-[#101d37] px-4 py-2 text-sm font-medium text-white hover:bg-[#243a5e] disabled:opacity-40"
+                    className="rounded-full bg-[#b90c0c] px-4 py-2 text-sm font-medium text-white hover:bg-[#970909] disabled:opacity-40"
                   >
                     {pending ? "Saving..." : editingId === "new" ? "Add" : "Save"}
                   </button>

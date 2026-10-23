@@ -67,7 +67,7 @@ export function AdminShell({ session, users, store, children }: AdminShellProps)
               showBaristaRole={true}
               showCashierRole={true}
               showBaristasOnly={false}
-              showEditStaffButton={false}
+              showEditStaffButton={session.role === "cashier"}
               baristaOnlyStaffActions={true}
               printButtonHidden={store.pos.printButtonHidden}
               showLoginLinksTab={session.role !== "cashier"}

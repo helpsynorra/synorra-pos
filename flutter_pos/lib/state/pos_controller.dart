@@ -109,13 +109,13 @@ class PosController extends ChangeNotifier {
   }
 
   void _restoreOnShiftBarista() {
-    final active = LoginActivity.openBaristaShifts(shiftLogs);
+    final active = LoginActivity.openStaffShifts(shiftLogs);
     onShiftBaristas = active
         .map((event) =>
             staffUsers.where((staff) => staff.id == event.userId).firstOrNull)
         .whereType<StaffUser>()
         .toList();
-    final onShift = active.firstOrNull;
+    final onShift = active.where((event) => event.role == 'barista').firstOrNull;
     currentBaristaName = onShift?.name ?? 'Barista';
     currentBaristaUserId = onShift?.userId;
   }
@@ -148,7 +148,7 @@ class PosController extends ChangeNotifier {
       return;
     }
 
-    if (staff.canAccessBaristaShift) {
+    if (staff.canClockShift) {
       await punchShift(staff, type);
       return;
     }
@@ -1160,7 +1160,7 @@ class PosController extends ChangeNotifier {
 
   // --- Shift Clock In / Out ---
   Future<void> punchShift(StaffUser staff, String type) async {
-    if (!staff.canAccessBaristaShift || (type != 'login' && type != 'logout')) {
+    if (!staff.canClockShift || (type != 'login' && type != 'logout')) {
       return;
     }
     final alreadyOnShift =
@@ -1192,7 +1192,7 @@ class PosController extends ChangeNotifier {
 
     await localStorage.addLoginActivity(log);
     shiftLogs.insert(0, log);
-    if (staff.canAccessBaristaShift) _restoreOnShiftBarista();
+    if (staff.canClockShift) _restoreOnShiftBarista();
     syncService.updatePendingCount();
     notifyListeners();
 

@@ -36,6 +36,33 @@ class LoginActivity {
     return openByUser.values.toList()..sort((a, b) => b.at.compareTo(a.at));
   }
 
+  static List<LoginActivity> openStaffShifts(Iterable<LoginActivity> records) {
+    final events = records
+        .where((entry) =>
+            const {'barista', 'pos_cashier'}
+                .contains(entry.role.trim().toLowerCase()) &&
+            entry.userId.isNotEmpty &&
+            (entry.type == 'login' || entry.type == 'logout'))
+        .toList()
+      ..sort((a, b) {
+        final first = DateTime.tryParse(a.at);
+        final second = DateTime.tryParse(b.at);
+        return first != null && second != null
+            ? first.compareTo(second)
+            : a.at.compareTo(b.at);
+      });
+
+    final openByUser = <String, LoginActivity>{};
+    for (final event in events) {
+      if (event.type == 'login') {
+        openByUser[event.userId] = event;
+      } else {
+        openByUser.remove(event.userId);
+      }
+    }
+    return openByUser.values.toList()..sort((a, b) => b.at.compareTo(a.at));
+  }
+
   LoginActivity({
     required this.id,
     required this.userId,

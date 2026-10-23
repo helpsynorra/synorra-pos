@@ -1951,7 +1951,7 @@ export function PosClient({
                   disabled={!canPrint}
                   className={`rounded-lg border py-2 text-xs transition ${
                     canPrint
-                      ? "border-[#101d37] bg-[#101d37] text-white hover:bg-[#243a5e]"
+                      ? "border-[#b90c0c] bg-[#b90c0c] text-white hover:bg-[#970909]"
                       : "border-neutral-300 text-neutral-400"
                   }`}
                 >
@@ -2015,7 +2015,7 @@ export function PosClient({
                     });
                   })
                 }
-                className="relative w-full rounded-xl bg-[#1d2b45] py-3 text-sm font-semibold text-white transition hover:bg-[#2a3c5d] active:scale-[0.99] disabled:opacity-40"
+                className="relative w-full rounded-xl bg-[#b90c0c] py-3 text-sm font-semibold text-white transition hover:bg-[#970909] active:scale-[0.99] disabled:opacity-40"
               >
                 Proceed Order
               </button>
