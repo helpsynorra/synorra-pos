@@ -79,6 +79,18 @@ void main() {
         supabaseService: supabase,
         syncService: sync,
       );
+      final previousSale = Order(
+        id: 'ord-before-waste',
+        createdAt: '2026-10-24T10:00:00Z',
+        baristaName: 'Sam Cashier',
+        items: const [],
+        subtotal: 0,
+        total: 0,
+        paymentMethod: 'cash',
+        ticketNo: '#001',
+        paid: 0,
+      );
+      controller.lastCompletedOrder = previousSale;
       const cashier = StaffUser(
         id: 'pos-cashier-1',
         username: 'sam',
@@ -127,7 +139,7 @@ void main() {
       expect(recordedOrder.total, 0);
       expect(recordedOrder.baristaName, cashier.name);
       expect(recordedOrder.baristaUserId, cashier.id);
-      expect(controller.lastCompletedOrder, isNull);
+      expect(controller.lastCompletedOrder, same(previousSale));
 
       // Pushed order to backend has empty ticketNo and wasteReason
       expect(supabase.lastPushedOrder?.ticketNo, isEmpty);

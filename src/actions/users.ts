@@ -228,13 +228,25 @@ export async function updateStaffUser(input: {
   role: string;
   password: string;
 }) {
-  const session = await requireAdmin();
+  const session = await getSession();
+  if (!session || (session.role !== "admin" && session.role !== "cashier")) {
+    return { error: "Only an Owner or admin can edit staff accounts." };
+  }
+  const isOwner = session.role === "cashier";
   const parsed = parseStaff({ ...input, requirePassword: false });
   if ("error" in parsed) return parsed;
+  if (isOwner && !isAttendanceStaffRole(parsed.role)) {
+    return { error: "Owners can only edit Barista or Cashier accounts." };
+  }
 
-  const store = await getFreshStore({ ownerId: null });
+  const store = await getFreshStore({ ownerId: isOwner ? session.userId : null });
   const user = (store.users ?? []).find((entry) => entry.id === input.id);
-  if (!user) {
+  if (
+    !user ||
+    (isOwner &&
+      (!isAttendanceStaffRole(user.role) ||
+        (user.ownerId && user.ownerId !== session.userId)))
+  ) {
     return { error: "Staff account not found." };
   }
   const taken = (store.users ?? []).some(
@@ -248,6 +260,7 @@ export async function updateStaffUser(input: {
   }
   const admins = (store.users ?? []).filter((entry) => entry.role === "admin");
   if (
+    !isOwner &&
     user.role === "admin" &&
     parsed.role !== "admin" &&
     admins.length < 2
@@ -784,17 +797,37 @@ export async function updateStaffSessionTimes(input: {
 }
 
 export async function deleteStaffSession(input: { loginId?: string; logoutId?: string }) {
-  await requireAdmin();
+  const session = await getSession();
+  if (!session || (session.role !== "admin" && session.role !== "cashier")) {
+    return { error: "Only an Owner or admin can delete staff in / out records." };
+  }
 
   if (!input.loginId && !input.logoutId) {
     return { error: "No in / out record was selected." };
   }
 
   const ids = [input.loginId, input.logoutId].filter((id): id is string => Boolean(id));
-  const store = await getStore();
-  const existingIds = new Set(store.loginActivity.map((entry) => entry.id));
-  const found = ids.some((id) => existingIds.has(id));
-  if (!found) return { error: "In / out record not found." };
+  const store = await getFreshStore();
+  const records = ids.map((id) => store.loginActivity.find((entry) => entry.id === id));
+  if (records.some((record) => !record)) {
+    return { error: "In / out record not found." };
+  }
+  const selectedRecords = records.filter((record): record is LoginActivity => Boolean(record));
+  if (
+    (input.loginId && selectedRecords.find((record) => record.id === input.loginId)?.type !== "login") ||
+    (input.logoutId && selectedRecords.find((record) => record.id === input.logoutId)?.type !== "logout")
+  ) {
+    return { error: "Select valid in and off records." };
+  }
+  if (new Set(selectedRecords.map((record) => record.userId)).size !== 1) {
+    return { error: "The in and off records do not belong to the same staff member." };
+  }
+  if (
+    session.role === "cashier" &&
+    selectedRecords.some((record) => !isAttendanceStaffRole(record.role))
+  ) {
+    return { error: "Owners can only delete Cashier or Barista in / out records." };
+  }
 
   // Delete exactly the rows this session is made of (its loginId and/or
   // logoutId), not the whole array - other sessions/users are untouched.
