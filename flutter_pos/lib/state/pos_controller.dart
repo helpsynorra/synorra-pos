@@ -889,7 +889,10 @@ class PosController extends ChangeNotifier {
   Future<Map<String, dynamic>> recordWasteOrder(
       {required String reason}) async {
     if (!syncService.hasPermission('wasteManagement')) {
-      return {'ok': false, 'error': 'Waste recording is disabled for this POS.'};
+      return {
+        'ok': false,
+        'error': 'Waste recording is disabled for this POS.'
+      };
     }
     if (isVoidRequestPending) {
       return {'ok': false, 'error': 'Resolve the pending void request first.'};

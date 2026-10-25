@@ -125,7 +125,8 @@ class _PosScreenState extends State<PosScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Waste and voided records cannot be printed as sales receipts.'),
+            content: Text(
+                'Waste and voided records cannot be printed as sales receipts.'),
           ),
         );
       }
@@ -178,7 +179,9 @@ class _PosScreenState extends State<PosScreen> {
       return;
     }
 
-    if (item.styles.isNotEmpty || item.addons.isNotEmpty || item.types.isNotEmpty) {
+    if (item.styles.isNotEmpty ||
+        item.addons.isNotEmpty ||
+        item.types.isNotEmpty) {
       showDialog(
         context: context,
         builder: (_) => DrinkOptionsDialog(
@@ -254,7 +257,8 @@ class _PosScreenState extends State<PosScreen> {
     if (targetOrder?.isWaste == true || targetOrder?.voided == true) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Waste and voided records cannot be printed as sales receipts.'),
+          content: Text(
+              'Waste and voided records cannot be printed as sales receipts.'),
         ),
       );
       return;
@@ -402,7 +406,8 @@ class _PosScreenState extends State<PosScreen> {
     final controller = widget.controller;
     if (controller.cart.isEmpty || controller.isProcessing) return;
 
-    final totalWasteItems = controller.cart.fold<int>(0, (total, item) => total + item.qty);
+    final totalWasteItems =
+        controller.cart.fold<int>(0, (total, item) => total + item.qty);
     final presets = ['Spilled', 'Expired', 'Wrong Preparation', 'Damaged'];
 
     final selectedReason = await showDialog<String>(
@@ -416,7 +421,8 @@ class _PosScreenState extends State<PosScreen> {
             final isValid = reasonController.text.trim().isNotEmpty;
 
             return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20)),
               title: Row(
                 children: [
                   Container(
@@ -425,13 +431,15 @@ class _PosScreenState extends State<PosScreen> {
                       color: const Color(0xFFFFF4E5),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.delete_outline_rounded, color: Color(0xFFB45309), size: 22),
+                    child: const Icon(Icons.delete_outline_rounded,
+                        color: Color(0xFFB45309), size: 22),
                   ),
                   const SizedBox(width: 12),
                   const Expanded(
                     child: Text(
                       'Record Wasted Items',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                     ),
                   ),
                 ],
@@ -444,12 +452,16 @@ class _PosScreenState extends State<PosScreen> {
                   children: [
                     Text(
                       'Records $totalWasteItems item(s) as waste and deducts stock from inventory with no sale or payment.',
-                      style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                      style: const TextStyle(
+                          fontSize: 13, color: Color(0xFF64748B)),
                     ),
                     const SizedBox(height: 16),
                     const Text(
                       'Select or enter reason / note:',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF334155)),
                     ),
                     const SizedBox(height: 8),
                     Wrap(
@@ -464,15 +476,19 @@ class _PosScreenState extends State<PosScreen> {
                           backgroundColor: const Color(0xFFF1F5F9),
                           labelStyle: TextStyle(
                             fontSize: 12,
-                            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                            color: isSelected ? const Color(0xFF92400E) : const Color(0xFF475569),
+                            fontWeight:
+                                isSelected ? FontWeight.w700 : FontWeight.w500,
+                            color: isSelected
+                                ? const Color(0xFF92400E)
+                                : const Color(0xFF475569),
                           ),
                           onSelected: (selected) {
                             setDialogState(() {
                               activePreset = selected ? preset : '';
                               if (selected) {
                                 reasonController.text = preset;
-                                reasonController.selection = TextSelection.fromPosition(
+                                reasonController.selection =
+                                    TextSelection.fromPosition(
                                   TextPosition(offset: preset.length),
                                 );
                               }
@@ -487,10 +503,14 @@ class _PosScreenState extends State<PosScreen> {
                       autofocus: true,
                       decoration: InputDecoration(
                         labelText: 'Reason / Note *',
-                        hintText: 'e.g. Spilled, Expired, Wrong Preparation, Damaged',
-                        hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        hintText:
+                            'e.g. Spilled, Expired, Wrong Preparation, Damaged',
+                        hintStyle: const TextStyle(
+                            fontSize: 13, color: Color(0xFF94A3B8)),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 12),
                       ),
                       onChanged: (value) {
                         setDialogState(() {
@@ -512,7 +532,8 @@ class _PosScreenState extends State<PosScreen> {
                 ),
                 FilledButton(
                   onPressed: isValid
-                      ? () => Navigator.pop(dialogContext, reasonController.text.trim())
+                      ? () => Navigator.pop(
+                          dialogContext, reasonController.text.trim())
                       : null,
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFFB42332),
@@ -527,7 +548,8 @@ class _PosScreenState extends State<PosScreen> {
       },
     );
 
-    if (selectedReason == null || selectedReason.trim().isEmpty || !mounted) return;
+    if (selectedReason == null || selectedReason.trim().isEmpty || !mounted)
+      return;
 
     final stockShortfalls =
         controller.syncService.findStockShortfalls(controller.cart);
@@ -537,8 +559,10 @@ class _PosScreenState extends State<PosScreen> {
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: const Text('Insufficient inventory'),
-          content: Text(stockShortfalls.map((item) =>
-              '${item['itemName']}: ${number.format(item['required'])} ${item['unit']} required, ${number.format(item['available'])} available').join('\n')),
+          content: Text(stockShortfalls
+              .map((item) =>
+                  '${item['itemName']}: ${number.format(item['required'])} ${item['unit']} required, ${number.format(item['available'])} available')
+              .join('\n')),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
@@ -550,7 +574,8 @@ class _PosScreenState extends State<PosScreen> {
       return;
     }
 
-    final result = await controller.recordWasteOrder(reason: selectedReason.trim());
+    final result =
+        await controller.recordWasteOrder(reason: selectedReason.trim());
     if (!mounted) return;
     if (result['ok'] == true) {
       closeMobileCheckout?.call();
@@ -591,7 +616,8 @@ class _PosScreenState extends State<PosScreen> {
                     widget.controller.syncService.hasPermission('dineIn'),
                 takeOutEnabled:
                     widget.controller.syncService.hasPermission('takeOut'),
-                canRecordWaste: widget.controller.syncService.hasPermission('wasteManagement'),
+                canRecordWaste: widget.controller.syncService
+                    .hasPermission('wasteManagement'),
                 isFullWidth: true,
                 isKeyboardOpen: keyboardOpen,
                 onProceedOrder: () => _handleProceedOrder(
@@ -632,7 +658,8 @@ class _PosScreenState extends State<PosScreen> {
   }
 
   void _navigateToRestock() {
-    if (!widget.controller.syncService.hasPermission('restockInventory')) return;
+    if (!widget.controller.syncService.hasPermission('restockInventory'))
+      return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute<void>(
         builder: (_) => RestockScreen(
@@ -938,7 +965,7 @@ class _PosScreenState extends State<PosScreen> {
                   canRecordWaste: sync.hasPermission('wasteManagement'),
                   isKeyboardOpen: keyboardOpen,
                   onProceedOrder: _handleProceedOrder,
-                onRecordWaste: _handleRecordWaste,
+                  onRecordWaste: _handleRecordWaste,
                 ),
               ),
             ],
