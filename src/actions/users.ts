@@ -228,7 +228,7 @@ export async function updateStaffUser(input: {
   role: string;
   password: string;
 }) {
-  const session = await getSession();
+    const session = await getSession();
   if (!session || (session.role !== "admin" && session.role !== "cashier")) {
     return { error: "Only an Owner or admin can edit staff accounts." };
   }
