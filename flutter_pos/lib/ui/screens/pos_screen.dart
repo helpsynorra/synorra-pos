@@ -415,12 +415,12 @@ class _PosScreenState extends State<PosScreen> {
       builder: (dialogContext) {
         final reasonController = TextEditingController();
         String activePreset = '';
+        String validationError = '';
 
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            final isValid = reasonController.text.trim().isNotEmpty;
-
             return AlertDialog(
+              scrollable: true,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20)),
               title: Row(
@@ -509,11 +509,14 @@ class _PosScreenState extends State<PosScreen> {
                             fontSize: 13, color: Color(0xFF94A3B8)),
                         border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12)),
+                        errorText:
+                            validationError.isEmpty ? null : validationError,
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 14, vertical: 12),
                       ),
                       onChanged: (value) {
                         setDialogState(() {
+                          validationError = '';
                           if (presets.contains(value.trim())) {
                             activePreset = value.trim();
                           } else {
@@ -531,10 +534,16 @@ class _PosScreenState extends State<PosScreen> {
                   child: const Text('Cancel'),
                 ),
                 FilledButton(
-                  onPressed: isValid
-                      ? () => Navigator.pop(
-                          dialogContext, reasonController.text.trim())
-                      : null,
+                  onPressed: () {
+                    final reason = reasonController.text.trim();
+                    if (reason.isEmpty) {
+                      setDialogState(() {
+                        validationError = 'Enter a reason or choose a preset.';
+                      });
+                      return;
+                    }
+                    Navigator.pop(dialogContext, reason);
+                  },
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFFB42332),
                     foregroundColor: Colors.white,
