@@ -14,11 +14,8 @@ Edit `src/app/page.tsx` — the page updates as you save.
 
 ## POS printers
 
-The POS treats cup labels and customer receipts as separate printer roles. Each
-role has its own Web Serial connection, ESC/POS adapter, paper width, baud rate,
-and persisted print jobs.
 
-- Connect the label and receipt printers independently from the POS header.
+
 - Paper width and baud rate can be changed in the Print dialog. Disconnect a
   printer before changing its baud rate, then reconnect it.
 - Completing an order saves its print jobs before attempting either printer.

@@ -192,12 +192,24 @@ class LegalDocumentScreen extends StatelessWidget {
       'The Merchant is responsible for the accuracy of menu items, prices, tax settings, discounts, stock counts, and sales records, and for complying with applicable tax, invoicing, and consumer laws. Synorra POS records operational activity; it does not guarantee physical stock or cash-drawer accuracy and is not accounting, tax, or legal advice. The Merchant retains its store data. The service operator retains its rights in the software and interface; use of the service does not transfer software ownership.'
     ),
     (
-      'Offline operation and availability',
-      'Offline checkout may use cached data and queue changes for later synchronization. Pending changes can be delayed until connectivity returns. Review the sync status and reconcile records before switching stores or devices. Internet, power, device, printer, hosting, and third-party outages can interrupt service. The system is supplied on an as-available basis and no uptime SLA or guaranteed offline synchronization is currently offered.'
+      'Internal management tool and tax responsibility',
+      'Synorra POS is an operational and internal-management tool. Internal order slips are intended for store operations, not as BIR-compliant fiscal slips; exact printed content depends on the configured feature and printer settings. Synorra is not a tax-filing agent or BIR compliance officer. The Merchant is responsible for business registration (including BIR Form 2303), obtaining any required Authority to Print for manual slips or Permit to Use for electronic POS systems, and complying with applicable tax, invoicing, and consumer laws.'
+    ),
+    (
+      'Database migrations and self-managed deployments',
+      'Some Finance and shift-management features require corresponding Supabase database migrations or schema updates. On self-managed deployments, the Merchant or administrator is responsible for applying required updates. Features may be unavailable or experience errors when updates have not been applied.'
+    ),
+    (
+      'Camera attendance and personal information',
+      'Where the Merchant enables photo attendance, users may be asked to provide a live photo at clock-in and clock-out. These images are used solely for store timekeeping and attendance photo verification; Synorra POS does not use facial recognition technology. The Merchant is responsible for informing staff, configuring attendance appropriately, limiting access to attendance records, and handling personal information under applicable privacy requirements, including the Philippine Data Privacy Act of 2012 (RA 10173).'
+    ),
+    (
+      'Offline operation, order slips, and availability',
+      'Synorra POS supports local offline transaction queueing. Offline operations depend on local device storage and device integrity; queued changes may remain pending until the device reconnects. The Merchant is responsible for reviewing synchronization status and reconciling records. Synorra is not responsible for loss caused by cleared browser or app data, device damage, or failure to reconnect and synchronize offline queues. Internet, power, device, printer, hosting, and third-party outages can interrupt service. The Service is provided on an as-is and as-available basis; no uptime service-level agreement or guaranteed offline synchronization is offered.'
     ),
     (
       'Intellectual property and limits',
-      'The Merchant is responsible for keeping any legally required copies of business records. Reports, printing, and account deletion are subject to the features currently available; no separate export window or backup service is promised. To the extent permitted by law, the service is provided without guarantees beyond those expressly agreed in writing. The operator is not responsible for indirect losses caused by outages, incorrect configuration, inaccurate data, or user misuse. Nothing in these terms excludes liability that cannot legally be excluded.'
+      'The Merchant must keep any business records required by law and verify slip, tax, and regulatory settings with qualified advisers. To the extent permitted by law, Synorra and its founders and developers are not liable for BIR tax-mapping penalties, audit fines, business closures, or revenue losses caused by service interruptions, internet outages, hardware or printer failures, or cashier errors. The Merchant remains responsible for its own configuration and operations. Nothing in these Terms excludes liability that cannot legally be excluded.'
     ),
     (
       'Suspension and termination',
@@ -205,30 +217,30 @@ class LegalDocumentScreen extends StatelessWidget {
     ),
     (
       'Updates and contact',
-      'These terms may be revised when the service changes. Continued use after a revision takes effect is subject to the updated terms, where permitted by law. Contact help.synorra@gmail.com with questions.'
+      'These Terms are governed by the laws of the Republic of the Philippines, including the Civil Code, the E-Commerce Act (RA 8792), and the Consumer Act (RA 7394), as applicable. These Terms may be revised when the Service changes. Contact help.synorra@gmail.com with questions.'
     ),
   ];
 
   static const _privacySections = <(String, String)>[
     (
-      'Customer data collected by the current POS',
-      'The current POS does not provide customer-profile fields for customer name, phone, email, physical address, loyalty accounts, or digital invoices, and it does not send digital receipts. Do not enter such information into free-text fields unless the Merchant has a lawful purpose and has given the required notice. If a future feature collects customer details, this policy and the customer-facing notice must be updated before use.'
+      'internal data collected by the current POS',
+      'The current POS does not provide internal-profile fields for internal name, phone, email, physical address, loyalty accounts, or digital invoices, and it does not send digital slips. Do not enter such information into free-text fields unless the Merchant has a lawful purpose and has given the required notice. If a future feature collects internal details, this policy and the internal-facing notice must be updated before use.'
     ),
     (
       'Transaction and payment information',
-      'The POS stores order items, totals, discounts or promotion labels, payment-method labels (Cash, GCash, or Maya), amounts paid and change, ticket numbers, timestamps, and void details. GCash and Maya are recorded as payment-method choices only; the current POS does not connect to a payment gateway or collect card numbers, CVV codes, or bank credentials. No PayMongo, Stripe, or other payment processor integration is configured in the current code. The POS does not record cash-drawer opening, closing, or cash-release events.'
+      'The POS stores order items, totals, discounts or promotion labels, payment-method labels (Cash, GCash, or Maya), amounts paid and change, ticket numbers, timestamps, and void details. GCash and Maya are recorded as payment-method choices only; the current POS does not connect to a payment gateway or collect card numbers, CVV codes, or bank credentials. No PayMongo, Stripe, or other payment processor integration is configured in the current code. Finance features may also record shift opening floats, closing cash counts, sales totals, and cash expenses.'
     ),
     (
       'Staff, audit, and technical information',
-      'Staff and Admin records may include name, username, email, role, permissions, and password credentials. The system records login/logout and shift activity, orders and void requests, inventory and restock changes, timestamps, and related staff identifiers. New or changed web passwords use bcrypt; legacy records may remain in the older format until they are upgraded. Mobile offline credentials use the device secure-storage facility. The app does not request a staff PIN or phone number. The app itself does not maintain an IP-address or browser-fingerprint profile; hosting providers may collect network, device, and access logs under their own notices.'
+      'Staff and Admin records may include name, username, email, role, permissions, password credentials, and Terms of Use consent metadata. The system records login/logout and shift activity, orders and void requests, inventory and restock changes, timestamps, and related staff identifiers. Where an owner enables photo attendance, the device captures and uploads a live photo with the clock-in or clock-out record for store timekeeping and photo verification. Synorra POS does not use facial recognition technology. New or changed web passwords use bcrypt; legacy records may remain in the older format until they are upgraded. Mobile offline credentials use the device secure-storage facility. The app does not request a staff phone number. The app itself does not maintain an IP-address or browser-fingerprint profile; hosting providers may collect network, device, and access logs under their own notices.'
     ),
     (
       'Purposes of processing',
-      'Information is used to authenticate users and apply role permissions; record sales, print receipts and labels, apply discounts, manage inventory and restocks, generate operational reports, attribute voids and staff activity, synchronize offline changes, secure accounts, and troubleshoot the service. The current system does not provide customer loyalty or marketing features.'
+      'Information is used to authenticate users and apply role permissions; record sales, print internal order slips and other operational documents, apply discounts, manage inventory and restocks, generate operational and finance reports, attribute voids and staff activity, verify attendance using staff-selected photo modes, synchronize offline changes, secure accounts, and troubleshoot the service. Attendance photos are used solely for store timekeeping and photo verification; the system does not use facial recognition. The current system does not provide internal loyalty or marketing features.'
     ),
     (
       'Sharing and service providers',
-      'Store records are synchronized with the Supabase project configured for Synorra POS. The website is hosted through Vercel. Gmail SMTP is used to send Owner password-reset emails. The app can connect to Bluetooth printers to print selected order information. No payment-gateway or customer SMS/email-receipt provider is integrated in the current code. Information may also be disclosed when required by a valid legal request. Confirm the providers and their data-processing terms for your deployment.'
+      'Synorra POS does not sell, trade, or rent personal information or store sales history to third parties for marketing. Store records are synchronized with the Supabase project configured for Synorra POS; the website is hosted through Vercel; and Gmail SMTP is used to send Owner password-reset emails. The app can connect to Bluetooth printers to print selected order information. Information may also be disclosed when required by a valid legal request. Confirm the providers and their data-processing terms for your deployment.'
     ),
     (
       'Storage and security',
@@ -236,15 +248,23 @@ class LegalDocumentScreen extends StatelessWidget {
     ),
     (
       'Retention and deletion',
-      'The current code does not set an automatic retention or archival schedule. Store and audit records remain in local or cloud storage until deleted through available account or record-management functions, subject to provider backup cycles. Merchants must preserve records for any applicable legal and tax period. In the Philippines, RA 11976 amended the general preservation period for books of accounts and other accounting records to five years, subject to its terms and exceptions; obtain tax advice for your business and keep any required records before deleting an account. The POS does not automatically enforce that retention period.'
+      'The current code does not set an automatic retention schedule tied to a subscription, nor does it provide a full-store data export feature. Some reports, including attendance summaries, can be downloaded in CSV format. Account and record deletion are subject to the features currently available; Owner-account deletion permanently removes store data. Preserve records required by law before deleting data. In the Philippines, RA 11976 amended the general preservation period for books of accounts and other accounting records to five years, subject to its terms and exceptions; obtain tax advice for your business.'
     ),
     (
       'Data subject rights and requests',
-      'Staff and other individuals may contact the responsible business to request information about, access to, or correction of personal data, or to ask about deletion/blocking. The account owner can manage staff accounts and request Owner-account deletion in Support > Account. Deletion may be limited where records must be retained by law or are needed for legal claims. The current POS does not store customer profiles; customer requests about information collected outside the POS should be directed to the business that collected it.'
+      'Staff and other individuals may contact the responsible business to request information about, access to, or correction of personal data, or to ask about deletion/blocking. The account owner can manage staff accounts and request Owner-account deletion in Support > Account. Deletion may be limited where records must be retained by law or are needed for legal claims. The current POS does not store internal profiles; internal requests about information collected outside the POS should be directed to the business that collected it.'
     ),
     (
       'Privacy contact',
-      'Service name: Synorra POS. For privacy inquiries or data requests, email help.synorra@gmail.com or call +63 981 772 6937. The legal operating entity and appointed Data Protection Officer/Privacy Lead are not identified in the system configuration; the operator must confirm and publish those details before treating this draft as the official privacy notice.'
+      'For privacy inquiries or data-subject requests, contact the Synorra POS developer team at help.synorra@gmail.com. Service contact location: Zamboanga City, Philippines. The operator should confirm and publish the designated Compliance Officer for Privacy (COP) and legal entity details before treating this notice as final.'
+    ),
+    (
+      'Camera attendance',
+      'When a store selects an attendance mode that requires a photo, the POS captures a live image at clock-in and clock-out and stores it privately with the attendance record in the configured Supabase storage. The photo is used solely for store timekeeping and attendance photo verification. Synorra POS does not use facial recognition technology. The current code does not set an automatic attendance-photo retention schedule; the responsible business should manage access and retention in accordance with applicable requirements.'
+    ),
+    (
+      'Philippine privacy framework',
+      'Personal information is handled with reference to the Philippine Data Privacy Act of 2012 (Republic Act No. 10173) and its implementing rules. The business using Synorra POS is responsible for determining and documenting its lawful basis, providing required notices, limiting collection and retention, securing access, and responding to data-subject requests. This statement is not a certification of legal compliance. The legal entity of the service operator and its appointed Data Protection Officer/Privacy Lead must be confirmed and published by the operator.'
     ),
   ];
 
@@ -269,7 +289,7 @@ class LegalDocumentScreen extends StatelessWidget {
                   const TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
           const SizedBox(height: 12),
           const Text(
-            'Synorra POS · Last updated October 19, 2026',
+            'Synorra POS · Last updated October 25, 2026',
             style: TextStyle(
               color: Color(0xFF667085),
               fontSize: 13,

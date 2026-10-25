@@ -1407,7 +1407,13 @@ class PosController extends ChangeNotifier {
   }
 
   // --- Shift Clock In / Out ---
-  Future<void> punchShift(StaffUser staff, String type) async {
+  Future<void> punchShift(
+    StaffUser staff,
+    String type, {
+    String? username,
+    String? password,
+    Uint8List? photoBytes,
+  }) async {
     if (!staff.canClockShift || (type != 'login' && type != 'logout')) {
       return;
     }
@@ -1418,13 +1424,23 @@ class PosController extends ChangeNotifier {
       return;
     }
 
-    await _recordLoginActivity(staff, type, idPrefix: 'shift');
+    await _recordLoginActivity(
+      staff,
+      type,
+      idPrefix: 'shift',
+      attendanceUsername: username,
+      attendancePassword: password,
+      attendancePhoto: photoBytes,
+    );
   }
 
   Future<void> _recordLoginActivity(
     StaffUser staff,
     String type, {
     required String idPrefix,
+    String? attendanceUsername,
+    String? attendancePassword,
+    Uint8List? attendancePhoto,
   }) async {
     final now = ManilaTime.utcNowIso8601();
     final log = LoginActivity(
@@ -1438,13 +1454,35 @@ class PosController extends ChangeNotifier {
       isSynced: false,
     );
 
+    if (staff.canClockShift) {
+      final result = await supabaseService.pushLoginActivity(
+        log,
+        username: attendanceUsername,
+        password: attendancePassword,
+        photoBytes: attendancePhoto,
+      );
+      if (result['ok'] != true) {
+        throw Exception(
+            result['error'] ?? 'Attendance could not be verified or recorded.');
+      }
+      log.photoPath = result['photoPath'] as String?;
+      log.isSynced = true;
+      await localStorage.addLoginActivity(log);
+      shiftLogs.insert(0, log);
+      _restoreOnShiftBarista();
+      syncService.updatePendingCount();
+      notifyListeners();
+      await syncService.syncAll();
+      return;
+    }
+
     await localStorage.addLoginActivity(log);
     shiftLogs.insert(0, log);
-    if (staff.canClockShift) _restoreOnShiftBarista();
     syncService.updatePendingCount();
     notifyListeners();
 
-    final ok = await supabaseService.pushLoginActivity(log);
+    final result = await supabaseService.pushLoginActivity(log);
+    final ok = result['ok'] == true;
     if (ok) {
       log.isSynced = true;
       await localStorage.removePendingLoginActivity(log.id);

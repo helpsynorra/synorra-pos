@@ -290,13 +290,13 @@ export function LandingPage() {
         <div className="mx-auto mt-10 flex max-w-7xl flex-col gap-4 border-t border-white/10 pt-5 text-[10px] tracking-[0.12em] text-white/35 sm:flex-row sm:items-center sm:justify-between">
           <p>© {new Date().getFullYear()} Synorra POS</p>
           <nav aria-label="Legal" className="flex flex-wrap gap-x-5 gap-y-2">
-            <Link href="/terms" className="transition hover:text-white">
+            <Link href="/terms" target="_blank" rel="noreferrer" className="transition hover:text-white">
               Terms of Use
             </Link>
-            <Link href="/privacy" className="transition hover:text-white">
-              Privacy Policy
+            <Link href="/privacy" target="_blank" rel="noreferrer" className="transition hover:text-white">
+              Privacy &amp; Cookie Policy
             </Link>
-            <Link href="/cookies" className="transition hover:text-white">
+            <Link href="/cookies" target="_blank" rel="noreferrer" className="transition hover:text-white">
               Cookie Policy
             </Link>
           </nav>

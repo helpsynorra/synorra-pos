@@ -16,7 +16,7 @@ void main() {
       username: 'manager',
       password: 'pass',
       name: 'Manager',
-      role: 'manager',
+      role: 'admin',
     );
     const barista = StaffUser(
       id: 'barista-1',
@@ -89,5 +89,53 @@ void main() {
     ]);
 
     expect(active.map((shift) => shift.userId), ['barista-b']);
+  });
+
+  test('cashiers and baristas can remain on shift at the same time', () {
+    final active = LoginActivity.openStaffShifts([
+      LoginActivity(
+        id: 'barista-a-in',
+        userId: 'barista-a',
+        username: 'a',
+        name: 'Barista A',
+        role: 'barista',
+        type: 'login',
+        at: '2026-09-30T01:00:00Z',
+      ),
+      LoginActivity(
+        id: 'barista-b-in',
+        userId: 'barista-b',
+        username: 'b',
+        name: 'Barista B',
+        role: 'barista',
+        type: 'login',
+        at: '2026-09-30T02:00:00Z',
+      ),
+      LoginActivity(
+        id: 'cashier-a-in',
+        userId: 'cashier-a',
+        username: 'ca',
+        name: 'Cashier A',
+        role: 'pos_cashier',
+        type: 'login',
+        at: '2026-09-30T03:00:00Z',
+      ),
+      LoginActivity(
+        id: 'cashier-b-in',
+        userId: 'cashier-b',
+        username: 'cb',
+        name: 'Cashier B',
+        role: 'pos_cashier',
+        type: 'login',
+        at: '2026-09-30T04:00:00Z',
+      ),
+    ]);
+
+    expect(active.map((shift) => shift.userId).toSet(), {
+      'barista-a',
+      'barista-b',
+      'cashier-a',
+      'cashier-b',
+    });
   });
 }

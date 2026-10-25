@@ -4,8 +4,10 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../models/staff_user.dart';
 import '../../state/pos_controller.dart';
 import 'pos_screen.dart';
@@ -295,7 +297,18 @@ class _LoginScreenState extends State<LoginScreen>
     setState(() => _showMobileAuthForm = true);
   }
 
-  void _openLegalDocument(String title) {
+  Future<void> _openLegalDocument(String title) async {
+    if (kIsWeb) {
+      final path = title == 'Terms of Use' ? '/terms' : '/privacy';
+      final opened = await launchUrl(
+        Uri.base.resolve(path),
+        webOnlyWindowName: '_blank',
+      );
+      if (!opened && mounted) {
+        setState(() => _errorMessage = 'Could not open the legal document.');
+      }
+      return;
+    }
     Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => LegalDocumentScreen(title: title),
     ));
@@ -330,8 +343,8 @@ class _LoginScreenState extends State<LoginScreen>
         );
         final statusReady = progress >= 0.62;
         final blur = (1 - reveal) * 10;
-        final mobileAuthForm = screenWidth <= 760 &&
-            (_showMobileAuthForm || _mustChangePassword);
+        final mobileAuthForm =
+            screenWidth <= 760 && (_showMobileAuthForm || _mustChangePassword);
 
         return AnnotatedRegion<SystemUiOverlayStyle>(
           value: SystemUiOverlayStyle(
@@ -342,9 +355,8 @@ class _LoginScreenState extends State<LoginScreen>
             systemNavigationBarIconBrightness: Brightness.dark,
           ),
           child: Scaffold(
-            backgroundColor: mobileAuthForm
-                ? Colors.white
-                : const Color(0xFFF4F6F9),
+            backgroundColor:
+                mobileAuthForm ? Colors.white : const Color(0xFFF4F6F9),
             // Keep the brand panel's height and artwork fixed while typing on
             // tablet. The right-side form scrolls above the keyboard instead.
             resizeToAvoidBottomInset: !tabletLayout,
@@ -447,289 +459,377 @@ class _LoginScreenState extends State<LoginScreen>
                                       ),
                                     Expanded(
                                       flex: 1,
-                                        child: ColoredBox(
-                                          color: tabletLayout
-                                              ? Colors.white
-                                              : Colors.transparent,
-                                          child: Center(
-                                            child: SingleChildScrollView(
-                                    controller: tabletLayout
-                                        ? _tabletAuthScrollController
-                                        : null,
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: tabletLayout
-                                          ? 20
-                                          : (screenWidth < 420 ? 28 : 44),
-                                      vertical: compact ? 18 : 32,
-                                    ).copyWith(
-                                      bottom: tabletLayout && keyboardOpen
-                                          ? MediaQuery.viewInsetsOf(context)
-                                                  .bottom +
-                                              24
-                                          : (compact ? 18 : 32),
-                                    ),
-                                    child: ConstrainedBox(
-                                      constraints:
-                                          const BoxConstraints(maxWidth: 560),
-                                      child: Container(
-                                        padding: EdgeInsets.all(tabletLayout
-                                            ? 10
-                                            : (screenWidth < 420 ? 24 : 36)),
-                                        decoration: tabletLayout
-                                            ? null
-                                            : BoxDecoration(
-                                                color: const Color.fromRGBO(
-                                                    255, 255, 255, 0.88),
-                                                borderRadius:
-                                                    BorderRadius.circular(32),
-                                                border: Border.all(
-                                                    color: const Color(
-                                                        0xFFDCE5F0)),
-                                                boxShadow: const [
-                                                  BoxShadow(
-                                                    color: Color(0x1A263B65),
-                                                    blurRadius: 42,
-                                                    offset: Offset(0, 20),
-                                                  ),
-                                                ],
-                                              ),
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.stretch,
-                                          children: [
-                                            if (!tabletLayout)
-                                              Center(
+                                      child: ColoredBox(
+                                        color: tabletLayout
+                                            ? Colors.white
+                                            : Colors.transparent,
+                                        child: Center(
+                                          child: SingleChildScrollView(
+                                            controller: tabletLayout
+                                                ? _tabletAuthScrollController
+                                                : null,
+                                            padding: EdgeInsets.symmetric(
+                                              horizontal: tabletLayout
+                                                  ? 20
+                                                  : (screenWidth < 420
+                                                      ? 28
+                                                      : 44),
+                                              vertical: compact ? 18 : 32,
+                                            ).copyWith(
+                                              bottom:
+                                                  tabletLayout && keyboardOpen
+                                                      ? MediaQuery.viewInsetsOf(
+                                                                  context)
+                                                              .bottom +
+                                                          24
+                                                      : (compact ? 18 : 32),
+                                            ),
+                                            child: ConstrainedBox(
+                                              constraints: const BoxConstraints(
+                                                  maxWidth: 560),
                                               child: Container(
-                                                width: logoSize,
-                                                height: logoSize,
-                                                decoration: BoxDecoration(
-                                                  color: const Color.fromRGBO(
-                                                      255, 255, 255, 0.88),
-                                                  borderRadius:
-                                                      BorderRadius.circular(42),
-                                                  boxShadow: const [
-                                                    BoxShadow(
-                                                      color: Color(0x1A263B65),
-                                                      blurRadius: 36,
-                                                      offset: Offset(0, 18),
-                                                    ),
-                                                  ],
-                                                ),
-                                                clipBehavior: Clip.antiAlias,
                                                 padding: EdgeInsets.all(
-                                                    logoSize * 0.13),
-                                                child: Image.asset(
-                                                  'lib/src/images/logo-app-transparent.png',
-                                                  fit: BoxFit.contain,
-                                                ),
-                                              ),
-                                            ),
-                                            SizedBox(height: verticalGap),
-                                            Text(
-                                              tabletLayout
-                                                  ? (_isNewLogin
-                                                      ? 'Create Your Account'
-                                                      : 'Welcome Back!')
-                                                  : 'SYNORRA - POS',
-                                              textAlign: tabletLayout
-                                                  ? TextAlign.left
-                                                  : TextAlign.center,
-                                              style: TextStyle(
-                                                color: navy,
-                                                fontSize: tabletLayout ? 27 : 20,
-                                                fontWeight: tabletLayout
-                                                    ? FontWeight.w700
-                                                    : FontWeight.w500,
-                                                letterSpacing: 1.4,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 8),
-                                            _entrance(
-                                              progress,
-                                              start: 0.47,
-                                              end: 0.65,
-                                              offsetY: 10,
-                                              child: Text(
-                                                tabletLayout
-                                                    ? (_isNewLogin
-                                                        ? 'Create your SynOrra POS account'
-                                                        : 'Log in to your account')
-                                                    : 'Build Smarter. Grow Together.',
-                                                textAlign: tabletLayout
-                                                    ? TextAlign.left
-                                                    : TextAlign.center,
-                                                style: TextStyle(
-                                                  color: tabletLayout
-                                                      ? navy
-                                                      : Color(0xFF9AA6BF),
-                                                  fontSize: 15,
-                                                  letterSpacing: 0.4,
-                                                ),
-                                              ),
-                                            ),
-                                            SizedBox(height: compact ? 28 : 42),
-                                            if (!_mustChangePassword) ...[
-                                              if (!tabletLayout)
-                                                _entrance(
-                                                  progress,
-                                                  start: 0.49,
-                                                  end: 0.73,
-                                                  offsetY: 20,
-                                                  child: _loginModeSelector(navy),
-                                                ),
-                                              SizedBox(
-                                                  height: tabletLayout
-                                                      ? 8
-                                                      : (compact ? 24 : 34)),
-                                            ] else ...[
-                                              const Text(
-                                                'Credentials verified. Set a new password to finish signing in.',
-                                                textAlign: TextAlign.center,
-                                                style: TextStyle(
-                                                    color: Color(0xFF66738E),
-                                                    fontSize: 14),
-                                              ),
-                                              const SizedBox(height: 24),
-                                            ],
-                                            if (!_mustChangePassword)
-                                              AnimatedOpacity(
-                                                duration: const Duration(
-                                                    milliseconds: 180),
-                                                opacity: _isLoading ? 0.6 : 1,
-                                                child: _entrance(
-                                                  progress,
-                                                  start: 0.54,
-                                                  end: 0.78,
-                                                  offsetY: 15,
-                                                  child: Column(
-                                                    crossAxisAlignment:
-                                                        CrossAxisAlignment
-                                                            .stretch,
-                                                    children: [
-                                                      _fieldLabel('Email'),
-                                                      const SizedBox(height: 8),
-                                                      TextField(
-                                                        focusNode:
-                                                            _emailFocusNode,
-                                                        controller:
-                                                            _emailController,
-                                                        keyboardType:
-                                                            TextInputType
-                                                                .emailAddress,
-                                                        textInputAction:
-                                                            TextInputAction
-                                                                .next,
-                                                        style: const TextStyle(
-                                                            color: navy,
-                                                            fontSize: 16),
-                                                        cursorColor: navy,
-                                                        decoration:
-                                                            _inputDecoration(
-                                                          hint:
-                                                              'Enter your email',
-                                                          icon: Icons
-                                                              .mail_outline,
+                                                    tabletLayout
+                                                        ? 10
+                                                        : (screenWidth < 420
+                                                            ? 24
+                                                            : 36)),
+                                                decoration: tabletLayout
+                                                    ? null
+                                                    : BoxDecoration(
+                                                        color: const Color
+                                                            .fromRGBO(255, 255,
+                                                            255, 0.88),
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(32),
+                                                        border: Border.all(
+                                                            color: const Color(
+                                                                0xFFDCE5F0)),
+                                                        boxShadow: const [
+                                                          BoxShadow(
+                                                            color: Color(
+                                                                0x1A263B65),
+                                                            blurRadius: 42,
+                                                            offset:
+                                                                Offset(0, 20),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                child: Column(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment
+                                                          .stretch,
+                                                  children: [
+                                                    if (!tabletLayout)
+                                                      Center(
+                                                        child: Container(
+                                                          width: logoSize,
+                                                          height: logoSize,
+                                                          decoration:
+                                                              BoxDecoration(
+                                                            color: const Color
+                                                                .fromRGBO(255,
+                                                                255, 255, 0.88),
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        42),
+                                                            boxShadow: const [
+                                                              BoxShadow(
+                                                                color: Color(
+                                                                    0x1A263B65),
+                                                                blurRadius: 36,
+                                                                offset: Offset(
+                                                                    0, 18),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                          clipBehavior:
+                                                              Clip.antiAlias,
+                                                          padding:
+                                                              EdgeInsets.all(
+                                                                  logoSize *
+                                                                      0.13),
+                                                          child: Image.asset(
+                                                            'lib/src/images/logo-app-transparent.png',
+                                                            fit: BoxFit.contain,
+                                                          ),
                                                         ),
                                                       ),
+                                                    SizedBox(
+                                                        height: verticalGap),
+                                                    Text(
+                                                      tabletLayout
+                                                          ? (_isNewLogin
+                                                              ? 'Create Your Account'
+                                                              : 'Welcome Back!')
+                                                          : 'SYNORRA - POS',
+                                                      textAlign: tabletLayout
+                                                          ? TextAlign.left
+                                                          : TextAlign.center,
+                                                      style: TextStyle(
+                                                        color: navy,
+                                                        fontSize: tabletLayout
+                                                            ? 27
+                                                            : 20,
+                                                        fontWeight: tabletLayout
+                                                            ? FontWeight.w700
+                                                            : FontWeight.w500,
+                                                        letterSpacing: 1.4,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 8),
+                                                    _entrance(
+                                                      progress,
+                                                      start: 0.47,
+                                                      end: 0.65,
+                                                      offsetY: 10,
+                                                      child: Text(
+                                                        tabletLayout
+                                                            ? (_isNewLogin
+                                                                ? 'Create your SynOrra POS account'
+                                                                : 'Log in to your account')
+                                                            : 'Build Smarter. Grow Together.',
+                                                        textAlign: tabletLayout
+                                                            ? TextAlign.left
+                                                            : TextAlign.center,
+                                                        style: TextStyle(
+                                                          color: tabletLayout
+                                                              ? navy
+                                                              : Color(
+                                                                  0xFF9AA6BF),
+                                                          fontSize: 15,
+                                                          letterSpacing: 0.4,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    SizedBox(
+                                                        height:
+                                                            compact ? 28 : 42),
+                                                    if (!_mustChangePassword) ...[
+                                                      if (!tabletLayout)
+                                                        _entrance(
+                                                          progress,
+                                                          start: 0.49,
+                                                          end: 0.73,
+                                                          offsetY: 20,
+                                                          child:
+                                                              _loginModeSelector(
+                                                                  navy),
+                                                        ),
+                                                      SizedBox(
+                                                          height: tabletLayout
+                                                              ? 8
+                                                              : (compact
+                                                                  ? 24
+                                                                  : 34)),
+                                                    ] else ...[
+                                                      const Text(
+                                                        'Credentials verified. Set a new password to finish signing in.',
+                                                        textAlign:
+                                                            TextAlign.center,
+                                                        style: TextStyle(
+                                                            color: Color(
+                                                                0xFF66738E),
+                                                            fontSize: 14),
+                                                      ),
                                                       const SizedBox(
-                                                          height: 12),
-                                                      AnimatedSize(
+                                                          height: 24),
+                                                    ],
+                                                    if (!_mustChangePassword)
+                                                      AnimatedOpacity(
                                                         duration:
                                                             const Duration(
                                                                 milliseconds:
-                                                                    300),
-                                                        curve:
-                                                            Curves.easeOutCubic,
-                                                        child: AnimatedSwitcher(
-                                                          duration:
-                                                              const Duration(
-                                                                  milliseconds:
-                                                                      350),
-                                                          switchInCurve: Curves
-                                                              .easeOutCubic,
-                                                          switchOutCurve: Curves
-                                                              .easeInCubic,
-                                                          transitionBuilder: (child,
-                                                                  animation) =>
-                                                              SlideTransition(
-                                                            position:
-                                                                Tween<Offset>(
-                                                              begin: Offset(
-                                                                  _isNewLogin
-                                                                      ? 0.18
-                                                                      : -0.18,
-                                                                  0),
-                                                              end: Offset.zero,
-                                                            ).animate(
-                                                                    animation),
-                                                            child:
-                                                                FadeTransition(
-                                                              opacity:
-                                                                  animation,
-                                                              child: child,
-                                                            ),
-                                                          ),
-                                                          child: _isNewLogin
-                                                              ? Column(
-                                                                  key: const ValueKey(
-                                                                      'register-fields'),
-                                                                  crossAxisAlignment:
-                                                                      CrossAxisAlignment
-                                                                          .stretch,
-                                                                  children: [
-                                                                    _fieldLabel(
-                                                                        'Username'),
-                                                                    const SizedBox(
-                                                                        height:
-                                                                            8),
-                                                                    TextField(
-                                                                      controller:
-                                                                          _usernameController,
-                                                                      textInputAction:
-                                                                          TextInputAction
-                                                                              .next,
-                                                                      style: const TextStyle(
-                                                                          color:
-                                                                              navy,
-                                                                          fontSize:
-                                                                              16),
-                                                                      cursorColor:
-                                                                          navy,
-                                                                      decoration:
-                                                                          _inputDecoration(
-                                                                        hint:
-                                                                            'Enter your username',
-                                                                        icon: Icons
-                                                                            .person_outline,
-                                                                      ),
-                                                                    ),
-                                                                  ],
-                                                                )
-                                                              : const SizedBox(
-                                                                  key: ValueKey(
-                                                                      'sign-in-fields'),
-                                                                  width: double
-                                                                      .infinity,
-                                                                  height: 0,
+                                                                    180),
+                                                        opacity: _isLoading
+                                                            ? 0.6
+                                                            : 1,
+                                                        child: _entrance(
+                                                          progress,
+                                                          start: 0.54,
+                                                          end: 0.78,
+                                                          offsetY: 15,
+                                                          child: Column(
+                                                            crossAxisAlignment:
+                                                                CrossAxisAlignment
+                                                                    .stretch,
+                                                            children: [
+                                                              _fieldLabel(
+                                                                  'Email'),
+                                                              const SizedBox(
+                                                                  height: 8),
+                                                              TextField(
+                                                                focusNode:
+                                                                    _emailFocusNode,
+                                                                controller:
+                                                                    _emailController,
+                                                                keyboardType:
+                                                                    TextInputType
+                                                                        .emailAddress,
+                                                                textInputAction:
+                                                                    TextInputAction
+                                                                        .next,
+                                                                style:
+                                                                    const TextStyle(
+                                                                        color:
+                                                                            navy,
+                                                                        fontSize:
+                                                                            16),
+                                                                cursorColor:
+                                                                    navy,
+                                                                decoration:
+                                                                    _inputDecoration(
+                                                                  hint:
+                                                                      'Enter your email',
+                                                                  icon: Icons
+                                                                      .mail_outline,
                                                                 ),
+                                                              ),
+                                                              const SizedBox(
+                                                                  height: 12),
+                                                              AnimatedSize(
+                                                                duration:
+                                                                    const Duration(
+                                                                        milliseconds:
+                                                                            300),
+                                                                curve: Curves
+                                                                    .easeOutCubic,
+                                                                child:
+                                                                    AnimatedSwitcher(
+                                                                  duration: const Duration(
+                                                                      milliseconds:
+                                                                          350),
+                                                                  switchInCurve:
+                                                                      Curves
+                                                                          .easeOutCubic,
+                                                                  switchOutCurve:
+                                                                      Curves
+                                                                          .easeInCubic,
+                                                                  transitionBuilder:
+                                                                      (child, animation) =>
+                                                                          SlideTransition(
+                                                                    position: Tween<
+                                                                        Offset>(
+                                                                      begin: Offset(
+                                                                          _isNewLogin
+                                                                              ? 0.18
+                                                                              : -0.18,
+                                                                          0),
+                                                                      end: Offset
+                                                                          .zero,
+                                                                    ).animate(
+                                                                        animation),
+                                                                    child:
+                                                                        FadeTransition(
+                                                                      opacity:
+                                                                          animation,
+                                                                      child:
+                                                                          child,
+                                                                    ),
+                                                                  ),
+                                                                  child: _isNewLogin
+                                                                      ? Column(
+                                                                          key: const ValueKey(
+                                                                              'register-fields'),
+                                                                          crossAxisAlignment:
+                                                                              CrossAxisAlignment.stretch,
+                                                                          children: [
+                                                                            _fieldLabel('Username'),
+                                                                            const SizedBox(height: 8),
+                                                                            TextField(
+                                                                              controller: _usernameController,
+                                                                              textInputAction: TextInputAction.next,
+                                                                              style: const TextStyle(color: navy, fontSize: 16),
+                                                                              cursorColor: navy,
+                                                                              decoration: _inputDecoration(
+                                                                                hint: 'Enter your username',
+                                                                                icon: Icons.person_outline,
+                                                                              ),
+                                                                            ),
+                                                                          ],
+                                                                        )
+                                                                      : const SizedBox(
+                                                                          key: ValueKey(
+                                                                              'sign-in-fields'),
+                                                                          width:
+                                                                              double.infinity,
+                                                                          height:
+                                                                              0,
+                                                                        ),
+                                                                ),
+                                                              ),
+                                                              const SizedBox(
+                                                                  height: 18),
+                                                              _fieldLabel(
+                                                                  'Password'),
+                                                              const SizedBox(
+                                                                  height: 8),
+                                                              TextField(
+                                                                controller:
+                                                                    _passwordController,
+                                                                focusNode:
+                                                                    tabletLayout
+                                                                        ? _tabletPasswordFocusNode
+                                                                        : null,
+                                                                obscureText:
+                                                                    _obscurePassword,
+                                                                textInputAction:
+                                                                    TextInputAction
+                                                                        .done,
+                                                                style:
+                                                                    const TextStyle(
+                                                                        color:
+                                                                            navy,
+                                                                        fontSize:
+                                                                            16),
+                                                                cursorColor:
+                                                                    navy,
+                                                                decoration:
+                                                                    _inputDecoration(
+                                                                  hint:
+                                                                      'Enter your password',
+                                                                  icon: Icons
+                                                                      .lock_outline,
+                                                                  trailing:
+                                                                      IconButton(
+                                                                    tooltip: _obscurePassword
+                                                                        ? 'Show password'
+                                                                        : 'Hide password',
+                                                                    onPressed: () =>
+                                                                        setState(() =>
+                                                                            _obscurePassword =
+                                                                                !_obscurePassword),
+                                                                    icon: Icon(
+                                                                      _obscurePassword
+                                                                          ? Icons
+                                                                              .visibility_outlined
+                                                                          : Icons
+                                                                              .visibility_off_outlined,
+                                                                      color: const Color(
+                                                                          0xFF68758F),
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                                onSubmitted: (_) =>
+                                                                    _handleLogin(),
+                                                              ),
+                                                            ],
+                                                          ),
                                                         ),
                                                       ),
-                                                      const SizedBox(
-                                                          height: 18),
-                                                      _fieldLabel('Password'),
+                                                    if (_mustChangePassword) ...[
+                                                      _fieldLabel(
+                                                          'New password (at least 8 characters)'),
                                                       const SizedBox(height: 8),
                                                       TextField(
                                                         controller:
-                                                            _passwordController,
-                                                        focusNode: tabletLayout
-                                                            ? _tabletPasswordFocusNode
-                                                            : null,
+                                                            _newPasswordController,
                                                         obscureText:
-                                                            _obscurePassword,
-                                                        textInputAction:
-                                                            TextInputAction
-                                                                .done,
+                                                            _obscureNewPassword,
                                                         style: const TextStyle(
                                                             color: navy,
                                                             fontSize: 16),
@@ -737,19 +837,19 @@ class _LoginScreenState extends State<LoginScreen>
                                                         decoration:
                                                             _inputDecoration(
                                                           hint:
-                                                              'Enter your password',
+                                                              'Create a new password',
                                                           icon: Icons
                                                               .lock_outline,
                                                           trailing: IconButton(
-                                                            tooltip: _obscurePassword
+                                                            tooltip: _obscureNewPassword
                                                                 ? 'Show password'
                                                                 : 'Hide password',
                                                             onPressed: () =>
                                                                 setState(() =>
-                                                                    _obscurePassword =
-                                                                        !_obscurePassword),
+                                                                    _obscureNewPassword =
+                                                                        !_obscureNewPassword),
                                                             icon: Icon(
-                                                              _obscurePassword
+                                                              _obscureNewPassword
                                                                   ? Icons
                                                                       .visibility_outlined
                                                                   : Icons
@@ -763,291 +863,292 @@ class _LoginScreenState extends State<LoginScreen>
                                                             _handleLogin(),
                                                       ),
                                                     ],
-                                                  ),
-                                                ),
-                                              ),
-                                            if (_mustChangePassword) ...[
-                                              _fieldLabel(
-                                                  'New password (at least 8 characters)'),
-                                              const SizedBox(height: 8),
-                                              TextField(
-                                                controller:
-                                                    _newPasswordController,
-                                                obscureText:
-                                                    _obscureNewPassword,
-                                                style: const TextStyle(
-                                                    color: navy, fontSize: 16),
-                                                cursorColor: navy,
-                                                decoration: _inputDecoration(
-                                                  hint: 'Create a new password',
-                                                  icon: Icons.lock_outline,
-                                                  trailing: IconButton(
-                                                    tooltip: _obscureNewPassword
-                                                        ? 'Show password'
-                                                        : 'Hide password',
-                                                    onPressed: () => setState(() =>
-                                                        _obscureNewPassword =
-                                                            !_obscureNewPassword),
-                                                    icon: Icon(
-                                                      _obscureNewPassword
-                                                          ? Icons
-                                                              .visibility_outlined
-                                                          : Icons
-                                                              .visibility_off_outlined,
-                                                      color: const Color(
-                                                          0xFF68758F),
-                                                    ),
-                                                  ),
-                                                ),
-                                                onSubmitted: (_) =>
-                                                    _handleLogin(),
-                                              ),
-                                            ],
-                                            if (_isNewLogin &&
-                                                !_mustChangePassword)
-                                              Padding(
-                                                padding: const EdgeInsets.only(
-                                                    top: 8),
-                                                child: Row(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: [
-                                                    SizedBox(
-                                                      width: 28,
-                                                      height: 30,
-                                                      child: Checkbox(
-                                                        value: _acceptedLegal,
-                                                        activeColor: navy,
-                                                        materialTapTargetSize:
-                                                            MaterialTapTargetSize
-                                                                .shrinkWrap,
-                                                        visualDensity:
-                                                            VisualDensity
-                                                                .compact,
-                                                        onChanged: _isLoading
-                                                            ? null
-                                                            : (value) =>
-                                                                setState(() {
-                                                                  _acceptedLegal =
-                                                                      value ??
-                                                                          false;
-                                                                  _errorMessage =
-                                                                      null;
-                                                                }),
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 10),
-                                                    Expanded(
-                                                      child: Padding(
+                                                    if (_isNewLogin &&
+                                                        !_mustChangePassword)
+                                                      Padding(
                                                         padding:
                                                             const EdgeInsets
-                                                                .only(top: 3),
+                                                                .only(top: 8),
+                                                        child: Row(
+                                                          crossAxisAlignment:
+                                                              CrossAxisAlignment
+                                                                  .start,
+                                                          children: [
+                                                            SizedBox(
+                                                              width: 28,
+                                                              height: 30,
+                                                              child: Checkbox(
+                                                                value:
+                                                                    _acceptedLegal,
+                                                                activeColor:
+                                                                    navy,
+                                                                materialTapTargetSize:
+                                                                    MaterialTapTargetSize
+                                                                        .shrinkWrap,
+                                                                visualDensity:
+                                                                    VisualDensity
+                                                                        .compact,
+                                                                onChanged:
+                                                                    _isLoading
+                                                                        ? null
+                                                                        : (value) =>
+                                                                            setState(() {
+                                                                              _acceptedLegal = value ?? false;
+                                                                              _errorMessage = null;
+                                                                            }),
+                                                              ),
+                                                            ),
+                                                            const SizedBox(
+                                                                width: 10),
+                                                            Expanded(
+                                                              child: Padding(
+                                                                padding:
+                                                                    const EdgeInsets
+                                                                        .only(
+                                                                        top: 3),
+                                                                child: Wrap(
+                                                                  spacing: 4,
+                                                                  runSpacing: 2,
+                                                                  crossAxisAlignment:
+                                                                      WrapCrossAlignment
+                                                                          .center,
+                                                                  children: [
+                                                                    const Text(
+                                                                      'I agree to Synorra POS’s',
+                                                                      style: TextStyle(
+                                                                          color: Color(
+                                                                              0xFF53627F),
+                                                                          fontSize:
+                                                                              13),
+                                                                    ),
+                                                                    _legalLink(
+                                                                        'Terms of Use'),
+                                                                    const Text(
+                                                                      'and',
+                                                                      style: TextStyle(
+                                                                          color: Color(
+                                                                              0xFF53627F),
+                                                                          fontSize:
+                                                                              13),
+                                                                    ),
+                                                                    _legalLink(
+                                                                        'Privacy Policy'),
+                                                                    const Text(
+                                                                      '.',
+                                                                      style: TextStyle(
+                                                                          color: Color(
+                                                                              0xFF53627F),
+                                                                          fontSize:
+                                                                              13),
+                                                                    ),
+                                                                  ],
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    if (_errorMessage !=
+                                                        null) ...[
+                                                      const SizedBox(
+                                                          height: 14),
+                                                      Text(
+                                                        _errorMessage!,
+                                                        textAlign:
+                                                            TextAlign.center,
+                                                        style: const TextStyle(
+                                                            color: Color(
+                                                                0xFFB42318),
+                                                            fontSize: 13),
+                                                      ),
+                                                    ],
+                                                    SizedBox(
+                                                        height:
+                                                            compact ? 24 : 34),
+                                                    _entrance(
+                                                      progress,
+                                                      start: 0.64,
+                                                      end: 0.90,
+                                                      offsetY: 18,
+                                                      child: SizedBox(
+                                                        height: 62,
+                                                        child: DecoratedBox(
+                                                          decoration:
+                                                              BoxDecoration(
+                                                            gradient: tabletLayout
+                                                                ? const LinearGradient(
+                                                                    colors: [
+                                                                      Color(
+                                                                          0xFF0E438E),
+                                                                      Color(
+                                                                          0xFF1768D2),
+                                                                    ],
+                                                                  )
+                                                                : null,
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        40),
+                                                          ),
+                                                          child: ElevatedButton(
+                                                            onPressed: _isLoading
+                                                                ? null
+                                                                : _handleLogin,
+                                                            style:
+                                                                ElevatedButton
+                                                                    .styleFrom(
+                                                              backgroundColor:
+                                                                  tabletLayout
+                                                                      ? Colors
+                                                                          .transparent
+                                                                      : navy,
+                                                              foregroundColor:
+                                                                  Colors.white,
+                                                              disabledBackgroundColor:
+                                                                  tabletLayout
+                                                                      ? Colors
+                                                                          .transparent
+                                                                      : const Color
+                                                                          .fromRGBO(
+                                                                          27,
+                                                                          41,
+                                                                          74,
+                                                                          0.65),
+                                                              elevation:
+                                                                  tabletLayout
+                                                                      ? 0
+                                                                      : 12,
+                                                              shadowColor:
+                                                                  const Color(
+                                                                      0x33203255),
+                                                              shape:
+                                                                  const StadiumBorder(),
+                                                            ),
+                                                            child:
+                                                                AnimatedSwitcher(
+                                                              duration:
+                                                                  const Duration(
+                                                                      milliseconds:
+                                                                          220),
+                                                              switchInCurve: Curves
+                                                                  .easeOutBack,
+                                                              switchOutCurve:
+                                                                  Curves.easeIn,
+                                                              transitionBuilder:
+                                                                  (child, animation) =>
+                                                                      FadeTransition(
+                                                                opacity:
+                                                                    animation,
+                                                                child:
+                                                                    ScaleTransition(
+                                                                  scale:
+                                                                      animation,
+                                                                  child: child,
+                                                                ),
+                                                              ),
+                                                              child: _isLoading
+                                                                  ? const SizedBox(
+                                                                      key: ValueKey(
+                                                                          'sign-in-loading'),
+                                                                      width: 22,
+                                                                      height:
+                                                                          22,
+                                                                      child:
+                                                                          CircularProgressIndicator(
+                                                                        strokeWidth:
+                                                                            2,
+                                                                        color: Colors
+                                                                            .white,
+                                                                      ),
+                                                                    )
+                                                                  : Row(
+                                                                      key: const ValueKey(
+                                                                          'sign-in-action'),
+                                                                      mainAxisAlignment:
+                                                                          MainAxisAlignment
+                                                                              .center,
+                                                                      children: [
+                                                                        Text(
+                                                                          _mustChangePassword
+                                                                              ? 'Save password'
+                                                                              : tabletLayout
+                                                                                  ? (_isNewLogin ? 'Sign Up' : 'Log In')
+                                                                                  : _isNewLogin
+                                                                                      ? 'Register'
+                                                                                      : 'Sign In',
+                                                                          style: const TextStyle(
+                                                                              fontSize: 17,
+                                                                              fontWeight: FontWeight.w600),
+                                                                        ),
+                                                                        const SizedBox(
+                                                                            width:
+                                                                                14),
+                                                                        const Icon(
+                                                                            Icons
+                                                                                .arrow_forward,
+                                                                            size:
+                                                                                24),
+                                                                      ],
+                                                                    ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    if (tabletLayout &&
+                                                        !_mustChangePassword)
+                                                      Padding(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .only(top: 20),
                                                         child: Wrap(
-                                                          spacing: 4,
-                                                          runSpacing: 2,
+                                                          alignment:
+                                                              WrapAlignment
+                                                                  .center,
                                                           crossAxisAlignment:
                                                               WrapCrossAlignment
                                                                   .center,
                                                           children: [
-                                                            const Text(
-                                                              'I agree to Synorra',
-                                                              style: TextStyle(
-                                                                  color: Color(
-                                                                      0xFF53627F),
-                                                                  fontSize: 13),
+                                                            Text(
+                                                              _isNewLogin
+                                                                  ? 'Already have an account?'
+                                                                  : 'Don\'t have an account?',
+                                                              style:
+                                                                  const TextStyle(
+                                                                color: Color(
+                                                                    0xFF71819B),
+                                                                fontSize: 14,
+                                                              ),
                                                             ),
-                                                            _legalLink(
-                                                                'Terms of Use'),
-                                                            const Text(
-                                                              'and have read and acknowledged',
-                                                              style: TextStyle(
+                                                            TextButton(
+                                                              onPressed: _isLoading
+                                                                  ? null
+                                                                  : () => _selectLoginMode(
+                                                                      !_isNewLogin),
+                                                              child: Text(
+                                                                _isNewLogin
+                                                                    ? 'Log In'
+                                                                    : 'Sign Up',
+                                                                style:
+                                                                    const TextStyle(
                                                                   color: Color(
-                                                                      0xFF53627F),
-                                                                  fontSize: 13),
+                                                                      0xFF1456B7),
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w700,
+                                                                ),
+                                                              ),
                                                             ),
-                                                            _legalLink(
-                                                                'Privacy Policy'),
                                                           ],
                                                         ),
                                                       ),
-                                                    ),
                                                   ],
-                                                ),
-                                              ),
-                                            if (_errorMessage != null) ...[
-                                              const SizedBox(height: 14),
-                                              Text(
-                                                _errorMessage!,
-                                                textAlign: TextAlign.center,
-                                                style: const TextStyle(
-                                                    color: Color(0xFFB42318),
-                                                    fontSize: 13),
-                                              ),
-                                            ],
-                                            SizedBox(height: compact ? 24 : 34),
-                                            _entrance(
-                                              progress,
-                                              start: 0.64,
-                                              end: 0.90,
-                                              offsetY: 18,
-                                              child: SizedBox(
-                                                height: 62,
-                                                child: DecoratedBox(
-                                                  decoration: BoxDecoration(
-                                                    gradient: tabletLayout
-                                                        ? const LinearGradient(
-                                                            colors: [
-                                                              Color(0xFF0E438E),
-                                                              Color(0xFF1768D2),
-                                                            ],
-                                                          )
-                                                        : null,
-                                                    borderRadius:
-                                                        BorderRadius.circular(40),
-                                                  ),
-                                                  child: ElevatedButton(
-                                                    onPressed: _isLoading
-                                                        ? null
-                                                        : _handleLogin,
-                                                    style: ElevatedButton
-                                                        .styleFrom(
-                                                      backgroundColor:
-                                                          tabletLayout
-                                                              ? Colors
-                                                                  .transparent
-                                                              : navy,
-                                                      foregroundColor:
-                                                          Colors.white,
-                                                      disabledBackgroundColor:
-                                                          tabletLayout
-                                                              ? Colors
-                                                                  .transparent
-                                                              : const Color
-                                                                  .fromRGBO(27,
-                                                                      41, 74, 0.65),
-                                                      elevation: tabletLayout
-                                                          ? 0
-                                                          : 12,
-                                                      shadowColor: const Color(
-                                                          0x33203255),
-                                                      shape:
-                                                          const StadiumBorder(),
-                                                    ),
-                                                    child: AnimatedSwitcher(
-                                                    duration: const Duration(
-                                                        milliseconds: 220),
-                                                    switchInCurve:
-                                                        Curves.easeOutBack,
-                                                    switchOutCurve:
-                                                        Curves.easeIn,
-                                                    transitionBuilder:
-                                                        (child, animation) =>
-                                                            FadeTransition(
-                                                      opacity: animation,
-                                                      child: ScaleTransition(
-                                                        scale: animation,
-                                                        child: child,
-                                                      ),
-                                                    ),
-                                                    child: _isLoading
-                                                        ? const SizedBox(
-                                                            key: ValueKey(
-                                                                'sign-in-loading'),
-                                                            width: 22,
-                                                            height: 22,
-                                                            child:
-                                                                CircularProgressIndicator(
-                                                              strokeWidth: 2,
-                                                              color:
-                                                                  Colors.white,
-                                                            ),
-                                                          )
-                                                        : Row(
-                                                            key: const ValueKey(
-                                                                'sign-in-action'),
-                                                            mainAxisAlignment:
-                                                                MainAxisAlignment
-                                                                    .center,
-                                                            children: [
-                                                              Text(
-                                                                _mustChangePassword
-                                                                    ? 'Save password'
-                                                                : tabletLayout
-                                                                    ? (_isNewLogin
-                                                                        ? 'Sign Up'
-                                                                        : 'Log In')
-                                                                    : _isNewLogin
-                                                                        ? 'Register'
-                                                                        : 'Sign In',
-                                                                style: const TextStyle(
-                                                                    fontSize:
-                                                                        17,
-                                                                    fontWeight:
-                                                                        FontWeight
-                                                                            .w600),
-                                                              ),
-                                                              const SizedBox(
-                                                                  width: 14),
-                                                              const Icon(
-                                                                  Icons
-                                                                      .arrow_forward,
-                                                                  size: 24),
-                                                            ],
-                                                          ),
-                                                    ),
-                                                  ),
                                                 ),
                                               ),
                                             ),
-                                            if (tabletLayout &&
-                                                !_mustChangePassword)
-                                              Padding(
-                                                padding: const EdgeInsets.only(
-                                                    top: 20),
-                                                child: Wrap(
-                                                  alignment:
-                                                      WrapAlignment.center,
-                                                  crossAxisAlignment:
-                                                      WrapCrossAlignment.center,
-                                                  children: [
-                                                    Text(
-                                                      _isNewLogin
-                                                          ? 'Already have an account?'
-                                                          : 'Don\'t have an account?',
-                                                      style: const TextStyle(
-                                                        color:
-                                                            Color(0xFF71819B),
-                                                        fontSize: 14,
-                                                      ),
-                                                    ),
-                                                    TextButton(
-                                                      onPressed: _isLoading
-                                                          ? null
-                                                          : () =>
-                                                              _selectLoginMode(
-                                                                  !_isNewLogin),
-                                                      child: Text(
-                                                        _isNewLogin
-                                                            ? 'Log In'
-                                                            : 'Sign Up',
-                                                        style: const TextStyle(
-                                                          color: Color(
-                                                              0xFF1456B7),
-                                                          fontWeight:
-                                                              FontWeight.w700,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                          ],
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                      ),
-                                    ),
-                                    ),
                                     ),
                                   ],
                                 ),
@@ -1117,8 +1218,8 @@ class _LoginScreenState extends State<LoginScreen>
             builder: (context, constraints) {
               const lockupWidth = 138.0 + 18.0 + 200.0;
               final scale = (constraints.maxWidth / lockupWidth)
-                  .clamp(0.55, 1.0)
-                  .toDouble() *
+                      .clamp(0.55, 1.0)
+                      .toDouble() *
                   0.9;
               final markSize = 138 * scale;
               final wordmarkWidth = 200 * scale;
@@ -1162,7 +1263,8 @@ class _LoginScreenState extends State<LoginScreen>
                               Container(
                                 width: wordmarkWidth,
                                 height: 1,
-                                margin: EdgeInsets.symmetric(vertical: 2 * scale),
+                                margin:
+                                    EdgeInsets.symmetric(vertical: 2 * scale),
                                 color: Colors.black,
                               ),
                               Text(
@@ -1235,9 +1337,8 @@ class _LoginScreenState extends State<LoginScreen>
         final compactAuth = authForm && keyboardOpen;
         final signUp = authForm && _isNewLogin && !_mustChangePassword;
         final tightForm = constraints.maxHeight < 540;
-        final horizontalPadding = phoneLanding
-            ? 0.0
-            : (screenWidth < 380 ? 16.0 : 20.0);
+        final horizontalPadding =
+            phoneLanding ? 0.0 : (screenWidth < 380 ? 16.0 : 20.0);
         final fieldGap = tightForm ? 5.0 : 10.0;
 
         Widget logo({double size = 96, double wordmarkFont = 34}) {
@@ -1299,11 +1400,9 @@ class _LoginScreenState extends State<LoginScreen>
             top: compactLanding
                 ? 8
                 : compactAuth
-                ? 4
-                : (authForm ? 12 : (phoneLanding ? 40.0 : 40.0)),
-            bottom: compactLanding
-                ? 2
-                : (compactAuth ? 4 : (compact ? 6 : 12)),
+                    ? 4
+                    : (authForm ? 12 : (phoneLanding ? 40.0 : 40.0)),
+            bottom: compactLanding ? 2 : (compactAuth ? 4 : (compact ? 6 : 12)),
           ),
           child: _entrance(
             progress,
@@ -1353,8 +1452,8 @@ class _LoginScreenState extends State<LoginScreen>
           width: double.infinity,
           margin: phoneLanding ? const EdgeInsets.fromLTRB(20, 0, 20, 0) : null,
           padding: phoneLanding
-              ? EdgeInsets.fromLTRB(24, compactLanding ? 12 : 24, 24,
-                  compactLanding ? 12 : 24)
+              ? EdgeInsets.fromLTRB(
+                  24, compactLanding ? 12 : 24, 24, compactLanding ? 12 : 24)
               : EdgeInsets.symmetric(
                   horizontal: 20,
                   vertical: tightForm ? 12 : 20,
@@ -1414,35 +1513,37 @@ class _LoginScreenState extends State<LoginScreen>
                   ),
                 ),
                 if (!phoneLanding) const SizedBox(height: 16),
-                if (!phoneLanding) Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text(
-                      "Don't have an account?",
-                      style: TextStyle(color: Color(0xFF53627F), fontSize: 13),
-                    ),
-                    const SizedBox(width: 4),
-                    TextButton(
-                      onPressed:
-                          _isLoading ? null : () => _openMobileAuthForm(true),
-                      style: TextButton.styleFrom(
-                        minimumSize: Size.zero,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 4, vertical: 4),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                if (!phoneLanding)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text(
+                        "Don't have an account?",
+                        style:
+                            TextStyle(color: Color(0xFF53627F), fontSize: 13),
                       ),
-                      child: const Text(
-                        'Sign Up',
-                        style: TextStyle(
-                          color: navy,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          decoration: TextDecoration.underline,
+                      const SizedBox(width: 4),
+                      TextButton(
+                        onPressed:
+                            _isLoading ? null : () => _openMobileAuthForm(true),
+                        style: TextButton.styleFrom(
+                          minimumSize: Size.zero,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 4, vertical: 4),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text(
+                          'Sign Up',
+                          style: TextStyle(
+                            color: navy,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            decoration: TextDecoration.underline,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
               ] else ...[
                 if (!_mustChangePassword)
                   Row(
@@ -1589,17 +1690,22 @@ class _LoginScreenState extends State<LoginScreen>
                               runSpacing: 2,
                               children: [
                                 const Text(
-                                  'I agree to Synorra',
+                                  'I agree to Synorra POS’s',
                                   style: TextStyle(
                                       color: Color(0xFF53627F), fontSize: 12),
                                 ),
                                 _legalLink('Terms of Use'),
                                 const Text(
-                                  'and acknowledge the',
+                                  'and',
                                   style: TextStyle(
                                       color: Color(0xFF53627F), fontSize: 12),
                                 ),
                                 _legalLink('Privacy Policy'),
+                                const Text(
+                                  '.',
+                                  style: TextStyle(
+                                      color: Color(0xFF53627F), fontSize: 12),
+                                ),
                               ],
                             ),
                           ),
@@ -1732,7 +1838,8 @@ class _LoginScreenState extends State<LoginScreen>
                   child: Transform.scale(
                     scale: 1.75,
                     child: ImageFiltered(
-                      imageFilter: ui.ImageFilter.blur(sigmaX: 1.0, sigmaY: 2.0),
+                      imageFilter:
+                          ui.ImageFilter.blur(sigmaX: 1.0, sigmaY: 2.0),
                       child: Image.asset(
                         'lib/src/images/bg-plant.png',
                         fit: BoxFit.cover,
@@ -1796,14 +1903,18 @@ class _LoginScreenState extends State<LoginScreen>
                         children: [
                           const Text(
                             "Don't have an account?",
-                            style: TextStyle(color: Color(0xFF53627F), fontSize: 13),
+                            style: TextStyle(
+                                color: Color(0xFF53627F), fontSize: 13),
                           ),
                           const SizedBox(width: 4),
                           TextButton(
-                            onPressed: _isLoading ? null : () => _openMobileAuthForm(true),
+                            onPressed: _isLoading
+                                ? null
+                                : () => _openMobileAuthForm(true),
                             style: TextButton.styleFrom(
                               minimumSize: Size.zero,
-                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 4),
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
                             child: const Text(

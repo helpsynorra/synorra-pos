@@ -18,7 +18,7 @@ import {
   voidCheckout,
   voidOrder,
 } from "@/actions/pos";
-import { ReceiptPreview } from "@/components/ReceiptPreview";
+import { SlipPreview } from "@/components/ReceiptPreview";
 import {
   SalePurchaseTransactions,
   type InventoryTab,
@@ -42,11 +42,11 @@ import {
 import { phDateString, phDateTimeLabel } from "@/lib/datetime";
 import { PAYMENT_METHODS, parsePayment, paymentLabel } from "@/lib/payments";
 import {
-  receiptFromOrder,
-  type ReceiptTicket,
+  slipFromOrder,
+  type slipTicket,
 } from "@/lib/escpos";
 import { useLabelPrinter } from "@/lib/label-printer";
-import { useReceiptPrinter } from "@/lib/receipt-printer";
+import { useslipPrinter } from "@/lib/receipt-printer";
 import type {
   DrinkStyle,
   MenuItem,
@@ -185,7 +185,7 @@ export function PosClient({
   const [wasteReason, setWasteReason] = useState("");
   const [wasteBaristaIds, setWasteBaristaIds] = useState<string[]>([]);
   const [printOrderId, setPrintOrderId] = useState<string | null>(null);
-  const [lastTicket, setLastTicket] = useState<ReceiptTicket | null>(null);
+  const [lastTicket, setLastTicket] = useState<slipTicket | null>(null);
   const [lastOrderId, setLastOrderId] = useState<string | null>(null);
   const [lastOrder, setLastOrder] = useState<Order | null>(null);
   const [localPrintJobs, setLocalPrintJobs] = useState<PrintJob[]>([]);
@@ -206,7 +206,7 @@ export function PosClient({
   } | null>(null);
   const [pending, startTransition] = useTransition();
   const labelPrinter = useLabelPrinter();
-  const receiptPrinter = useReceiptPrinter();
+  const slipPrinter = useslipPrinter();
   const [checkoutReady, setCheckoutReady] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [activePanel, setActivePanel] = useState<PosPanel>("pos");
@@ -236,7 +236,7 @@ export function PosClient({
     (order) => order.id === printOrderId,
   );
   const selectedPrintTicket = selectedPrintOrder
-    ? receiptFromOrder(selectedPrintOrder, availableOrders, menu)
+    ? slipFromOrder(selectedPrintOrder, availableOrders, menu)
     : null;
   const selectedPrintJobs = selectedPrintOrder
     ? knownPrintJobs.filter((job) => job.orderId === selectedPrintOrder.id)
@@ -712,8 +712,8 @@ export function PosClient({
     });
   }
 
-  function labelTicketForJob(order: Order, job: PrintJob): ReceiptTicket {
-    const ticket = receiptFromOrder(order, availableOrders, menu);
+  function labelTicketForJob(order: Order, job: PrintJob): slipTicket {
+    const ticket = slipFromOrder(order, availableOrders, menu);
     const source = job.label
       ? order.items[job.label.itemIndex]
       : undefined;
@@ -748,14 +748,14 @@ export function PosClient({
         }
         await labelPrinter.printLabel(labelTicketForJob(order, job));
       } else {
-        if (!receiptPrinter.supported) {
-          throw new Error("Web Serial is unavailable for the receipt printer.");
+        if (!slipPrinter.supported) {
+          throw new Error("Web Serial is unavailable for the order printer.");
         }
-        if (!receiptPrinter.connected) {
-          throw new Error("Receipt printer is disconnected.");
+        if (!slipPrinter.connected) {
+          throw new Error("Order printer is disconnected.");
         }
-        await receiptPrinter.printReceipt(
-          receiptFromOrder(order, availableOrders, menu),
+        await slipPrinter.printslip(
+          slipFromOrder(order, availableOrders, menu),
         );
       }
     } catch (error) {
@@ -811,7 +811,7 @@ export function PosClient({
     }
     const results = await attemptPrintJobs(jobs, order);
     setMessage(
-      `${type === "cup-label" ? "Cup labels" : "Customer receipt"}: ${printSummary(results)}.`,
+      `${type === "cup-label" ? "Cup labels" : "Order"}: ${printSummary(results)}.`,
     );
   }
 
@@ -820,7 +820,7 @@ export function PosClient({
     if (!order) throw new Error("Completed order not found.");
     const result = await attemptPrintJob(job, order);
     setMessage(
-      `${job.type === "cup-label" ? "Cup label" : "Customer receipt"}: ${result.status}.`,
+      `${job.type === "cup-label" ? "Cup label" : "Order"}: ${result.status}.`,
     );
   }
 
@@ -975,27 +975,27 @@ export function PosClient({
               </button>
               <button
                 type="button"
-                disabled={pending || !receiptPrinter.supported}
+                disabled={pending || !slipPrinter.supported}
                 onClick={() =>
                   startTransition(async () => {
                     try {
-                      if (receiptPrinter.connected) {
-                        await receiptPrinter.disconnect();
-                        setMessage("Receipt printer disconnected.");
+                      if (slipPrinter.connected) {
+                        await slipPrinter.disconnect();
+                        setMessage("Order printer disconnected.");
                         return;
                       }
-                      await receiptPrinter.connect();
-                      setMessage("Receipt printer connected.");
+                      await slipPrinter.connect();
+                      setMessage("Order printer connected.");
                     } catch (error) {
                       setMessage(
-                        error instanceof Error ? error.message : "Receipt printer error.",
+                        error instanceof Error ? error.message : "Order printer error.",
                       );
                     }
                   })
                 }
                 className="mb-1 w-full rounded-2xl px-4 py-3 text-left text-sm font-medium text-neutral-600 transition hover:bg-neutral-100 hover:text-black disabled:opacity-40"
               >
-                {receiptPrinter.connected ? "Receipt on" : "Connect receipt"}
+                {slipPrinter.connected ? "Order printer on" : "Connect order printer"}
               </button>
             </div>
 
@@ -1489,7 +1489,7 @@ export function PosClient({
                     <>
                       <div className="flex items-baseline justify-between gap-3">
                         <p className="text-sm font-semibold">
-                          Ticket #{selectedVoidOrder.ticketNo ?? selectedVoidOrder.id.slice(-4)}
+                          Order #{selectedVoidOrder.ticketNo ?? selectedVoidOrder.id.slice(-4)}
                         </p>
                         <p className="text-sm font-semibold">{formatMoney(selectedVoidOrder.total)}</p>
                       </div>
@@ -1503,7 +1503,7 @@ export function PosClient({
                   ) : lastTicket ? (
                     <>
                       <div className="flex items-baseline justify-between gap-3">
-                        <p className="text-sm font-semibold">Ticket #{lastTicket.ticketNo}</p>
+                        <p className="text-sm font-semibold">Order #{lastTicket.ticketNo}</p>
                         <p className="text-sm font-semibold">{formatMoney(lastTicket.total)}</p>
                       </div>
                       <p className="mt-2 text-xs text-neutral-700">
@@ -1732,28 +1732,28 @@ export function PosClient({
         ) : null}
 
         {selectedPrintTicket && selectedPrintOrder ? (
-          <ReceiptPreview
+          <SlipPreview
             ticket={selectedPrintTicket}
             orderId={selectedPrintOrder.id}
             orderOptions={availableOrders.map((order) => ({
               id: order.id,
-              label: `#${order.ticketNo ?? order.id.slice(-4)} · ${phDateTimeLabel(order.createdAt)} · ${formatMoney(order.total)}`,
+              label: `Order #${String(order.ticketNo ?? order.id.slice(-4)).replace(/^#/, "")} · ${phDateTimeLabel(order.createdAt)} · ${formatMoney(order.total)}`,
             }))}
             printJobs={selectedPrintJobs}
             labelPaperWidth={labelPrinter.paperWidth}
-            receiptPaperWidth={receiptPrinter.paperWidth}
+            slipPaperWidth={slipPrinter.paperWidth}
             labelBaudRate={labelPrinter.baudRate}
-            receiptBaudRate={receiptPrinter.baudRate}
+            slipBaudRate={slipPrinter.baudRate}
             labelPrinterReady={labelPrinter.connected}
-            receiptPrinterReady={receiptPrinter.connected}
+            slipPrinterReady={slipPrinter.connected}
             testPrinterEnabled={TEST_PRINTER_ENABLED}
             pending={pending}
             onClose={() => setPrintOrderId(null)}
             onSelectOrder={setPrintOrderId}
             onSetLabelPaperWidth={labelPrinter.setPaperWidth}
-            onSetReceiptPaperWidth={receiptPrinter.setPaperWidth}
+            onSetslipPaperWidth={slipPrinter.setPaperWidth}
             onSetLabelBaudRate={labelPrinter.setBaudRate}
-            onSetReceiptBaudRate={receiptPrinter.setBaudRate}
+            onSetslipBaudRate={slipPrinter.setBaudRate}
             onPrintLabels={() =>
               startTransition(async () => {
                 try {
@@ -1765,13 +1765,13 @@ export function PosClient({
                 }
               })
             }
-            onPrintReceipt={() =>
+            onPrintslip={() =>
               startTransition(async () => {
                 try {
-                  await printTypeForOrder(selectedPrintOrder, "customer-receipt");
+                  await printTypeForOrder(selectedPrintOrder, "internal-slip");
                 } catch (error) {
                   setMessage(
-                    error instanceof Error ? error.message : "Could not print receipt.",
+                    error instanceof Error ? error.message : "Could not print order.",
                   );
                 }
               })
@@ -2139,7 +2139,7 @@ export function PosClient({
                       return;
                     }
                     const savedOrder = result.order;
-                    const saved = receiptFromOrder(
+                    const saved = slipFromOrder(
                       savedOrder,
                       [savedOrder, ...availableOrders],
                       menu,
@@ -2158,20 +2158,20 @@ export function PosClient({
                     setPromoItemIndex(null);
                     setPromoItemQty(null);
                     setMessage(
-                      `Paid ${formatMoney(result.total ?? 0)}. Tap Print for labels and receipt.`,
+                      `Paid ${formatMoney(result.total ?? 0)}. Tap Print for labels and order copy.`,
                     );
                     const labelJobs = result.printJobs.filter(
                       (job) => job.type === "cup-label",
                     );
-                    const receiptJobs = result.printJobs.filter(
-                      (job) => job.type === "customer-receipt",
+                    const slipJobs = result.printJobs.filter(
+                      (job) => job.type === "internal-slip",
                     );
                     void Promise.all([
                       attemptPrintJobs(labelJobs, savedOrder),
-                      attemptPrintJobs(receiptJobs, savedOrder),
-                    ]).then(([labelResults, receiptResults]) => {
+                      attemptPrintJobs(slipJobs, savedOrder),
+                    ]).then(([labelResults, slipResults]) => {
                       setMessage(
-                        `Paid ${formatMoney(result.total ?? 0)} · labels: ${printSummary(labelResults)} · receipt: ${printSummary(receiptResults)} · tap Print for details`,
+                        `Paid ${formatMoney(result.total ?? 0)} · labels: ${printSummary(labelResults)} · order: ${printSummary(slipResults)} · tap Print for details`,
                       );
                     });
                   })

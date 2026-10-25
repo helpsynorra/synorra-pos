@@ -1,17 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { BrandLogo } from "@/components/BrandLogo";
 import { logout } from "@/actions/auth";
 import type { Session } from "@/lib/types";
 
-export type AdminPanel = "sales" | "menu" | "transactions" | "staff";
+export type AdminPanel = "sales" | "menu" | "transactions" | "staff" | "finance";
 
 const TABS: { id: AdminPanel; label: string }[] = [
   { id: "sales", label: "Sales" },
   { id: "menu", label: "Menu" },
   { id: "transactions", label: "Inventory" },
   { id: "staff", label: "Staff" },
+  { id: "finance", label: "Finance" },
 ];
 
 type StaffHeaderProps = {
@@ -123,6 +125,10 @@ export function StaffHeader({ session, panel, onPanelChange }: StaffHeaderProps)
         </nav>
 
         <div className="border-t border-neutral-200 p-3">
+          <nav aria-label="Legal" className="flex flex-wrap gap-x-4 gap-y-2 px-4 pb-3 text-xs text-neutral-500">
+            <Link href="/terms" target="_blank" rel="noreferrer" className="hover:text-[#101d37]">Terms of Use</Link>
+            <Link href="/privacy" target="_blank" rel="noreferrer" className="hover:text-[#101d37]">Privacy &amp; Cookie Policy</Link>
+          </nav>
           <p className="px-4 pb-2 text-sm text-neutral-400">{session.name}</p>
           <div className="flex flex-col gap-1">
             <form action={logout}>
@@ -162,6 +168,10 @@ export function StaffHeader({ session, panel, onPanelChange }: StaffHeaderProps)
           })}
         </nav>
         <div className="border-t border-slate-100 p-3">
+          <nav aria-label="Legal" className="flex flex-wrap gap-x-3 gap-y-2 px-4 pb-3 text-xs text-slate-500">
+            <Link href="/terms" target="_blank" rel="noreferrer" className="hover:text-[#101d37]">Terms of Use</Link>
+            <Link href="/privacy" target="_blank" rel="noreferrer" className="hover:text-[#101d37]">Privacy &amp; Cookie Policy</Link>
+          </nav>
           <form action={logout}>
             <button type="submit" className="w-full rounded-xl px-4 py-3 text-left text-sm font-medium text-slate-500 transition hover:bg-red-50 hover:text-red-700">
               Log out

@@ -6,12 +6,12 @@ import type { MenuItem, Order, OrderItem, PaymentMethod } from "@/lib/types";
 
 export type PaperWidth = 58 | 80;
 
-export type ReceiptItem = OrderItem;
+export type slipItem = OrderItem;
 
-export type ReceiptTicket = {
+export type slipTicket = {
   ticketNo: string;
   barista: string;
-  items: ReceiptItem[];
+  items: slipItem[];
   subtotal: number;
   discount: number;
   promoLabel?: string;
@@ -94,11 +94,11 @@ export function ticketNoForOrder(orders: Order[], order: Order): string {
   return String(Math.max(index, 0) + 1).padStart(3, "0");
 }
 
-export function receiptFromOrder(
+export function slipFromOrder(
   order: Order,
   orders: Order[] = [],
   menu: MenuItem[] = [],
-): ReceiptTicket {
+): slipTicket {
   const subtotal =
     order.subtotal ??
     order.items.reduce((sum, item) => sum + item.price * item.qty, 0);
@@ -126,11 +126,11 @@ export function receiptFromOrder(
   };
 }
 
-export function receiptMoney(amount: number): string {
+export function slipMoney(amount: number): string {
   return `P${Math.round(amount).toLocaleString("en-PH")}`;
 }
 
-export function receiptWhen(date: Date): string {
+export function slipWhen(date: Date): string {
   return phDateTimeLabel(date);
 }
 
@@ -142,7 +142,7 @@ export function isDrinkCategory(category?: string): boolean {
   return Boolean(category && !/food|pastr/i.test(category));
 }
 
-export function drinkReceipts(ticket: ReceiptTicket): ReceiptTicket[] {
+export function drinkslips(ticket: slipTicket): slipTicket[] {
   return ticket.items.flatMap((item) => {
     if (!isDrinkCategory(item.category)) return [];
     return Array.from({ length: item.qty }, () => ({
@@ -179,6 +179,30 @@ function padLine(left: string, right: string, width: number): string {
 
 function dash(width: number): string {
   return "-".repeat(width);
+}
+
+function wrapText(text: string, width: number): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let line = "";
+  for (const word of words) {
+    if (word.length > width) {
+      if (line) lines.push(line);
+      line = "";
+      for (let index = 0; index < word.length; index += width) {
+        lines.push(word.slice(index, index + width));
+      }
+    } else if (!line) {
+      line = word;
+    } else if (line.length + word.length + 1 <= width) {
+      line += ` ${word}`;
+    } else {
+      lines.push(line);
+      line = word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
 }
 
 function encode(text: string): number[] {
@@ -234,15 +258,31 @@ function shopHeader(logo?: Uint8Array): PrintLine[] {
   return lines;
 }
 
-export function customerLines(
-  ticket: ReceiptTicket,
+export function internalLines(
+  ticket: slipTicket,
   width: number,
   logo?: Uint8Array,
 ): PrintLine[] {
+  const internalFooter = wrapText(
+    "THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX / FOR INTERNAL STORE USE ONLY",
+    width,
+  );
   const lines: PrintLine[] = [
     ...shopHeader(logo),
-    { kind: "text", text: `Order No. ${ticket.ticketNo}`, align: 1, size: "tall", bold: true },
-    { kind: "text", text: receiptWhen(ticket.at), align: 1 },
+    ...wrapText("CUSTOMER COPY (FOR INTERNAL USE ONLY)", width).map((text) => ({
+      kind: "text" as const,
+      text,
+      align: 1 as const,
+      bold: true,
+    })),
+    ...wrapText(`Order #${ticket.ticketNo}`, width).map((text) => ({
+      kind: "text" as const,
+      text,
+      align: 1 as const,
+      size: "tall" as const,
+      bold: true,
+    })),
+    { kind: "text", text: slipWhen(ticket.at), align: 1 },
     { kind: "text", text: `Cashier: ${ticket.barista}`, align: 1 },
     ...(ticket.serviceMode ? [{ kind: "text" as const, text: ticket.serviceMode === "take-out" ? "Take out" : "Dine in", align: 1 as const }] : []),
     { kind: "rule" },
@@ -258,8 +298,8 @@ export function customerLines(
     lines.push({
       kind: "text",
       text: padLine(
-        `  ${item.qty} x ${receiptMoney(item.price)}`,
-        receiptMoney(item.price * item.qty),
+        `  ${item.qty} x ${slipMoney(item.price)}`,
+        slipMoney(item.price * item.qty),
         width,
       ),
     });
@@ -268,21 +308,21 @@ export function customerLines(
   lines.push({ kind: "rule" });
   lines.push({
     kind: "text",
-    text: padLine("Subtotal", receiptMoney(ticket.subtotal), width),
+    text: padLine("Subtotal", slipMoney(ticket.subtotal), width),
   });
   if (ticket.discount > 0) {
     lines.push({
       kind: "text",
       text: padLine(
         ticket.promoLabel ?? "Discount",
-        `-${receiptMoney(ticket.discount)}`,
+        `-${slipMoney(ticket.discount)}`,
         width,
       ),
     });
   }
   lines.push({
     kind: "text",
-    text: padLine("TOTAL", receiptMoney(ticket.total), width),
+    text: padLine("TOTAL", slipMoney(ticket.total), width),
     bold: true,
     size: "tall",
   });
@@ -297,16 +337,16 @@ export function customerLines(
     if (ticket.paymentMethod === "gcash" || ticket.paymentMethod === "maya") {
       lines.push({
         kind: "text",
-        text: padLine("Paid", receiptMoney(ticket.paid), width),
+        text: padLine("Paid", slipMoney(ticket.paid), width),
       });
     } else {
       lines.push({
         kind: "text",
-        text: padLine("Cash / Tendered", receiptMoney(ticket.paid), width),
+        text: padLine("Cash / Tendered", slipMoney(ticket.paid), width),
       });
       lines.push({
         kind: "text",
-        text: padLine("Change", receiptMoney(ticket.change ?? 0), width),
+        text: padLine("Change", slipMoney(ticket.change ?? 0), width),
       });
     }
   }
@@ -315,19 +355,19 @@ export function customerLines(
   lines.push({ kind: "text", text: CAFE.tagline.toLowerCase(), align: 1 });
   lines.push({ kind: "text", text: "have a seat, take a sip", align: 1 });
   lines.push({ kind: "text", text: "Thank you. Please come again.", align: 1 });
-  lines.push({ kind: "feed" });
-  lines.push({ kind: "text", text: "Order slip", align: 1 });
+  lines.push({ kind: "rule" });
+  lines.push(...internalFooter.map((text) => ({ kind: "text" as const, text, align: 1 as const, bold: true })));
   return lines;
 }
 
-export function baristaLines(ticket: ReceiptTicket): PrintLine[] {
+export function baristaLines(ticket: slipTicket, width: number): PrintLine[] {
   const drinks = itemCount(ticket.items);
   const lines: PrintLine[] = [
     { kind: "text", text: "MAKE THESE DRINKS", align: 1, bold: true },
     { kind: "rule" },
     { kind: "text", text: `ORDER NO. ${ticket.ticketNo}`, align: 1, bold: true },
     ...(ticket.serviceMode ? [{ kind: "text" as const, text: ticket.serviceMode === "take-out" ? "TAKE OUT" : "DINE IN", align: 1 as const, bold: true }] : []),
-    { kind: "text", text: receiptWhen(ticket.at), align: 1 },
+    { kind: "text", text: slipWhen(ticket.at), align: 1 },
     { kind: "rule" },
     { kind: "text", text: "Qty  Drink", bold: true },
   ];
@@ -357,33 +397,33 @@ export function baristaLines(ticket: ReceiptTicket): PrintLine[] {
   return lines;
 }
 
-export function encodeCustomerReceipt(
-  ticket: ReceiptTicket,
+export function encodeinternalslip(
+  ticket: slipTicket,
   paperWidth: PaperWidth,
   logo?: Uint8Array,
 ): Uint8Array {
   const width = paperColumns(paperWidth);
-  return buildBytes(customerLines(ticket, width, logo), width);
+  return buildBytes(internalLines(ticket, width, logo), width);
 }
 
 export function encodeBaristaTicket(
-  ticket: ReceiptTicket,
+  ticket: slipTicket,
   paperWidth: PaperWidth,
 ): Uint8Array {
   const width = paperColumns(paperWidth);
-  return buildBytes(baristaLines(ticket), width);
+  return buildBytes(baristaLines(ticket, width), width);
 }
 
 export function encodeOrderSlips(
-  ticket: ReceiptTicket,
+  ticket: slipTicket,
   paperWidth: PaperWidth,
 ): Uint8Array[] {
-  return drinkReceipts(ticket).map((drinkTicket) =>
+  return drinkslips(ticket).map((drinkTicket) =>
     encodeBaristaTicket(drinkTicket, paperWidth),
   );
 }
 
-export function sampleTicket(now = new Date()): ReceiptTicket {
+export function sampleTicket(now = new Date()): slipTicket {
   return {
     ticketNo: "001",
     barista: "Sale In Charge",

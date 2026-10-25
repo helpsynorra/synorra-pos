@@ -1,14 +1,14 @@
 "use client";
 
 import { useCallback } from "react";
-import { encodeBaristaTicket, type ReceiptTicket } from "@/lib/escpos";
+import { encodeBaristaTicket, type slipTicket } from "@/lib/escpos";
 import {
   useSerialPrinter,
   type SerialPrinterConnection,
 } from "@/lib/serial-printer";
 
 export type LabelPrinter = Omit<SerialPrinterConnection, "write"> & {
-  printLabel: (ticket: ReceiptTicket) => Promise<void>;
+  printLabel: (ticket: slipTicket) => Promise<void>;
 };
 
 export function useLabelPrinter(): LabelPrinter {
@@ -17,7 +17,7 @@ export function useLabelPrinter(): LabelPrinter {
     defaultPaperWidth: 58,
   });
   const printLabel = useCallback(
-    async (ticket: ReceiptTicket) => {
+    async (ticket: slipTicket) => {
       await connection.write(
         encodeBaristaTicket(ticket, connection.paperWidth),
       );

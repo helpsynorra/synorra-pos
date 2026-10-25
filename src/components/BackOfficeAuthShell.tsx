@@ -34,7 +34,7 @@ export function BackOfficeAuthShell({
         <Image src="/images/logo-transparent.png" alt="Synorra POS" width={360} height={360} priority className="h-[58px] w-[188px] object-cover object-left" />
         <p className="mt-8 text-[10px] font-bold tracking-[0.2em] text-[#6c83a0] uppercase lg:mt-12 lg:text-xs lg:tracking-[0.25em]">Point of sale · inventory · team</p>
         <h1 className="mt-3 max-w-xl text-3xl font-semibold leading-[1.08] tracking-tight text-[#17243e] lg:mt-4 lg:text-5xl 2xl:text-6xl">A smoother day starts at the counter.</h1>
-        <p className="mt-4 max-w-lg text-sm leading-6 text-[#7086a1] lg:mt-5 lg:text-base lg:leading-7">Sign in to manage your shop, serve customers, and keep every order moving.</p>
+        <p className="mt-4 max-w-lg text-sm leading-6 text-[#7086a1] lg:mt-5 lg:text-base lg:leading-7">Sign in to manage your shop, serve internals, and keep every order moving.</p>
         <div aria-hidden="true" className="relative mt-4 h-[260px] w-full max-w-[650px]">
           <div className="absolute bottom-7 left-10 right-8 h-14 -skew-x-12 rounded-full bg-[#b7c9df]/45 blur-xl" />
           <div className="relative z-10 ml-8 mt-10 h-52 w-[min(72%,420px)] rounded-[28px] border border-white bg-gradient-to-br from-white via-[#edf3fa] to-[#dbe6f2] p-4 shadow-[18px_24px_50px_rgba(47,72,107,0.2)] lg:p-5">

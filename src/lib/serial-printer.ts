@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PaperWidth } from "@/lib/escpos";
 
-export type PrinterRole = "label" | "receipt";
+export type PrinterRole = "label" | "slip";
 export type PrinterStatus = "unsupported" | "disconnected" | "connected";
 
 type StoredSerialConfig = {

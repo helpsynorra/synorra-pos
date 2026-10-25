@@ -61,8 +61,7 @@ class LocalStorageService {
   }
 
   Future<void> migrateLegacyStaffCredentials() {
-    return _legacyCredentialMigration ??=
-        _removeLegacyCachedStaffPasswords();
+    return _legacyCredentialMigration ??= _removeLegacyCachedStaffPasswords();
   }
 
   Future<void> _removeLegacyCachedStaffPasswords() async {
@@ -118,18 +117,32 @@ class LocalStorageService {
             : null);
     if (nextOwnerId != null && previousOwnerId != nextOwnerId) {
       if (getPendingSyncCount() > 0) {
-        throw StateError('Sync this Owner’s pending POS changes before switching accounts.');
+        throw StateError(
+            'Sync this Owner’s pending POS changes before switching accounts.');
       }
       for (final key in <String>[
-        _keyMenu, _keyCategories, _keyCategoryOrder, _keyInventory, _keyOrders,
-        _keyStaff, _keyVoidRequests, _keyRestocks, _keyLoginActivity,
-        _keyPrintJobs, _keyRecipesData, _keyPosOpen, _keyPosOpenedBy,
-        _keyPosOpenedAt, _keyPosFeatureSettings, _keyActiveCheckout,
+        _keyMenu,
+        _keyCategories,
+        _keyCategoryOrder,
+        _keyInventory,
+        _keyOrders,
+        _keyStaff,
+        _keyVoidRequests,
+        _keyRestocks,
+        _keyLoginActivity,
+        _keyPrintJobs,
+        _keyRecipesData,
+        _keyPosOpen,
+        _keyPosOpenedBy,
+        _keyPosOpenedAt,
+        _keyPosFeatureSettings,
+        _keyActiveCheckout,
       ]) {
         await _prefs.remove(key);
       }
     }
-    if (nextOwnerId != null) await _prefs.setString(_keyActiveStoreOwnerId, nextOwnerId);
+    if (nextOwnerId != null)
+      await _prefs.setString(_keyActiveStoreOwnerId, nextOwnerId);
     await _prefs.setString(_keyActiveStaffId, staff.id);
     await _prefs.setString(
       _keyActiveStaffProfile,
@@ -204,6 +217,9 @@ class LocalStorageService {
   Future<void> saveCachedPosFeatureSettings({
     required bool inventoryFeaturesEnabled,
     required bool printButtonHidden,
+    required String attendanceAuthMode,
+    required List<int> attendanceWorkdays,
+    required String attendanceStartTime,
     required Map<String, dynamic> permissions,
   }) async {
     await _prefs.setString(
@@ -211,6 +227,9 @@ class LocalStorageService {
       jsonEncode({
         'inventoryFeaturesEnabled': inventoryFeaturesEnabled,
         'printButtonHidden': printButtonHidden,
+        'attendanceAuthMode': attendanceAuthMode,
+        'attendanceWorkdays': attendanceWorkdays,
+        'attendanceStartTime': attendanceStartTime,
         'permissions': permissions,
       }),
     );

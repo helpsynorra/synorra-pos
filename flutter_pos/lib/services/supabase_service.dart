@@ -498,7 +498,8 @@ class SupabaseService {
           'hotCupInventoryItemId': row['hot_cup_inventory_item_id'],
           'icedCupInventoryItemId': row['iced_cup_inventory_item_id'],
           'otherCupInventoryItemId': row['other_cup_inventory_item_id'],
-          'extraCupInventoryItemIds': row['extra_cup_inventory_item_ids'] ?? const <String>[],
+          'extraCupInventoryItemIds':
+              row['extra_cup_inventory_item_ids'] ?? const <String>[],
           'cupRecipes': row['cup_recipes'] is Map
               ? Map<String, dynamic>.from(row['cup_recipes'] as Map)
               : <String, dynamic>{},
@@ -708,7 +709,9 @@ class SupabaseService {
           'paid': order.paid.round(),
           'change': order.change.round(),
           'voided': order.voided,
-          'voidReason': order.isWaste ? (order.wasteReason ?? order.voidReason) : order.voidReason,
+          'voidReason': order.isWaste
+              ? (order.wasteReason ?? order.voidReason)
+              : order.voidReason,
           if (order.wasteReason != null) 'wasteReason': order.wasteReason,
         },
         'deductions': deductions,
@@ -840,7 +843,12 @@ class SupabaseService {
     }
   }
 
-  Future<bool> pushLoginActivity(LoginActivity activity) async {
+  Future<Map<String, dynamic>> pushLoginActivity(
+    LoginActivity activity, {
+    String? username,
+    String? password,
+    Uint8List? photoBytes,
+  }) async {
     try {
       final result = await _postPosApi({
         'action': const {'barista', 'pos_cashier'}
@@ -848,11 +856,20 @@ class SupabaseService {
             ? 'barista_shift_activity'
             : 'login_activity',
         'activity': activity.toJson(),
+        if (username != null || password != null)
+          'credentials': {
+            'username': username ?? '',
+            'password': password ?? '',
+          },
+        if (photoBytes != null) 'photoBase64': base64Encode(photoBytes),
       });
-      return result['ok'] == true;
+      return result;
     } catch (e) {
       debugPrint('Push login activity error (API: $_posApiUri): $e');
-      return false;
+      return {
+        'ok': false,
+        'error': e.toString().replaceFirst('Exception: ', '')
+      };
     }
   }
 }

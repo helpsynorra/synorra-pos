@@ -13,6 +13,7 @@ import type {
   OffRequest,
   Order,
   OrderItem,
+  PayrollRecord,
   PrintJob,
   PromotionCode,
   RecipeCosting,
@@ -22,6 +23,7 @@ import type {
   StoreData,
   UsageLog,
   VoidRequest,
+  WorkShift,
 } from "@/lib/types";
 import { isWasteOrder } from "@/lib/analytics";
 import { roundQty } from "@/lib/inventory";
@@ -306,7 +308,7 @@ function emptyStore(): StoreData {
       ? env("SYNORRA_LOCAL_ADMIN_GATE")
       : undefined;
   return {
-    pos: { isOpen: false, openedAt: null, openedBy: null, inventoryFeaturesEnabled: true, printButtonHidden: false },
+    pos: { isOpen: false, openedAt: null, openedBy: null, inventoryFeaturesEnabled: true, printButtonHidden: false, cashDrawerOpeningFloat: 0, attendanceAuthMode: "username_password" },
     orders: [],
     printJobs: [],
     menu: [],
@@ -319,6 +321,7 @@ function emptyStore(): StoreData {
     usageLogs: [],
     restocks: [],
     loginActivity: [],
+    workShifts: [],
     offRequests: [],
     voidRequests: [],
     loginGates: localAdminGate
@@ -350,6 +353,8 @@ function normalizeStore(store: StoreData): StoreData {
     openedBy: store.pos?.openedBy ?? null,
     inventoryFeaturesEnabled: store.pos?.inventoryFeaturesEnabled ?? true,
     printButtonHidden: store.pos?.printButtonHidden === true,
+    cashDrawerOpeningFloat: Number(store.pos?.cashDrawerOpeningFloat) || 0,
+    attendanceAuthMode: store.pos?.attendanceAuthMode ?? "username_password",
   };
   const categoryByProduct = new Map(
     (Array.isArray(store.menu) ? store.menu : []).map((item) => [
@@ -392,7 +397,15 @@ function normalizeStore(store: StoreData): StoreData {
         job &&
         typeof job.id === "string" &&
         typeof job.orderId === "string" &&
-        (job.type === "cup-label" || job.type === "customer-receipt"),
+        (job.type === "cup-label" || job.type === "internal-slip"),
+    );
+  }
+  if (!Array.isArray(store.workShifts)) {
+    store.workShifts = [];
+  } else {
+    store.workShifts = store.workShifts.filter(
+      (shift): shift is WorkShift =>
+        Boolean(shift && typeof shift === "object" && typeof shift.id === "string"),
     );
   }
   // An empty menu/categories set is valid, intentional state once the
@@ -440,6 +453,7 @@ function normalizeStore(store: StoreData): StoreData {
       stock: Number(item.stock) || 0,
       maxStock: Number(item.maxStock) || 0,
       cost: Number(item.cost) || 0,
+      reorderThreshold: Math.max(0, Number(item.reorderThreshold) || 0),
       unit: item.unit || "pcs",
     }));
 
@@ -624,7 +638,7 @@ async function readStore(options?: { fresh?: boolean; ownerId?: string | null })
   try {
     const tenantQuery = <T,>(query: T): T =>
       ownerId ? (query as any).eq("owner_id", ownerId) as T : query;
-    const [pos, users, categories, menu, inventory, orders, orderItems, usageLogs, restocks, recipes, recipeCostings, recipeCostingMenuItems, recipeCostingIngredients, loginActivity, offRequests, voidRequests, promotions, loginGates] = await Promise.all([
+    const [pos, users, categories, menu, inventory, orders, orderItems, usageLogs, restocks, recipes, recipeCostings, recipeCostingMenuItems, recipeCostingIngredients, loginActivity, offRequests, voidRequests, promotions, loginGates, workShifts] = await Promise.all([
       ownerId
         ? supabase.from("pos_state").select("*").eq("owner_id", ownerId).maybeSingle()
         : supabase.from("pos_state").select("*").eq("id", POS_STATE_ID).maybeSingle(),
@@ -647,6 +661,7 @@ async function readStore(options?: { fresh?: boolean; ownerId?: string | null })
       ownerId
         ? supabase.from("login_links").select("*").eq("owner_id", ownerId).maybeSingle()
         : supabase.from("login_links").select("*").eq("id", POS_STATE_ID).maybeSingle(),
+      tenantQuery(supabase.from("work_shifts").select("*")).order("shift_date").order("start_time"),
     ]);
     const failedRead = (
       [
@@ -674,6 +689,13 @@ async function readStore(options?: { fresh?: boolean; ownerId?: string | null })
       const [table, error] = failedRead;
       throw new Error(`Unable to read ${table} from Supabase: ${error.message}`);
     }
+    const workShiftSchemaError = workShifts.error &&
+      ["PGRST205", "PGRST204", "42P01", "42703"].includes(workShifts.error.code)
+      ? "Shift scheduling is unavailable until migration 20261025000600_finance_payroll_inventory.sql is applied."
+      : undefined;
+    if (workShifts.error && !workShiftSchemaError) {
+      throw new Error(`Unable to read work shifts from Supabase: ${workShifts.error.message}`);
+    }
 
     const virgin =
       (menu.data ?? []).length === 0 &&
@@ -692,7 +714,7 @@ async function readStore(options?: { fresh?: boolean; ownerId?: string | null })
     const items = orderItems.data ?? [];
     const store = normalizeStore({
       ...base,
-      pos: pos.data ? { isOpen: Boolean(pos.data.is_open), openedAt: pos.data.opened_at, openedBy: pos.data.opened_by_name ?? pos.data.opened_by, inventoryFeaturesEnabled: pos.data.inventory_features_enabled !== false, printButtonHidden: pos.data.print_button_hidden === true } : base.pos,
+      pos: pos.data ? { isOpen: Boolean(pos.data.is_open), openedAt: pos.data.opened_at, openedBy: pos.data.opened_by_name ?? pos.data.opened_by, inventoryFeaturesEnabled: pos.data.inventory_features_enabled !== false, printButtonHidden: pos.data.print_button_hidden === true, cashDrawerOpeningFloat: Number(pos.data.cash_drawer_opening_float) || 0, attendanceAuthMode: pos.data.attendance_auth_mode ?? "username_password" } : base.pos,
       users: Array.from(
         new Map(
           (users.data ?? []).map((row) => [
@@ -704,6 +726,11 @@ async function readStore(options?: { fresh?: boolean; ownerId?: string | null })
               email: row.email ?? "",
               password: row.password,
               passwordChanged: Boolean(row.password_changed),
+              agreedToTerms: row.agreed_to_terms === true,
+              agreedAt: row.agreed_at ?? undefined,
+              hourlyRate: row.hourly_rate == null ? undefined : Number(row.hourly_rate),
+              dailyRate: row.daily_rate == null ? undefined : Number(row.daily_rate),
+              overtimeRate: row.overtime_rate == null ? undefined : Number(row.overtime_rate),
               permissions: {
                 ...(row.permissions ?? {}),
                 promoCodes: (promotions.data ?? [])
@@ -769,6 +796,7 @@ async function readStore(options?: { fresh?: boolean; ownerId?: string | null })
         cost: Number(row.cost),
         stock: Number(row.stock),
         maxStock: Number(row.max_stock),
+        reorderThreshold: row.reorder_threshold == null ? undefined : Number(row.reorder_threshold),
         openingStock: row.opening_stock != null ? Number(row.opening_stock) : undefined,
         purchaseUnitSize: row.purchase_unit_size != null ? Number(row.purchase_unit_size) : undefined,
         cupUsageAmount: row.cup_usage_amount != null ? Number(row.cup_usage_amount) : undefined,
@@ -813,7 +841,7 @@ async function readStore(options?: { fresh?: boolean; ownerId?: string | null })
         wasteBaristas: Array.isArray(row.waste_baristas) ? row.waste_baristas.map(String).filter(Boolean) : undefined,
       })),
       usageLogs: (usageLogs.data ?? []).filter((row) => !row.order_id || activeOrderIds.has(row.order_id)).map((row) => ({ id: row.id, ownerId: row.owner_id ?? undefined, orderId: row.order_id ?? "", orderItemId: row.order_item_id ?? "", inventoryItemId: row.inventory_item_id ?? undefined, date: row.created_at, itemName: row.item_name_snapshot, usedAmount: Number(row.used_amount), unit: row.unit })),
-      restocks: (restocks.data ?? []).map((row) => ({ id: row.id, ownerId: row.owner_id ?? undefined, inventoryItemId: row.inventory_item_id ?? undefined, itemName: row.item_name_snapshot, quantityAdded: Number(row.quantity_added), purchaseQty: row.purchase_qty == null ? undefined : Number(row.purchase_qty), purchaseUnit: row.purchase_unit ?? undefined, date: row.created_at })),
+      restocks: (restocks.data ?? []).map((row) => ({ id: row.id, ownerId: row.owner_id ?? undefined, inventoryItemId: row.inventory_item_id ?? undefined, itemName: row.item_name_snapshot, quantityAdded: Number(row.quantity_added), purchaseQty: row.purchase_qty == null ? undefined : Number(row.purchase_qty), purchaseUnit: row.purchase_unit ?? undefined, unitCost: row.unit_cost == null ? undefined : Number(row.unit_cost), date: row.created_at })),
       recipes: Object.fromEntries((recipes.data ?? []).reduce((entries, row) => { const list = entries.get(row.menu_item_id) ?? []; list.push({ inventoryItemId: row.inventory_item_id, name: "", amount: Number(row.amount), unit: row.unit }); entries.set(row.menu_item_id, list); return entries; }, new Map<string, RecipeIngredient[]>())) ,
       recipeCostings: (recipeCostings.data ?? []).map((row) => ({
         id: row.id,
@@ -849,7 +877,23 @@ async function readStore(options?: { fresh?: boolean; ownerId?: string | null })
         role: row.role,
         type: row.type,
         at: row.at,
+        photoPath: row.photo_path ?? undefined,
       })),
+      workShifts: (workShifts.data ?? []).map((row) => ({
+        id: row.id,
+        ownerId: row.owner_id ?? undefined,
+        name: row.shift_name,
+        date: row.shift_date,
+        startTime: String(row.start_time).slice(0, 5),
+        endTime: String(row.end_time).slice(0, 5),
+        openingFloat: Number(row.opening_float) || 0,
+        staffUserIds: Array.isArray(row.staff_user_ids) ? row.staff_user_ids.filter((id: unknown): id is string => typeof id === "string") : [],
+        createdAt: row.created_at,
+        closingCash: row.closing_cash == null ? undefined : Number(row.closing_cash),
+        closedAt: row.closed_at ?? undefined,
+        closedByUserId: row.closed_by_user_id ?? undefined,
+      })),
+      workShiftError: workShiftSchemaError,
       offRequests: (offRequests.data ?? []).map((row) => ({
         id: row.id,
         ownerId: row.owner_id ?? undefined,
@@ -895,6 +939,7 @@ async function writeStore(store: StoreData): Promise<void> {
     cost: item.cost,
     stock: item.stock,
     max_stock: item.maxStock,
+    reorder_threshold: item.reorderThreshold ?? 0,
     opening_stock: item.openingStock ?? null,
     purchase_unit_size: item.purchaseUnitSize ?? null,
     cup_usage_amount: item.cupUsageAmount ?? null,
@@ -910,10 +955,11 @@ async function writeStore(store: StoreData): Promise<void> {
     inventory_item_id: record.inventoryItemId ?? null,
     purchase_qty: record.purchaseQty ?? null,
     purchase_unit: record.purchaseUnit ?? null,
+    unit_cost: record.unitCost ?? null,
   }));
 
   const operations = await Promise.all([
-    supabase.from("pos_state").upsert({ id: posStateId, owner_id: ownerId ?? POS_STATE_ID, is_open: store.pos.isOpen, opened_at: store.pos.openedAt, opened_by_name: store.pos.openedBy, inventory_features_enabled: store.pos.inventoryFeaturesEnabled, print_button_hidden: store.pos.printButtonHidden, updated_at: new Date().toISOString() }),
+    supabase.from("pos_state").upsert({ id: posStateId, owner_id: ownerId ?? POS_STATE_ID, is_open: store.pos.isOpen, opened_at: store.pos.openedAt, opened_by_name: store.pos.openedBy, inventory_features_enabled: store.pos.inventoryFeaturesEnabled, print_button_hidden: store.pos.printButtonHidden, cash_drawer_opening_float: store.pos.cashDrawerOpeningFloat ?? 0, attendance_auth_mode: store.pos.attendanceAuthMode, updated_at: new Date().toISOString() }),
     supabase.from("login_links").upsert({
       id: posStateId,
       owner_id: ownerId ?? POS_STATE_ID,
@@ -1036,7 +1082,14 @@ function adminLedgerEntryFromRow(row: {
   reason: string | null;
   amount: number | string;
   entry_date: string;
+  category?: string | null;
+  status?: string | null;
+  counterparty?: string | null;
+  payment_source?: string | null;
+  related_record_id?: string | null;
+  work_shift_id?: string | null;
 }): AdminLedgerEntry {
+  const categories = new Set(["supplies", "utilities", "petty_cash", "restock", "payroll", "other"]);
   return {
     id: row.id,
     kind: row.kind,
@@ -1044,6 +1097,14 @@ function adminLedgerEntryFromRow(row: {
     reason: row.reason ?? "",
     amount: Number(row.amount),
     date: row.entry_date,
+    category: categories.has(String(row.category)) ? row.category as AdminLedgerEntry["category"] : "other",
+    status: row.kind === "credit" && row.status === "settled" ? "settled" : "unpaid",
+    counterparty: row.counterparty ?? undefined,
+    paymentSource: row.payment_source === "cash" || row.payment_source === "non_cash"
+      ? row.payment_source
+      : "unassigned",
+    relatedRecordId: row.related_record_id ?? undefined,
+    workShiftId: row.work_shift_id ?? undefined,
   };
 }
 
@@ -1061,17 +1122,17 @@ export async function getAdminLedgerEntries(): Promise<{
   for (let offset = 0; ; offset += 1000) {
     const { data, error } = await supabase
       .from("admin_ledger_entries")
-      .select("id, kind, title, reason, amount, entry_date")
+      .select("id, kind, title, reason, amount, entry_date, category, status, counterparty, payment_source, related_record_id, work_shift_id")
       .eq("owner_id", ownerId)
       .order("entry_date", { ascending: false })
       .order("created_at", { ascending: false })
       .range(offset, offset + 999);
     if (error) {
-      if (error.code === "PGRST205" || error.code === "42P01") {
+      if (["PGRST205", "PGRST204", "42P01", "42703"].includes(error.code)) {
         return {
           expenses: [],
           credits: [],
-          error: "Sales ledger is not installed in Supabase yet. Apply migration 20261006000700_sales_summary_and_ledger.sql.",
+          error: "Finance ledger is not installed in Supabase yet. Apply migration 20261025000600_finance_payroll_inventory.sql.",
         };
       }
       throw new Error(`Unable to read admin ledger entries from Supabase: ${error.message}`);
@@ -1101,8 +1162,14 @@ export async function insertAdminLedgerEntryRecord(
       title: entry.title,
       reason: entry.reason,
       amount: entry.amount,
+      category: entry.category ?? "other",
+      status: entry.status ?? "unpaid",
+      counterparty: entry.counterparty ?? null,
+      payment_source: entry.paymentSource ?? "unassigned",
+      related_record_id: entry.relatedRecordId ?? null,
+      work_shift_id: entry.workShiftId ?? null,
     })
-    .select("id, kind, title, reason, amount, entry_date")
+    .select("id, kind, title, reason, amount, entry_date, category, status, counterparty, payment_source, related_record_id, work_shift_id")
     .single();
   if (error) {
     throw new Error(`Unable to save ${entry.kind} entry to Supabase: ${error.message}`);
@@ -1128,13 +1195,91 @@ export async function importAdminLedgerEntries(
         reason: entry.reason,
         amount: entry.amount,
         entry_date: entry.date,
+        category: entry.category ?? "other",
+        status: entry.status ?? "unpaid",
+        counterparty: entry.counterparty ?? null,
+        payment_source: entry.paymentSource ?? "unassigned",
+        related_record_id: entry.relatedRecordId ?? null,
+        work_shift_id: entry.workShiftId ?? null,
       })),
       { onConflict: "id", ignoreDuplicates: true },
     );
     if (error) {
       throw new Error(`Unable to import existing ledger entries to Supabase: ${error.message}`);
     }
+
   }
+}
+
+export async function setAdminLedgerEntryStatusRecord(
+  id: string,
+  kind: AdminLedgerKind,
+  status: "unpaid" | "settled",
+): Promise<void> {
+  const supabase = supabaseAdmin();
+  const { data, error } = await supabase
+    .from("admin_ledger_entries")
+    .update({ status })
+    .eq("id", id)
+    .eq("kind", kind)
+    .eq("owner_id", await activeOwnerId() ?? POS_STATE_ID)
+    .select("id")
+    .maybeSingle();
+  if (error) throw new Error(`Unable to update Finance entry: ${error.message}`);
+  if (!data) throw new Error("Finance entry was not found.");
+}
+
+export async function getPayrollRecords(): Promise<{ records: PayrollRecord[]; error?: string }> {
+  if (!isRealSupabaseConfigured()) return { records: [] };
+  const { data, error } = await supabaseAdmin()
+    .from("payroll_records")
+    .select("*")
+    .eq("owner_id", await activeOwnerId() ?? POS_STATE_ID)
+    .order("period_start", { ascending: false });
+  if (error) {
+    if (["PGRST205", "PGRST204", "42P01", "42703"].includes(error.code)) {
+      return { records: [], error: "Payroll storage is not installed in Supabase yet. Apply migration 20261025000600_finance_payroll_inventory.sql." };
+    }
+    throw new Error(`Unable to read payroll records: ${error.message}`);
+  }
+  const records = (data ?? []).map((row) => ({
+    id: row.id,
+    userId: row.user_id,
+    staffName: row.staff_name,
+    periodStart: row.period_start,
+    periodEnd: row.period_end,
+    hours: Number(row.hours),
+    grossPay: Number(row.gross_pay),
+    cashAdvance: Number(row.cash_advance),
+    tardinessDeduction: Number(row.tardiness_deduction),
+    netPay: Number(row.net_pay),
+    status: row.status === "paid" ? "paid" as const : "unpaid" as const,
+    payoutLedgerId: row.payout_ledger_id ?? undefined,
+    paidAt: row.paid_at ?? undefined,
+  }));
+  return { records };
+}
+
+export async function savePayrollRecord(record: PayrollRecord): Promise<void> {
+  const supabase = supabaseAdmin();
+  const ownerId = await activeOwnerId() ?? POS_STATE_ID;
+  const { error } = await supabase.from("payroll_records").upsert({
+    id: record.id,
+    owner_id: ownerId,
+    user_id: record.userId,
+    staff_name: record.staffName,
+    period_start: record.periodStart,
+    period_end: record.periodEnd,
+    hours: record.hours,
+    gross_pay: record.grossPay,
+    cash_advance: record.cashAdvance,
+    tardiness_deduction: record.tardinessDeduction,
+    net_pay: record.netPay,
+    status: record.status,
+    payout_ledger_id: record.payoutLedgerId ?? null,
+    paid_at: record.paidAt ?? null,
+  }, { onConflict: "owner_id,user_id,period_start,period_end" });
+  if (error) throw new Error(`Unable to save payroll record: ${error.message}`);
 }
 
 export async function deleteAdminLedgerEntryRecord(
@@ -1270,6 +1415,84 @@ export async function appendPrintJobs(jobs: PrintJob[]): Promise<void> {
   if (jobs.length === 0) return;
   await enqueue(async () => {
     if (memoryStore) memoryStore.printJobs.push(...jobs);
+  });
+}
+
+export async function createWorkShiftRecord(
+  shift: WorkShift,
+  createdByUserId: string,
+): Promise<void> {
+  await enqueue(async () => {
+    const ownerId = await activeOwnerId();
+    if (!isRealSupabaseConfigured()) {
+      if (!memoryStore) memoryStore = normalizeStore(emptyStore());
+      memoryStore.workShifts.push({ ...shift, ownerId: ownerId ?? undefined });
+      return;
+    }
+    const { error } = await supabaseAdmin().from("work_shifts").insert({
+      id: shift.id,
+      owner_id: ownerId,
+      shift_name: shift.name,
+      shift_date: shift.date,
+      start_time: shift.startTime,
+      end_time: shift.endTime,
+      opening_float: shift.openingFloat,
+      staff_user_ids: shift.staffUserIds,
+      created_by_user_id: createdByUserId,
+    });
+    if (error) throw new Error(`Unable to create shift: ${error.message}`);
+    invalidateStoreCache();
+  });
+}
+
+export async function deleteWorkShiftRecord(shiftId: string): Promise<void> {
+  await enqueue(async () => {
+    const ownerId = await activeOwnerId();
+    if (!isRealSupabaseConfigured()) {
+      if (!memoryStore) memoryStore = normalizeStore(emptyStore());
+      memoryStore.workShifts = memoryStore.workShifts.filter((shift) => shift.id !== shiftId);
+      return;
+    }
+    let query = supabaseAdmin().from("work_shifts").delete().eq("id", shiftId);
+    if (ownerId) query = query.eq("owner_id", ownerId);
+    const { error } = await query;
+    if (error) throw new Error(`Unable to delete shift: ${error.message}`);
+    invalidateStoreCache();
+  });
+}
+
+export async function closeWorkShiftRecord(
+  shiftId: string,
+  closingCash: number,
+  closedByUserId: string,
+): Promise<void> {
+  await enqueue(async () => {
+    const ownerId = await activeOwnerId();
+    const closedAt = new Date().toISOString();
+    if (!isRealSupabaseConfigured()) {
+      if (!memoryStore) memoryStore = normalizeStore(emptyStore());
+      const shift = memoryStore.workShifts.find((entry) => entry.id === shiftId);
+      if (!shift) throw new Error("Shift was not found.");
+      if (shift.closedAt) throw new Error("This shift already has a closing report.");
+      shift.closingCash = closingCash;
+      shift.closedAt = closedAt;
+      shift.closedByUserId = closedByUserId;
+      return;
+    }
+    let query = supabaseAdmin()
+      .from("work_shifts")
+      .update({
+        closing_cash: closingCash,
+        closed_at: closedAt,
+        closed_by_user_id: closedByUserId,
+      })
+      .eq("id", shiftId)
+      .is("closed_at", null);
+    if (ownerId) query = query.eq("owner_id", ownerId);
+    const { data, error } = await query.select("id").maybeSingle();
+    if (error) throw new Error(`Unable to save shift closing report: ${error.message}`);
+    if (!data) throw new Error("This shift was already closed or could not be found.");
+    invalidateStoreCache();
   });
 }
 
@@ -2275,6 +2498,11 @@ export async function upsertStaffUserRecord(user: StaffUser): Promise<void> {
         email: normalized.email ?? null,
         password: normalized.password,
         password_changed: Boolean(normalized.passwordChanged),
+          agreed_to_terms: normalized.agreedToTerms ?? false,
+          agreed_at: normalized.agreedAt ?? null,
+          hourly_rate: normalized.hourlyRate ?? null,
+          daily_rate: normalized.dailyRate ?? null,
+          overtime_rate: normalized.overtimeRate ?? null,
         permissions: normalized.permissions ?? {},
         name: normalized.name,
         role: normalized.role,
@@ -2507,6 +2735,7 @@ export async function insertLoginActivityRecord(entry: LoginActivity): Promise<v
       role: entry.role,
       type: entry.type,
       at: entry.at,
+      photo_path: entry.photoPath ?? null,
     };
     let { error } = await supabase
       .from("login_activity")

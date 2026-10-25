@@ -34,7 +34,8 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
     super.initState();
     widget.controller.addListener(_refresh);
     _searchController.addListener(() {
-      if (mounted) setState(() => _query = _searchController.text.trim().toLowerCase());
+      if (mounted)
+        setState(() => _query = _searchController.text.trim().toLowerCase());
     });
   }
 
@@ -101,7 +102,8 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
         isVoidRequestPending: widget.controller.isVoidRequestPending,
         showPrintButton: false,
         syncStatus: online ? 'Online' : 'Offline',
-        syncDotColor: online ? const Color(0xFF22C55E) : const Color(0xFF9CA3AF),
+        syncDotColor:
+            online ? const Color(0xFF22C55E) : const Color(0xFF9CA3AF),
         onPrint: () {},
         onSync: () => widget.controller.syncService.syncAll(),
       ),
@@ -116,8 +118,13 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                 Row(
                   children: [
                     Text(
-                      _currentTab == HistoryTab.orders ? 'Recent Orders' : 'Waste Records',
-                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: _navy),
+                      _currentTab == HistoryTab.orders
+                          ? 'Recent Orders'
+                          : 'Waste Records',
+                      style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w700,
+                          color: _navy),
                     ),
                     const Spacer(),
                     Container(
@@ -129,8 +136,10 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          _tabPill(HistoryTab.orders, 'Orders', Icons.receipt_long_outlined),
-                          _tabPill(HistoryTab.waste, 'Waste Records', Icons.delete_outline_rounded),
+                          _tabPill(HistoryTab.orders, 'Orders',
+                              Icons.receipt_long_outlined),
+                          _tabPill(HistoryTab.waste, 'Waste Records',
+                              Icons.delete_outline_rounded),
                         ],
                       ),
                     ),
@@ -141,7 +150,8 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                   _currentTab == HistoryTab.orders
                       ? '${sourceList.length} sales orders saved on this device${online ? '' : ' · Available offline'}'
                       : '${sourceList.length} waste records with inventory deductions',
-                  style: const TextStyle(color: Color(0xFF71819B), fontSize: 13),
+                  style:
+                      const TextStyle(color: Color(0xFF71819B), fontSize: 13),
                 ),
                 const SizedBox(height: 14),
                 TextField(
@@ -154,8 +164,12 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                     filled: true,
                     fillColor: Colors.white,
                     contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE3E8F0))),
-                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE3E8F0))),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: Color(0xFFE3E8F0))),
+                    enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: Color(0xFFE3E8F0))),
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -189,7 +203,9 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                 ? Center(
                     child: Text(
                       sourceList.isEmpty
-                          ? (_currentTab == HistoryTab.orders ? 'No recent orders saved on this device.' : 'No waste records yet.')
+                          ? (_currentTab == HistoryTab.orders
+                              ? 'No recent orders saved on this device.'
+                              : 'No waste records yet.')
                           : 'No matching records.',
                       style: const TextStyle(color: Color(0xFF71819B)),
                     ),
@@ -197,9 +213,10 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                 : ListView.builder(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
                     itemCount: filtered.length,
-                    itemBuilder: (context, index) => _currentTab == HistoryTab.orders
-                        ? _orderCard(filtered[index])
-                        : _wasteCard(filtered[index]),
+                    itemBuilder: (context, index) =>
+                        _currentTab == HistoryTab.orders
+                            ? _orderCard(filtered[index])
+                            : _wasteCard(filtered[index]),
                   ),
           ),
         ],
@@ -218,12 +235,18 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
           color: active ? Colors.white : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
           boxShadow: active
-              ? [const BoxShadow(color: Color(0x14000000), blurRadius: 4, offset: Offset(0, 1))]
+              ? [
+                  const BoxShadow(
+                      color: Color(0x14000000),
+                      blurRadius: 4,
+                      offset: Offset(0, 1))
+                ]
               : null,
         ),
         child: Row(
           children: [
-            Icon(icon, size: 16, color: active ? _navy : const Color(0xFF64748B)),
+            Icon(icon,
+                size: 16, color: active ? _navy : const Color(0xFF64748B)),
             const SizedBox(width: 6),
             Text(
               label,
@@ -241,30 +264,60 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
 
   Widget _orderCard(Order order) {
     final date = ManilaTime.parse(order.createdAt);
-    final dateLabel = date == null ? order.createdAt : DateFormat('MMM d, y · h:mm a').format(date);
-    final amount = NumberFormat.currency(locale: 'en_PH', symbol: '₱', decimalDigits: 2).format(order.total);
+    final dateLabel = date == null
+        ? order.createdAt
+        : DateFormat('MMM d, y · h:mm a').format(date);
+    final amount =
+        NumberFormat.currency(locale: 'en_PH', symbol: '₱', decimalDigits: 2)
+            .format(order.total);
     final itemCount = order.items.fold<int>(0, (sum, item) => sum + item.qty);
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       elevation: 0,
       color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: Color(0xFFE8EDF4))),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Color(0xFFE8EDF4))),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () => _showOrderDetails(order),
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Expanded(child: Text(order.ticketNo.isEmpty ? 'Order ${order.id}' : 'Ticket ${order.ticketNo}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: _navy))),
-              Text(amount, style: const TextStyle(fontWeight: FontWeight.w700, color: _navy)),
+              Expanded(
+                  child: Text(
+                      order.ticketNo.isEmpty
+                          ? 'ORDER #${order.id}'
+                          : 'ORDER #${order.ticketNo.replaceFirst(RegExp(r'^#'), '')}',
+                      style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: _navy))),
+              Text(amount,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, color: _navy)),
             ]),
             const SizedBox(height: 7),
-            Text(dateLabel, style: const TextStyle(fontSize: 12, color: Color(0xFF71819B))),
+            Text(dateLabel,
+                style: const TextStyle(fontSize: 12, color: Color(0xFF71819B))),
             const SizedBox(height: 12),
             Row(children: [
-              Expanded(child: Text('$itemCount items · ${order.baristaName}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFF53647F), fontSize: 13))),
-              _badge(order.voided ? 'VOIDED' : (order.isSynced ? 'SAVED' : 'NOT SAVED'), order.voided ? const Color(0xFFFFEEEE) : const Color(0xFFEAF2FF), order.voided ? const Color(0xFFB42332) : _navy),
+              Expanded(
+                  child: Text('$itemCount items · ${order.baristaName}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Color(0xFF53647F), fontSize: 13))),
+              _badge(
+                  order.voided
+                      ? 'VOIDED'
+                      : (order.isSynced ? 'SAVED' : 'NOT SAVED'),
+                  order.voided
+                      ? const Color(0xFFFFEEEE)
+                      : const Color(0xFFEAF2FF),
+                  order.voided ? const Color(0xFFB42332) : _navy),
             ]),
           ]),
         ),
@@ -274,33 +327,43 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
 
   Widget _wasteCard(Order order) {
     final date = ManilaTime.parse(order.createdAt);
-    final dateLabel = date == null ? order.createdAt : DateFormat('MMM d, y · h:mm a').format(date);
+    final dateLabel = date == null
+        ? order.createdAt
+        : DateFormat('MMM d, y · h:mm a').format(date);
     final itemCount = order.items.fold<int>(0, (sum, item) => sum + item.qty);
-    final deductions = widget.controller.syncService.buildDeductionsForOrder(order);
+    final deductions =
+        widget.controller.syncService.buildDeductionsForOrder(order);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       elevation: 0,
       color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: Color(0xFFFED7AA))),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Color(0xFFFED7AA))),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () => _showWasteDetails(order, deductions),
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Expanded(
                 child: Row(
                   children: [
-                    const Icon(Icons.delete_outline_rounded, color: Color(0xFFB45309), size: 18),
+                    const Icon(Icons.delete_outline_rounded,
+                        color: Color(0xFFB45309), size: 18),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         order.wasteReason?.trim().isNotEmpty == true
                             ? order.wasteReason!
                             : 'Waste Record',
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF9A3412)),
+                        style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF9A3412)),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -311,11 +374,13 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
               _badge('WASTE', const Color(0xFFFFF4E5), const Color(0xFFB45309)),
             ]),
             const SizedBox(height: 7),
-            Text(dateLabel, style: const TextStyle(fontSize: 12, color: Color(0xFF71819B))),
+            Text(dateLabel,
+                style: const TextStyle(fontSize: 12, color: Color(0xFF71819B))),
             const SizedBox(height: 10),
             Text(
               order.items.map((i) => '${i.qty}× ${i.name}').join(', '),
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _navy),
+              style: const TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w600, color: _navy),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -331,8 +396,19 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
             const SizedBox(height: 8),
             Row(
               children: [
-                Expanded(child: Text('$itemCount item(s) · Recorded by ${order.baristaName}', style: const TextStyle(color: Color(0xFF64748B), fontSize: 12))),
-                _badge(order.isSynced ? 'SAVED' : 'PENDING SYNC', order.isSynced ? const Color(0xFFECFDF5) : const Color(0xFFFEF3C7), order.isSynced ? const Color(0xFF047857) : const Color(0xFFB45309)),
+                Expanded(
+                    child: Text(
+                        '$itemCount item(s) · Recorded by ${order.baristaName}',
+                        style: const TextStyle(
+                            color: Color(0xFF64748B), fontSize: 12))),
+                _badge(
+                    order.isSynced ? 'SAVED' : 'PENDING SYNC',
+                    order.isSynced
+                        ? const Color(0xFFECFDF5)
+                        : const Color(0xFFFEF3C7),
+                    order.isSynced
+                        ? const Color(0xFF047857)
+                        : const Color(0xFFB45309)),
               ],
             ),
           ]),
@@ -343,45 +419,70 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
 
   Widget _badge(String label, Color background, Color foreground) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-        decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(20)),
-        child: Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: foreground)),
+        decoration: BoxDecoration(
+            color: background, borderRadius: BorderRadius.circular(20)),
+        child: Text(label,
+            style: TextStyle(
+                fontSize: 9, fontWeight: FontWeight.w700, color: foreground)),
       );
 
   void _showOrderDetails(Order order) {
-    final currency = NumberFormat.currency(locale: 'en_PH', symbol: '₱', decimalDigits: 2);
+    final currency =
+        NumberFormat.currency(locale: 'en_PH', symbol: '₱', decimalDigits: 2);
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (context) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(order.ticketNo.isEmpty ? 'Order details' : 'Ticket ${order.ticketNo}', style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w700, color: _navy)),
-            const SizedBox(height: 4),
-            Text('${order.baristaName} · ${order.paymentMethod.toUpperCase()} · ${order.serviceMode}', style: const TextStyle(color: Color(0xFF71819B))),
-            const Divider(height: 24),
-            Flexible(child: ListView(shrinkWrap: true, children: [
-              for (final item in order.items)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 7),
-                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Expanded(child: Text('${item.qty}× ${item.name}${item.optionsSummary.isEmpty ? '' : '\n${item.optionsSummary}'}')),
-                    Text(currency.format(item.lineTotal)),
-                  ]),
-                ),
-            ])),
-            const Divider(height: 24),
-            _totalRow('Subtotal', currency.format(order.subtotal)),
-            if (order.discount > 0) _totalRow('Discount', '-${currency.format(order.discount)}'),
-            _totalRow('Total', currency.format(order.total), bold: true),
-            _totalRow('Paid · Change', '${currency.format(order.paid)} · ${currency.format(order.change)}'),
-            if (order.voided && order.voidReason != null) ...[
-              const SizedBox(height: 8),
-              Text('Void reason: ${order.voidReason}', style: const TextStyle(color: Color(0xFFB42332))),
-            ],
-          ]),
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                    order.ticketNo.isEmpty
+                        ? 'Order details'
+                        : 'Order #${order.ticketNo.replaceFirst(RegExp(r'^#'), '')}',
+                    style: const TextStyle(
+                        fontSize: 21,
+                        fontWeight: FontWeight.w700,
+                        color: _navy)),
+                const SizedBox(height: 4),
+                Text(
+                    '${order.baristaName} · ${order.paymentMethod.toUpperCase()} · ${order.serviceMode}',
+                    style: const TextStyle(color: Color(0xFF71819B))),
+                const Divider(height: 24),
+                Flexible(
+                    child: ListView(shrinkWrap: true, children: [
+                  for (final item in order.items)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                                child: Text(
+                                    '${item.qty}× ${item.name}${item.optionsSummary.isEmpty ? '' : '\n${item.optionsSummary}'}')),
+                            Text(currency.format(item.lineTotal)),
+                          ]),
+                    ),
+                ])),
+                const Divider(height: 24),
+                _totalRow('Subtotal', currency.format(order.subtotal)),
+                if (order.discount > 0)
+                  _totalRow('Discount', '-${currency.format(order.discount)}'),
+                _totalRow('Total', currency.format(order.total), bold: true),
+                _totalRow('Paid · Change',
+                    '${currency.format(order.paid)} · ${currency.format(order.change)}'),
+                if (order.voided && order.voidReason != null) ...[
+                  const SizedBox(height: 8),
+                  Text('Void reason: ${order.voidReason}',
+                      style: const TextStyle(color: Color(0xFFB42332))),
+                ],
+              ]),
         ),
       ),
     );
@@ -392,75 +493,124 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (context) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.delete_outline_rounded, color: Color(0xFFB45309), size: 24),
-                const SizedBox(width: 8),
-                const Text('Waste Record', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w700, color: _navy)),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text('Recorded by ${order.baristaName} · ${phDateTimeLabel(order.createdAt)}', style: const TextStyle(color: Color(0xFF71819B), fontSize: 13)),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF4E5),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFFED7AA)),
-              ),
-              child: Row(
-                children: [
-                  const Text('Reason / Note: ', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF9A3412))),
-                  Expanded(
-                    child: Text(
-                      order.wasteReason?.trim().isNotEmpty == true ? order.wasteReason! : 'Waste',
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFFB45309)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 24),
-            const Text('Wasted Items', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
-            const SizedBox(height: 6),
-            Flexible(child: ListView(shrinkWrap: true, children: [
-              for (final item in order.items)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 5),
-                  child: Text('${item.qty}× ${item.name}${item.optionsSummary.isEmpty ? '' : ' (${item.optionsSummary})'}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                Row(
+                  children: [
+                    const Icon(Icons.delete_outline_rounded,
+                        color: Color(0xFFB45309), size: 24),
+                    const SizedBox(width: 8),
+                    const Text('Waste Record',
+                        style: TextStyle(
+                            fontSize: 21,
+                            fontWeight: FontWeight.w700,
+                            color: _navy)),
+                  ],
                 ),
-            ])),
-            if (deductions.isNotEmpty) ...[
-              const Divider(height: 24),
-              const Text('Inventory Deductions', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
-              const SizedBox(height: 6),
-              Flexible(child: ListView(shrinkWrap: true, children: [
-                for (final deduction in deductions)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 3),
-                    child: Row(
-                      children: [
-                        Expanded(child: Text(deduction['itemName']?.toString() ?? '', style: const TextStyle(fontSize: 13))),
-                        Text('-${deduction['amount']} ${deduction['unit']}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFFB42332))),
-                      ],
-                    ),
+                const SizedBox(height: 4),
+                Text(
+                    'Recorded by ${order.baristaName} · ${phDateTimeLabel(order.createdAt)}',
+                    style: const TextStyle(
+                        color: Color(0xFF71819B), fontSize: 13)),
+                const SizedBox(height: 12),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF4E5),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFFED7AA)),
                   ),
-              ])),
-            ],
-            const Divider(height: 24),
-            Row(
-              children: [
-                const Expanded(child: Text('Sales Amount', style: TextStyle(fontSize: 13, color: Color(0xFF64748B)))),
-                const Text('₱0.00 (No Sale)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
-              ],
-            ),
-          ]),
+                  child: Row(
+                    children: [
+                      const Text('Reason / Note: ',
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF9A3412))),
+                      Expanded(
+                        child: Text(
+                          order.wasteReason?.trim().isNotEmpty == true
+                              ? order.wasteReason!
+                              : 'Waste',
+                          style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFFB45309)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 24),
+                const Text('Wasted Items',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: _navy)),
+                const SizedBox(height: 6),
+                Flexible(
+                    child: ListView(shrinkWrap: true, children: [
+                  for (final item in order.items)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 5),
+                      child: Text(
+                          '${item.qty}× ${item.name}${item.optionsSummary.isEmpty ? '' : ' (${item.optionsSummary})'}',
+                          style: const TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w500)),
+                    ),
+                ])),
+                if (deductions.isNotEmpty) ...[
+                  const Divider(height: 24),
+                  const Text('Inventory Deductions',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: _navy)),
+                  const SizedBox(height: 6),
+                  Flexible(
+                      child: ListView(shrinkWrap: true, children: [
+                    for (final deduction in deductions)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 3),
+                        child: Row(
+                          children: [
+                            Expanded(
+                                child: Text(
+                                    deduction['itemName']?.toString() ?? '',
+                                    style: const TextStyle(fontSize: 13))),
+                            Text('-${deduction['amount']} ${deduction['unit']}',
+                                style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFFB42332))),
+                          ],
+                        ),
+                      ),
+                  ])),
+                ],
+                const Divider(height: 24),
+                Row(
+                  children: [
+                    const Expanded(
+                        child: Text('Sales Amount',
+                            style: TextStyle(
+                                fontSize: 13, color: Color(0xFF64748B)))),
+                    const Text('₱0.00 (No Sale)',
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF64748B))),
+                  ],
+                ),
+              ]),
         ),
       ),
     );
@@ -468,14 +618,22 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
 
   String phDateTimeLabel(String iso) {
     final parsed = ManilaTime.parse(iso);
-    return parsed != null ? DateFormat('MMM d, y · h:mm a').format(parsed) : iso;
+    return parsed != null
+        ? DateFormat('MMM d, y · h:mm a').format(parsed)
+        : iso;
   }
 
   Widget _totalRow(String label, String value, {bool bold = false}) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(children: [
-          Expanded(child: Text(label, style: TextStyle(fontWeight: bold ? FontWeight.w700 : FontWeight.normal))),
-          Text(value, style: TextStyle(fontWeight: bold ? FontWeight.w700 : FontWeight.normal, color: bold ? _navy : null)),
+          Expanded(
+              child: Text(label,
+                  style: TextStyle(
+                      fontWeight: bold ? FontWeight.w700 : FontWeight.normal))),
+          Text(value,
+              style: TextStyle(
+                  fontWeight: bold ? FontWeight.w700 : FontWeight.normal,
+                  color: bold ? _navy : null)),
         ]),
       );
 }

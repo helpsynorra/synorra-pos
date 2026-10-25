@@ -1,5 +1,5 @@
 -- Replace the old starter catalog with the supplied Coffee ZZ menu.
--- Order item snapshots preserve historical receipts; their optional live
+-- Order item snapshots preserve historical slips; their optional live
 -- menu_item_id is set to NULL by its existing FK when an old item is removed.
 begin;
 

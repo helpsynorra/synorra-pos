@@ -10,7 +10,7 @@ import '../models/menu_item.dart';
 import '../models/order.dart';
 import 'printer_service.dart';
 
-enum PrinterRole { receipt, labels }
+enum PrinterRole { slip, labels }
 
 enum LabelPrinterLanguage { tspl, cpcl }
 
@@ -18,16 +18,16 @@ class BluetoothPrinterService extends ChangeNotifier {
   BluetoothPrinterService._();
 
   static final BluetoothPrinterService instance = BluetoothPrinterService._();
-  static const _receiptAddressKey = 'synorra_receipt_printer_address';
-  static const _receiptNameKey = 'synorra_receipt_printer_name';
+  static const _slipAddressKey = 'synorra_slip_printer_address';
+  static const _slipNameKey = 'synorra_slip_printer_name';
   static const _labelsAddressKey = 'synorra_labels_printer_address';
   static const _labelsNameKey = 'synorra_labels_printer_name';
   static const _labelsLanguageKey = 'synorra_labels_printer_language';
 
   final FlutterClassicBluetooth _bluetooth = FlutterClassicBluetooth();
   final Map<PrinterRole, BtcConnection> _connections = {};
-  String? _receiptAddress;
-  String? _receiptName;
+  String? _slipAddress;
+  String? _slipName;
   String? _labelsAddress;
   String? _labelsName;
   LabelPrinterLanguage _labelLanguage = LabelPrinterLanguage.tspl;
@@ -37,7 +37,7 @@ class BluetoothPrinterService extends ChangeNotifier {
       _connections[role]?.isConnected ?? false;
 
   String? deviceName(PrinterRole role) =>
-      role == PrinterRole.receipt ? _receiptName : _labelsName;
+      role == PrinterRole.slip ? _slipName : _labelsName;
 
   LabelPrinterLanguage get labelLanguage => _labelLanguage;
 
@@ -53,8 +53,8 @@ class BluetoothPrinterService extends ChangeNotifier {
     if (_initialized) return;
     _initialized = true;
     final preferences = await SharedPreferences.getInstance();
-    _receiptAddress = preferences.getString(_receiptAddressKey);
-    _receiptName = preferences.getString(_receiptNameKey);
+    _slipAddress = preferences.getString(_slipAddressKey);
+    _slipName = preferences.getString(_slipNameKey);
     _labelsAddress = preferences.getString(_labelsAddressKey);
     _labelsName = preferences.getString(_labelsNameKey);
     _labelLanguage = LabelPrinterLanguage.values.firstWhere(
@@ -63,12 +63,12 @@ class BluetoothPrinterService extends ChangeNotifier {
     );
     notifyListeners();
 
-    if (_receiptAddress == null && _labelsAddress == null) return;
+    if (_slipAddress == null && _labelsAddress == null) return;
     try {
       final paired = await _bluetooth.getPairedDevices();
       for (final role in PrinterRole.values) {
         final address =
-            role == PrinterRole.receipt ? _receiptAddress : _labelsAddress;
+            role == PrinterRole.slip ? _slipAddress : _labelsAddress;
         if (address == null) continue;
         final device =
             paired.where((item) => item.address == address).firstOrNull;
@@ -110,11 +110,11 @@ class BluetoothPrinterService extends ChangeNotifier {
     _connections[role] = connection;
 
     final preferences = await SharedPreferences.getInstance();
-    if (role == PrinterRole.receipt) {
-      _receiptAddress = device.address;
-      _receiptName = device.displayName;
-      await preferences.setString(_receiptAddressKey, device.address);
-      await preferences.setString(_receiptNameKey, device.displayName);
+    if (role == PrinterRole.slip) {
+      _slipAddress = device.address;
+      _slipName = device.displayName;
+      await preferences.setString(_slipAddressKey, device.address);
+      await preferences.setString(_slipNameKey, device.displayName);
     } else {
       _labelsAddress = device.address;
       _labelsName = device.displayName;
@@ -141,11 +141,11 @@ class BluetoothPrinterService extends ChangeNotifier {
     }
     if (clearSaved) {
       final preferences = await SharedPreferences.getInstance();
-      if (role == PrinterRole.receipt) {
-        _receiptAddress = null;
-        _receiptName = null;
-        await preferences.remove(_receiptAddressKey);
-        await preferences.remove(_receiptNameKey);
+      if (role == PrinterRole.slip) {
+        _slipAddress = null;
+        _slipName = null;
+        await preferences.remove(_slipAddressKey);
+        await preferences.remove(_slipNameKey);
       } else {
         _labelsAddress = null;
         _labelsName = null;
@@ -156,31 +156,21 @@ class BluetoothPrinterService extends ChangeNotifier {
     if (notify) notifyListeners();
   }
 
-  Future<void> printReceipt(
+  Future<void> printslip(
     Order order, {
-    bool includeCustomerCopy = true,
-    bool includeBirCopy = false,
-    Map<String, String> birDetails = const {},
+    bool includeinternalCopy = true,
   }) async {
-    final connection = _connections[PrinterRole.receipt];
+    final connection = _connections[PrinterRole.slip];
     if (connection == null || !connection.isConnected) {
-      throw StateError('Connect a receipt printer from the POS menu first.');
+      throw StateError('Connect a slip printer from the POS menu first.');
     }
     final bytes = <int>[
       0x1B,
       0x40,
-      if (includeCustomerCopy) ...[
+      if (includeinternalCopy) ...[
         ...utf8.encode(
-          PrinterService.formatReceipt(order, includePrinterCommands: true),
+          PrinterService.formatslip(order, includePrinterCommands: true),
         ),
-        0x0A,
-      ],
-      if (includeBirCopy) ...[
-        ...utf8.encode(PrinterService.formatBirReceipt(
-          order,
-          includePrinterCommands: true,
-          birDetails: birDetails,
-        )),
         0x0A,
       ],
       0x1D,

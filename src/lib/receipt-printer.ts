@@ -1,23 +1,23 @@
 "use client";
 
 import { useCallback } from "react";
-import { encodeCustomerReceipt, type ReceiptTicket } from "@/lib/escpos";
+import { encodeinternalslip, type slipTicket } from "@/lib/escpos";
 import {
   useSerialPrinter,
   type SerialPrinterConnection,
 } from "@/lib/serial-printer";
 
-export type ReceiptPrinter = Omit<SerialPrinterConnection, "write"> & {
-  printReceipt: (ticket: ReceiptTicket) => Promise<void>;
+export type slipPrinter = Omit<SerialPrinterConnection, "write"> & {
+  printslip: (ticket: slipTicket) => Promise<void>;
 };
 
-async function receiptLogo(): Promise<Uint8Array | undefined> {
+async function slipLogo(): Promise<Uint8Array | undefined> {
   if (typeof document === "undefined") return undefined;
   try {
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {
       const image = new window.Image();
       image.onload = () => resolve(image);
-      image.onerror = () => reject(new Error("Could not load receipt logo."));
+      image.onerror = () => reject(new Error("Could not load slip logo."));
       image.src = "/images/logo.png";
     });
     const size = 144;
@@ -69,16 +69,16 @@ async function receiptLogo(): Promise<Uint8Array | undefined> {
   }
 }
 
-export function useReceiptPrinter(): ReceiptPrinter {
+export function useslipPrinter(): slipPrinter {
   const connection = useSerialPrinter({
-    role: "receipt",
+    role: "slip",
     defaultPaperWidth: 80,
   });
-  const printReceipt = useCallback(
-    async (ticket: ReceiptTicket) => {
-      const logo = await receiptLogo();
+  const printslip = useCallback(
+    async (ticket: slipTicket) => {
+      const logo = await slipLogo();
       await connection.write(
-        encodeCustomerReceipt(ticket, connection.paperWidth, logo),
+        encodeinternalslip(ticket, connection.paperWidth, logo),
       );
     },
     [connection],
@@ -86,5 +86,5 @@ export function useReceiptPrinter(): ReceiptPrinter {
 
   const { write: _write, ...printer } = connection;
   void _write;
-  return { ...printer, printReceipt };
+  return { ...printer, printslip };
 }

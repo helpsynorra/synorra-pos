@@ -3,7 +3,7 @@ import { createRestock, deleteAdminRecord, deleteRestock, saveAdminData } from "
 import { isWasteOrder } from "@/lib/analytics";
 import { formatQty, ingredientsForOrderLine, itemNameEquals, looksLikeCupItem, matchesInventoryRow, remainingForUsages, roundQty, stockLedgerForRange } from "@/lib/inventory";
 import { phDateString, phDateTimeLabel, phIsoFromDate, phPeriodBounds, type PeriodRange } from "@/lib/datetime";
-import { cartLineUnitPrice, drinkDisplayName, normalizeMenuAddons, normalizeMenuStyles, orderLineOptionsLabel, orderSoldAsLabel, orderSoldAsLines, orderSoldAsParts } from "@/lib/menu";
+import { cartLineUnitPrice, drinkDisplayName, formatMoney, normalizeMenuAddons, normalizeMenuStyles, orderLineOptionsLabel, orderSoldAsLabel, orderSoldAsLines, orderSoldAsParts } from "@/lib/menu";
 import { pairLoginSessions } from "@/lib/staff-sessions";
 import type { Order, RecipeIngredient, StoreData } from "@/lib/types";
 
@@ -248,6 +248,8 @@ type StockItem = {
   id: string;
   name: string;
   stock: number;
+  cost?: number;
+  reorderThreshold?: number;
   openingStock?: number;
   unit: string;
   purchaseUnitSize?: number;
@@ -264,6 +266,7 @@ type RestockRecord = {
   quantityAdded: number;
   purchaseQty?: number;
   purchaseUnit?: string;
+  unitCost?: number;
   date: string;
 };
 
@@ -353,6 +356,8 @@ export function SalePurchaseTransactions({
       id: item.id,
       name: item.name,
       stock: item.stock,
+      cost: item.cost,
+      reorderThreshold: item.reorderThreshold,
       openingStock: item.openingStock ?? (item.purchaseUnitSize ? 10 * item.purchaseUnitSize : item.stock),
       unit: looksLikeCupItem(item, storeRecipeCostings) ? "pcs" : item.unit || "pcs",
       purchaseUnitSize: item.purchaseUnitSize,
@@ -453,6 +458,8 @@ export function SalePurchaseTransactions({
   const [stockQty, setStockQty] = useState("");
   const [stockUnit, setStockUnit] = useState("");
   const [stockPurchaseUnitSize, setStockPurchaseUnitSize] = useState("");
+  const [stockCost, setStockCost] = useState("");
+  const [stockReorderThreshold, setStockReorderThreshold] = useState("");
   const [stockInventoryType, setStockInventoryType] = useState<"cup" | "ingredient" | "other">("ingredient");
   const [stockCupType, setStockCupType] = useState<"hot" | "iced">("hot");
   const [stockOtherType, setStockOtherType] = useState("");
@@ -465,6 +472,8 @@ export function SalePurchaseTransactions({
       setStockQty("");
     setStockUnit("");
     setStockPurchaseUnitSize("");
+    setStockCost("");
+    setStockReorderThreshold("");
     setStockInventoryType("ingredient");
     setStockOtherType("");
     setShowCupSizes(false);
@@ -879,8 +888,9 @@ export function SalePurchaseTransactions({
         stock: item.stock,
         openingStock: item.openingStock ?? existing?.openingStock,
         unit: looksLikeCupItem(item, store.recipeCostings) ? "pcs" : item.unit || existing?.unit || "pcs",
-        cost: existing?.cost ?? 0,
+        cost: item.cost ?? existing?.cost ?? 0,
         maxStock: existing?.maxStock ?? item.stock,
+        reorderThreshold: item.reorderThreshold ?? existing?.reorderThreshold ?? 0,
         purchaseUnitSize: item.purchaseUnitSize,
         cupUsageAmount: item.cupUsageAmount,
         cupsMake: item.cupsMake ?? existing?.cupsMake,
@@ -915,11 +925,16 @@ export function SalePurchaseTransactions({
     const purchaseUnitSize = stockInventoryType === "cup" ? undefined : stockPurchaseUnitSize.trim() ? Number(stockPurchaseUnitSize) : undefined;
     const inventoryType = stockInventoryType === "other" ? stockOtherType.trim() || "other" : stockInventoryType === "cup" ? `cup_${stockCupType}` : stockInventoryType;
     const cupSize = stockInventoryType === "cup" ? selectedCupSize || undefined : undefined;
+    const cost = stockCost.trim() ? Number(stockCost) : 0;
+    const reorderThreshold = stockReorderThreshold.trim()
+      ? toBaseQuantity({ purchaseUnitSize }, Number(stockReorderThreshold))
+      : 0;
     if (purchaseUnitSize !== undefined && (!Number.isFinite(purchaseUnitSize) || purchaseUnitSize <= 0)) return;
+    if (!Number.isFinite(cost) || cost < 0 || !Number.isFinite(reorderThreshold) || reorderThreshold < 0) return;
 
     if (editStockId) {
       const nextStocks = stocks.map((s) =>
-        s.id === editStockId ? { ...s, name: itemName, stock: toBaseQuantity({ purchaseUnitSize }, pieces), openingStock: toBaseQuantity({ purchaseUnitSize }, pieces), unit, purchaseUnitSize, inventoryType, cupSize } : s,
+        s.id === editStockId ? { ...s, name: itemName, stock: toBaseQuantity({ purchaseUnitSize }, pieces), openingStock: toBaseQuantity({ purchaseUnitSize }, pieces), unit, purchaseUnitSize, inventoryType, cupSize, cost, reorderThreshold } : s,
       );
       const nextRestocks = restocks.filter((record) =>
         record.inventoryItemId
@@ -938,6 +953,8 @@ export function SalePurchaseTransactions({
         stock: toBaseQuantity({ purchaseUnitSize }, pieces),
         openingStock: toBaseQuantity({ purchaseUnitSize }, pieces),
         unit,
+        cost,
+        reorderThreshold,
         purchaseUnitSize,
         inventoryType,
         cupSize,
@@ -984,6 +1001,8 @@ export function SalePurchaseTransactions({
     setSelectedCupSize(s.cupSize ?? menuCupSizes.find((size) => normalizeCupSize(size) === normalizeCupSize(s.name)) ?? "");
     setStockQty(toPieceQuantity(s, s.openingStock ?? s.stock).toString());
     setStockPurchaseUnitSize(s.purchaseUnitSize?.toString() ?? "");
+    setStockCost(String(s.cost ?? 0));
+    setStockReorderThreshold(toPieceQuantity(s, s.reorderThreshold ?? 0).toString());
     const savedType = s.inventoryType ?? (looksLikeCupItem(s, recipeCostings) ? "cup" : "ingredient");
     const isCup = savedType === "cup" || savedType.startsWith("cup_");
     setStockUnit(isCup ? "pcs" : s.unit || "pcs");
@@ -1152,7 +1171,7 @@ export function SalePurchaseTransactions({
           orderId: order.id,
           isWaste,
           wasteReason: order.wasteReason || (order.paymentMethod === "waste" ? order.voidReason : undefined),
-          orderLabel: isWaste ? "Waste" : (order.ticketNo != null && String(order.ticketNo).trim() !== "" ? (order.ticketNo.startsWith("#") ? order.ticketNo : `#${order.ticketNo}`) : order.id),
+          orderLabel: isWaste ? "Waste" : (order.ticketNo != null && String(order.ticketNo).trim() !== "" ? `Order #${order.ticketNo.replace(/^#/, "")}` : `Order #${order.id}`),
           date: order.createdAt,
           soldAs,
           soldAsLines,
@@ -1798,6 +1817,15 @@ export function SalePurchaseTransactions({
 
       {activeTab === "stock" && (
         <div className="space-y-6">
+          <div className="rounded-lg border border-neutral-300 bg-white px-4 py-3">
+            <div className="text-xs font-medium text-neutral-500">Total Inventory Value</div>
+            <div className="mt-1 text-xl font-semibold text-neutral-900">
+              {formatMoney(stocks.reduce((total, item) => {
+                const size = pieceSize(item);
+                return total + item.stock / size * Number(item.cost ?? 0);
+              }, 0))}
+            </div>
+          </div>
           <div className="rounded-lg border border-neutral-300 bg-neutral-50 px-4 py-3">
             <div className="text-xs font-medium text-neutral-500">Total Cups Used</div>
             <div className="mt-1 text-xl font-semibold text-neutral-900">
@@ -1925,6 +1953,14 @@ export function SalePurchaseTransactions({
                 <label className="block text-xs font-medium text-neutral-600 mb-1">Unit</label>
                 <input type="text" placeholder="grams, ml, pcs" value={stockInventoryType === "cup" ? "pcs" : stockUnit} onChange={(e) => setStockUnit(e.target.value)} readOnly={stockInventoryType === "cup"} aria-label="Unit" className={`w-full bg-white border border-neutral-400 rounded px-3 py-1.5 text-sm ${stockInventoryType === "cup" ? "cursor-not-allowed bg-neutral-100 text-neutral-500" : ""}`} />
               </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Unit cost (₱ per purchase unit)</label>
+                <input type="number" min="0" step="0.01" placeholder="0.00" value={stockCost} onChange={(event) => setStockCost(event.target.value)} className="w-full bg-white border border-neutral-400 rounded px-3 py-1.5 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Reorder threshold (purchase units)</label>
+                <input type="number" min="0" step="any" placeholder="0 = no alert" value={stockReorderThreshold} onChange={(event) => setStockReorderThreshold(event.target.value)} className="w-full bg-white border border-neutral-400 rounded px-3 py-1.5 text-sm" />
+              </div>
               <div className="flex gap-2">
                 <button type="submit" className="flex-1 bg-black text-white px-4 py-1.5 rounded text-sm font-medium">{editStockId ? "Update" : "Add"}</button>
                 <button type="button" onClick={resetStockForm} className="border border-neutral-300 bg-white text-black hover:bg-neutral-100 px-4 py-1.5 rounded text-sm font-medium">Clear</button>
@@ -1957,10 +1993,12 @@ export function SalePurchaseTransactions({
             </select>
           </div>
           <div className="overflow-x-auto rounded-lg border border-neutral-400 bg-white">
-            <table className="w-full min-w-[1100px] text-left text-sm">
+            <table className="w-full min-w-[1300px] text-left text-sm">
               <thead>
                 <tr className="bg-white border-b border-neutral-300 text-black text-xs font-semibold">
                   <th className="p-2 border-r border-neutral-300">Item</th>
+                  <th className="p-2 border-r border-neutral-300 text-right">Unit Cost</th>
+                  <th className="p-2 border-r border-neutral-300 text-right">Reorder At</th>
                   <th className="p-2 border-r border-neutral-300 text-right">Opening</th>
                   <th className="p-2 border-r border-neutral-300 text-right">Restock</th>
                   <th className="p-2 border-r border-neutral-300 text-right">Used per Unit</th>
@@ -1993,11 +2031,15 @@ export function SalePurchaseTransactions({
                   const isLiveDate = isLiveRange;
                   const cupsLeft = configuredCupsLeft(s, remaining);
                   const availableAtStart = Math.max(0, opening + restocked);
-                  const isLowStock = availableAtStart > 0 && remaining <= availableAtStart * 0.2;
+                  const threshold = Number(s.reorderThreshold ?? 0);
+                  const isLowStock = threshold > 0 && remaining <= threshold;
+                  const isNearLowStock = threshold > 0 && !isLowStock && remaining <= threshold * 1.25;
                   const isLowCups = cupsLeft != null && cupsLeft <= 5;
                   return (
-                    <tr key={s.id} className="border-b border-neutral-200 text-xs">
-                      <td className="p-2 border-r border-neutral-200 font-medium">{s.name}</td>
+                    <tr key={s.id} className={`border-b border-neutral-200 text-xs ${isLowStock ? "bg-red-50" : isNearLowStock ? "bg-amber-50" : ""}`}>
+                      <td className="p-2 border-r border-neutral-200 font-medium">{isLowStock ? "🔴 " : isNearLowStock ? "🟡 " : ""}{s.name}</td>
+                      <td className="p-2 border-r border-neutral-200 text-right">{formatMoney(s.cost ?? 0)}</td>
+                      <td className="p-2 border-r border-neutral-200 text-right">{threshold > 0 ? `${toPieceQuantity(s, threshold).toFixed(2)} ${s.purchaseUnitSize ? "purchase units" : s.unit}` : "—"}</td>
                       <td className="p-2 border-r border-neutral-200 text-right">{toPieceQuantity(s, opening).toFixed(2)} pcs</td>
                       <td className="p-2 border-r border-neutral-200 text-right font-semibold text-black">
                         {restocked > 0 ? `+${toPieceQuantity(s, restocked).toFixed(2)}` : "0.00"} pcs
@@ -2144,7 +2186,7 @@ export function SalePurchaseTransactions({
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead>
                 <tr className="bg-black border-b border-black text-white text-xs font-semibold">
-                  <th className="p-3 border-r border-white/15">Order ID</th>
+                  <th className="p-3 border-r border-white/15">Order #</th>
                   <th className="p-3 border-r border-white/15">Date</th>
                   <th className="p-3">Sold as</th>
                 </tr>

@@ -11,7 +11,7 @@ import '../../state/pos_controller.dart';
 import '../widgets/product_card.dart';
 import '../widgets/cart_panel.dart';
 import '../widgets/drink_options_dialog.dart';
-import '../widgets/receipt_dialog.dart';
+import '../widgets/slip_dialog.dart';
 import '../widgets/void_dialog.dart';
 import '../widgets/barista_shift_dialog.dart';
 import '../widgets/bluetooth_printer_picker_dialog.dart';
@@ -110,7 +110,7 @@ class _PosScreenState extends State<PosScreen> {
 
   Future<void> _openPrinterPicker(PrinterRole role) async {
     final permission =
-        role == PrinterRole.labels ? 'connectLabels' : 'connectReceipt';
+        role == PrinterRole.labels ? 'connectLabels' : 'connectslip';
     if (!widget.controller.syncService.hasPermission(permission)) return;
     await Future<void>.delayed(Duration.zero);
     if (!mounted) return;
@@ -126,7 +126,7 @@ class _PosScreenState extends State<PosScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-                'Waste and voided records cannot be printed as sales receipts.'),
+                'Waste and voided records cannot be printed as sales slips.'),
           ),
         );
       }
@@ -135,20 +135,16 @@ class _PosScreenState extends State<PosScreen> {
 
     final results = <String>[];
     final customerCopyEnabled =
-        widget.controller.syncService.hasPermission('customerReceipt');
-    final birCopyEnabled =
-        widget.controller.syncService.hasPermission('birReceipt');
-    if (customerCopyEnabled || birCopyEnabled) {
+        widget.controller.syncService.hasPermission('customerslip');
+    if (customerCopyEnabled) {
       try {
-        await _printerService.printReceipt(
+        await _printerService.printslip(
           order,
-          includeCustomerCopy: customerCopyEnabled,
-          includeBirCopy: birCopyEnabled,
-          birDetails: widget.controller.syncService.birReceiptDetails,
+          includeinternalCopy: customerCopyEnabled,
         );
-        results.add('Receipt sent');
+        results.add('slip sent');
       } catch (error) {
-        results.add('Receipt: $error');
+        results.add('slip: $error');
       }
     }
     if (widget.controller.syncService.hasPermission('cupLabels')) {
@@ -252,13 +248,13 @@ class _PosScreenState extends State<PosScreen> {
     );
   }
 
-  void _openReceiptDialog([Order? targetOrder]) {
+  void _openslipDialog([Order? targetOrder]) {
     if (!widget.controller.syncService.hasPermission('printButton')) return;
     if (targetOrder?.isWaste == true || targetOrder?.voided == true) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-              'Waste and voided records cannot be printed as sales receipts.'),
+              'Waste and voided records cannot be printed as sales slips.'),
         ),
       );
       return;
@@ -280,16 +276,13 @@ class _PosScreenState extends State<PosScreen> {
 
     showDialog(
       context: context,
-      builder: (_) => ReceiptDialog(
+      builder: (_) => slipDialog(
         order: order,
         orders: widget.controller.orders,
         menu: widget.controller.menu,
         onPrint: _printOrder,
-        customerReceiptEnabled:
-            widget.controller.syncService.hasPermission('customerReceipt'),
-        birReceiptEnabled:
-            widget.controller.syncService.hasPermission('birReceipt'),
-        birReceiptDetails: widget.controller.syncService.birReceiptDetails,
+        internalslipEnabled:
+            widget.controller.syncService.hasPermission('internalslip'),
         cupLabelsEnabled:
             widget.controller.syncService.hasPermission('cupLabels'),
         printButtonEnabled:
@@ -303,6 +296,8 @@ class _PosScreenState extends State<PosScreen> {
       context: context,
       builder: (_) => BaristaShiftDialog(
         onShiftBaristas: widget.controller.onShiftBaristas,
+        staffUsers: widget.controller.staffUsers,
+        authMode: widget.controller.syncService.attendanceAuthMode,
         authenticateBarista: (username, password) async {
           return widget.controller.authenticateStaffForPurpose(
             username,
@@ -310,8 +305,15 @@ class _PosScreenState extends State<PosScreen> {
             accepts: (staff) => staff.canClockShift,
           );
         },
-        onPunch: (staff, type) async {
-          await widget.controller.punchShift(staff, type);
+        onPunch: (staff, type,
+            {required username, required password, photoBytes}) async {
+          await widget.controller.punchShift(
+            staff,
+            type,
+            username: username,
+            password: password,
+            photoBytes: photoBytes,
+          );
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -394,7 +396,7 @@ class _PosScreenState extends State<PosScreen> {
         );
       }
       closeMobileCheckout?.call();
-      _openReceiptDialog(order);
+      _openslipDialog(order);
     } else if (mounted && !offline) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Checkout failed: ${res['error']}')),
@@ -596,8 +598,23 @@ class _PosScreenState extends State<PosScreen> {
         ),
       );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not record waste: ${result['error']}')),
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Waste was not recorded'),
+          content: SingleChildScrollView(
+            child: SelectableText(
+              result['error']?.toString() ??
+                  'The waste record could not be saved. The checkout items are still in the cart.',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
       );
     }
   }
@@ -658,7 +675,7 @@ class _PosScreenState extends State<PosScreen> {
         builder: (_) => StockScreen(
           controller: widget.controller,
           drawerBuilder: _buildPosDrawer,
-          onPrint: _openReceiptDialog,
+          onPrint: _openslipDialog,
           onVoid: _openVoidDialog,
         ),
       ),
@@ -674,7 +691,7 @@ class _PosScreenState extends State<PosScreen> {
         builder: (_) => RestockScreen(
           controller: widget.controller,
           drawerBuilder: _buildPosDrawer,
-          onPrint: _openReceiptDialog,
+          onPrint: _openslipDialog,
           onVoid: _openVoidDialog,
         ),
       ),
@@ -704,7 +721,7 @@ class _PosScreenState extends State<PosScreen> {
       selectedSection: section,
       cashierName: controller.currentUser?.name ?? 'Owner',
       labelsConnection: _printerService.connectionSummary(PrinterRole.labels),
-      receiptConnection: _printerService.connectionSummary(PrinterRole.receipt),
+      slipConnection: _printerService.connectionSummary(PrinterRole.slip),
       syncStatus: controller.syncService.isOnline ? 'Online' : 'Offline',
       canLogout: canLogout,
       inventoryFeaturesEnabled: controller.syncService.inventoryFeaturesEnabled,
@@ -714,8 +731,8 @@ class _PosScreenState extends State<PosScreen> {
           controller.syncService.hasPermission('restockInventory'),
       connectLabelsEnabled:
           controller.syncService.hasPermission('connectLabels'),
-      connectReceiptEnabled:
-          controller.syncService.hasPermission('connectReceipt'),
+      connectslipEnabled:
+          controller.syncService.hasPermission('connectslip'),
       logoutDisabledMessage: controller.isVoidRequestPending
           ? 'Wait for void approval first'
           : 'Clear checkout first',
@@ -727,7 +744,7 @@ class _PosScreenState extends State<PosScreen> {
       onOpenBackOffice: _openBackOffice,
       onOpenHelpCenter: _openHelpCenter,
       onConnectLabels: () => _openPrinterPicker(PrinterRole.labels),
-      onConnectReceipt: () => _openPrinterPicker(PrinterRole.receipt),
+      onConnectslip: () => _openPrinterPicker(PrinterRole.slip),
       onSync: () => controller.syncService.syncAll(),
       onLogout: _handleLogout,
     );
@@ -774,7 +791,7 @@ class _PosScreenState extends State<PosScreen> {
             !sync.printButtonHidden && sync.hasPermission('printButton'),
         syncStatus: syncStatusLabel,
         syncDotColor: syncDotColor,
-        onPrint: _openReceiptDialog,
+        onPrint: _openslipDialog,
         onSync: () => sync.syncAll(),
       ),
       drawer: _buildPosDrawer(PosSection.terminal),

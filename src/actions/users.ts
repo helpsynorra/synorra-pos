@@ -115,8 +115,11 @@ function parseStaff(input: {
   title: string;
   role: string;
   password: string;
+  hourlyRate: string;
+  dailyRate: string;
+  overtimeRate: string;
   requirePassword: boolean;
-}): { error: string } | { name: string; username: string; email: string; title: string; role: Role; password?: string } {
+}): { error: string } | { name: string; username: string; email: string; title: string; role: Role; password?: string; hourlyRate?: number; dailyRate?: number; overtimeRate: number } {
   const name = input.name.trim();
   const role = parseRole(input.role);
   if (!name) return { error: "Enter a display name." };
@@ -129,6 +132,9 @@ function parseStaff(input: {
         : "Admin";
   const password = input.password;
   const email = input.email.trim().toLowerCase();
+  const hourlyRate = input.hourlyRate.trim() ? Number(input.hourlyRate) : undefined;
+  const dailyRate = input.dailyRate.trim() ? Number(input.dailyRate) : undefined;
+  const overtimeRate = input.overtimeRate.trim() ? Number(input.overtimeRate) : 1.5;
   const username = (
     input.username.trim() ||
     name.toLowerCase().replace(/[^a-z0-9]+/g, "")
@@ -146,6 +152,15 @@ function parseStaff(input: {
   if (input.requirePassword && password.length < 4) {
     return { error: "Password must be at least 4 characters." };
   }
+  if (
+    (hourlyRate !== undefined && (!Number.isFinite(hourlyRate) || hourlyRate < 0)) ||
+    (dailyRate !== undefined && (!Number.isFinite(dailyRate) || dailyRate < 0)) ||
+    !Number.isFinite(overtimeRate) ||
+    overtimeRate < 1 ||
+    (hourlyRate !== undefined && dailyRate !== undefined && hourlyRate > 0 && dailyRate > 0)
+  ) {
+    return { error: "Enter one valid hourly or daily rate and an overtime multiplier of at least 1." };
+  }
   if (!input.requirePassword && password && password.length < 4) {
     return { error: "Password must be at least 4 characters." };
   }
@@ -157,6 +172,9 @@ function parseStaff(input: {
     title,
     role,
     password: password ? password : undefined,
+    hourlyRate: hourlyRate || undefined,
+    dailyRate: dailyRate || undefined,
+    overtimeRate,
   };
 }
 
@@ -167,6 +185,9 @@ export async function createStaffUser(input: {
   title: string;
   role: string;
   password: string;
+  hourlyRate: string;
+  dailyRate: string;
+  overtimeRate: string;
 }) {
   const session = await getSession();
   if (!session || (session.role !== "admin" && session.role !== "cashier")) {
@@ -207,6 +228,9 @@ export async function createStaffUser(input: {
       password: parsed.password ?? "",
       passwordChanged: false,
       ownerId: parsed.role === "cashier" ? id : session.role === "cashier" ? session.userId : undefined,
+      hourlyRate: parsed.hourlyRate,
+      dailyRate: parsed.dailyRate,
+      overtimeRate: parsed.overtimeRate,
     });
     if (parsed.role === "cashier") {
       await initializeOwnerStore(id);
@@ -227,6 +251,9 @@ export async function updateStaffUser(input: {
   title: string;
   role: string;
   password: string;
+  hourlyRate: string;
+  dailyRate: string;
+  overtimeRate: string;
 }) {
     const session = await getSession();
   if (!session || (session.role !== "admin" && session.role !== "cashier")) {
@@ -277,6 +304,9 @@ export async function updateStaffUser(input: {
     role: parsed.role,
     password: parsed.password ? parsed.password : user.password,
     passwordChanged: parsed.password ? false : user.passwordChanged,
+    hourlyRate: parsed.hourlyRate,
+    dailyRate: parsed.dailyRate,
+    overtimeRate: parsed.overtimeRate,
   };
 
   try {
@@ -334,11 +364,9 @@ export async function updateOwnerPermissions(userId: string, permissions: StaffP
     stockInventory: permissions.stockInventory === true,
     restockInventory: permissions.restockInventory === true,
     connectLabels: permissions.connectLabels === true,
-    connectReceipt: permissions.connectReceipt === true,
+    connectslip: permissions.connectslip === true,
     printButton: permissions.printButton === true,
-    customerReceipt: permissions.customerReceipt === true,
-    birReceipt: permissions.birReceipt === true,
-    birReceiptDetails: permissions.birReceiptDetails ?? user.permissions?.birReceiptDetails ?? {},
+    internalslip: permissions.internalslip === true,
     cupLabels: permissions.cupLabels === true,
     dineIn: permissions.dineIn === true,
     takeOut: permissions.takeOut === true,

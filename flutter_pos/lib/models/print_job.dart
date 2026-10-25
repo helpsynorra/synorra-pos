@@ -1,7 +1,7 @@
 class PrintJob {
   final String id;
   final String orderId;
-  final String type; // 'cup-label' or 'customer-receipt'
+  final String type; // 
   String status; // 'pending', 'printed', 'failed', 'cancelled'
   final String createdAt;
   String updatedAt;
@@ -21,7 +21,7 @@ class PrintJob {
     return PrintJob(
       id: json['id'] as String? ?? '',
       orderId: json['orderId'] as String? ?? json['order_id'] as String? ?? '',
-      type: json['type'] as String? ?? 'customer-receipt',
+      type: json['type'] as String? ?? 'internal-slip',
       status: json['status'] as String? ?? 'pending',
       createdAt: json['createdAt'] as String? ?? json['created_at'] as String? ?? DateTime.now().toIso8601String(),
       updatedAt: json['updatedAt'] as String? ?? json['updated_at'] as String? ?? DateTime.now().toIso8601String(),

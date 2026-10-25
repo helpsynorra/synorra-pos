@@ -13,11 +13,9 @@ export type StaffPermissions = {
   stockInventory: boolean;
   restockInventory: boolean;
   connectLabels: boolean;
-  connectReceipt: boolean;
+  connectslip: boolean;
   printButton: boolean;
-  customerReceipt: boolean;
-  birReceipt: boolean;
-  birReceiptDetails?: BirReceiptDetails;
+  internalslip: boolean;
   cupLabels: boolean;
   dineIn: boolean;
   takeOut: boolean;
@@ -25,21 +23,6 @@ export type StaffPermissions = {
   promotionsEnabled: boolean;
   wasteManagement: boolean;
   promoCodes?: PromotionCode[];
-};
-
-export type BirReceiptDetails = {
-  registeredBusinessName?: string;
-  tradeStoreName?: string;
-  registeredAddress?: string;
-  tinBranchCode?: string;
-  taxStatus?: string;
-  vatRegTin?: string;
-  vatPosSerial?: string;
-  min?: string;
-  ptuNumberDate?: string;
-  posSerialNumber?: string;
-  softwareVendorNameTinAddress?: string;
-  birAccreditationValidity?: string;
 };
 
 export type PromotionCode = {
@@ -62,6 +45,21 @@ export type MenuCategoryType = string;
 
 export type AdminLedgerKind = "expense" | "credit";
 
+export type AdminLedgerCategory =
+  | "supplies"
+  | "utilities"
+  | "petty_cash"
+  | "restock"
+  | "payroll"
+  | "other";
+
+export type LedgerPaymentSource = "cash" | "non_cash" | "unassigned";
+
+export type AttendanceAuthMode =
+  | "username_password"
+  | "photo_username_password"
+  | "photo_full_name_pin";
+
 export type AdminLedgerEntry = {
   id: string;
   kind: AdminLedgerKind;
@@ -69,6 +67,12 @@ export type AdminLedgerEntry = {
   reason: string;
   amount: number;
   date: string;
+  category?: AdminLedgerCategory;
+  status?: "unpaid" | "settled";
+  counterparty?: string;
+  paymentSource?: LedgerPaymentSource;
+  relatedRecordId?: string;
+  workShiftId?: string;
 };
 
 export type MenuAddon = {
@@ -155,7 +159,7 @@ export type Order = {
   recordType?: "Sale" | "Purchase" | "Waste";
 };
 
-export type PrintJobType = "cup-label" | "customer-receipt";
+export type PrintJobType = "cup-label" | "internal-slip";
 
 export type PrintJobStatus = "pending" | "printed" | "failed" | "cancelled";
 
@@ -185,6 +189,23 @@ export type PosState = {
   openedBy: string | null;
   inventoryFeaturesEnabled: boolean;
   printButtonHidden: boolean;
+  cashDrawerOpeningFloat?: number;
+  attendanceAuthMode: AttendanceAuthMode;
+};
+
+export type WorkShift = {
+  id: string;
+  ownerId?: string;
+  name: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  openingFloat: number;
+  staffUserIds: string[];
+  createdAt: string;
+  closingCash?: number;
+  closedAt?: string;
+  closedByUserId?: string;
 };
 
 export type StaffUser = {
@@ -194,10 +215,15 @@ export type StaffUser = {
   email?: string;
   password: string;
   passwordChanged?: boolean;
+  agreedToTerms?: boolean;
+  agreedAt?: string;
   name: string;
   role: Role;
   title: string;
   permissions?: StaffPermissions;
+  hourlyRate?: number;
+  dailyRate?: number;
+  overtimeRate?: number;
 };
 
 export type InventoryItem = {
@@ -209,6 +235,7 @@ export type InventoryItem = {
   stock: number;
   openingStock?: number;
   maxStock: number;
+  reorderThreshold?: number;
   purchaseUnitSize?: number;
   cupUsageAmount?: number;
   cupsMake?: number;
@@ -261,7 +288,24 @@ export type RestockRecord = {
   // legacy rows predate these fields (KAN-126).
   purchaseQty?: number;
   purchaseUnit?: string;
+  unitCost?: number;
   date: string;
+};
+
+export type PayrollRecord = {
+  id: string;
+  userId: string;
+  staffName: string;
+  periodStart: string;
+  periodEnd: string;
+  hours: number;
+  grossPay: number;
+  cashAdvance: number;
+  tardinessDeduction: number;
+  netPay: number;
+  status: "unpaid" | "paid";
+  payoutLedgerId?: string;
+  paidAt?: string;
 };
 
 export type LoginActivity = {
@@ -273,6 +317,7 @@ export type LoginActivity = {
   role: Role;
   type: "login" | "logout";
   at: string;
+  photoPath?: string;
 };
 
 export type OffRequest = {
@@ -320,6 +365,8 @@ export type StoreData = {
   usageLogs: UsageLog[];
   restocks: RestockRecord[];
   loginActivity: LoginActivity[];
+  workShifts: WorkShift[];
+  workShiftError?: string;
   offRequests: OffRequest[];
   voidRequests: VoidRequest[];
   loginGates: {

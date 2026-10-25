@@ -2,11 +2,6 @@
 
 import { useState, useEffect, useMemo, useTransition } from "react";
 import { approveVoidRequest } from "@/actions/pos";
-import {
-  createAdminLedgerEntry,
-  deleteAdminLedgerEntry,
-  importLegacyAdminLedgerEntries,
-} from "@/actions/admin-ledger";
 import { drinkDisplayName, formatMoney, orderLineListLabel, orderLineOptionsLabel } from "@/lib/menu";
 import { phDateString, phDateTimeLabel, phPeriodBounds, phTimestamp, type PeriodRange } from "@/lib/datetime";
 import { paymentLabel } from "@/lib/payments";
@@ -31,7 +26,7 @@ import {
   salesByYearMonths,
   sumSales,
 } from "@/lib/analytics";
-import type { AdminLedgerEntry, AdminLedgerKind, Order, StoreData } from "@/lib/types";
+import type { Order, StoreData } from "@/lib/types";
 
 function Metric({
   label,
@@ -150,10 +145,10 @@ function voidStatusLabel(order: Order, users: StoreData["users"]) {
 
 function orderIdLabel(order: Order) {
   if (order.ticketNo != null && String(order.ticketNo).trim() !== "") {
-    const ticket = String(order.ticketNo).trim();
-    return ticket.startsWith("#") ? ticket : `#${ticket}`;
+    const ticket = String(order.ticketNo).trim().replace(/^#/, "");
+    return `Order #${ticket}`;
   }
-  return order.id;
+  return `Order #${order.id}`;
 }
 
 function orderServiceMode(order: Order) {
@@ -163,25 +158,12 @@ function orderServiceMode(order: Order) {
   return "—";
 }
 
-function entryInPeriod(dateStr: string, start: Date, end: Date) {
-  const dayStart = new Date(`${dateStr}T00:00:00+08:00`).getTime();
-  const dayEnd = new Date(`${dateStr}T23:59:59.999+08:00`).getTime();
-  if (Number.isNaN(dayStart) || Number.isNaN(dayEnd)) return false;
-  return dayStart <= end.getTime() && dayEnd >= start.getTime();
-}
-
 export function AdminDashboard({
   store,
   showPromoVoucher,
-  initialExpenses,
-  initialCredits,
-  initialLedgerError,
 }: {
   store: StoreData;
   showPromoVoucher: boolean;
-  initialExpenses: AdminLedgerEntry[];
-  initialCredits: AdminLedgerEntry[];
-  initialLedgerError: string | null;
 }) {
   const [isClient, setIsClient] = useState(false);
   const [filterDateStr, setFilterDateStr] = useState("");
@@ -192,79 +174,12 @@ export function AdminDashboard({
   const [drinksOpen, setDrinksOpen] = useState(true);
   const [ordersOpen, setOrdersOpen] = useState(true);
 
-  const expenses = initialExpenses;
-  const credits = initialCredits;
-  const [ledgerMessage, setLedgerMessage] = useState<string | null>(null);
-  const [ledgerPending, setLedgerPending] = useState(false);
-
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setIsClient(true);
     setFilterDateStr(toInputDateStr(new Date()));
-    if (initialLedgerError) return;
-
-    const readLegacyEntries = (
-      storageKey: string,
-      kind: AdminLedgerKind,
-    ): AdminLedgerEntry[] => {
-      const raw = localStorage.getItem(storageKey);
-      if (!raw) return [];
-      const parsed: unknown = JSON.parse(raw);
-      if (!Array.isArray(parsed)) {
-        throw new Error(`Cannot import old ${kind} entries: saved data is invalid.`);
-      }
-      return parsed.map((entry: unknown) => {
-        if (!entry || typeof entry !== "object") {
-          throw new Error(`Cannot import old ${kind} entries: saved data is invalid.`);
-        }
-        const candidate = entry as Partial<AdminLedgerEntry>;
-        return {
-          id: String(candidate.id ?? ""),
-          kind,
-          title: String(candidate.title ?? ""),
-          reason: String(candidate.reason ?? ""),
-          amount: Number(candidate.amount),
-          date: String(candidate.date ?? ""),
-        };
-      });
-    };
-
-    let legacyEntries: AdminLedgerEntry[];
-    try {
-      legacyEntries = [
-        ...readLegacyEntries("cafe_expenses", "expense"),
-        ...readLegacyEntries("cafe_credits", "credit"),
-      ];
-    } catch (error) {
-      setLedgerMessage(error instanceof Error ? error.message : "Could not read old ledger entries.");
-      return;
-    }
-    if (legacyEntries.length === 0) return;
-
-    let cancelled = false;
-    void importLegacyAdminLedgerEntries(legacyEntries)
-      .then(() => {
-        if (cancelled) return;
-        localStorage.removeItem("cafe_expenses");
-        localStorage.removeItem("cafe_credits");
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        setLedgerMessage(
-          error instanceof Error ? error.message : "Could not import old ledger entries.",
-        );
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [initialLedgerError]);
-
-  const [newExpTitle, setNewExpTitle] = useState("");
-  const [newExpReason, setNewExpReason] = useState("");
-  const [newExpAmount, setNewExpAmount] = useState("");
-
-  const [newCredTitle, setNewCredTitle] = useState("");
-  const [newCredReason, setNewCredReason] = useState("");
-  const [newCredAmount, setNewCredAmount] = useState("");
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const todayStr = phDateString();
   const isTodaySelected = activeFilterMode === "date"
@@ -402,16 +317,6 @@ export function AdminDashboard({
   
   const payments = paymentStats(filteredOrdersList);
   const totalSalesAmount = sumSales(filteredOrdersList);
-  const periodExpenses = expenses.filter((entry) => entryInPeriod(entry.date, startOfPeriod, now));
-  const periodCredits = credits.filter((entry) => entryInPeriod(entry.date, startOfPeriod, now));
-  const totalExpensesAmount = periodExpenses.reduce((sum, e) => sum + e.amount, 0);
-  const totalCreditsAmount = periodCredits.reduce((sum, c) => sum + c.amount, 0);
-  const canEditLedgers =
-    (activeFilterMode === "range" && rangeType === "today") ||
-    (activeFilterMode === "date" && filterDateStr === todayStr);
-
-  const netProfitOrLoss = totalSalesAmount - (totalExpensesAmount + totalCreditsAmount);
-
   const menuCategoryTypeByName = new Map(
     store.menu.map((item) => [
       item.category.trim().toLowerCase(),
@@ -512,11 +417,22 @@ export function AdminDashboard({
   const orderCashierInCharge = (order: Order) => {
     if (order.baristaUserId) {
       const staff = store.users.find((u) => u.id === order.baristaUserId);
-      if (staff && staff.role !== "barista") {
-        return staff.name || staff.username || order.baristaName || "—";
+      if (staff?.role === "pos_cashier") {
+        return staff.name || staff.username || "—";
       }
     }
-    return order.baristaName?.trim() || "—";
+    const orderTime = phTimestamp(order.createdAt);
+    const activeCashier = pairedShifts
+      .filter((session) =>
+        session.role === "pos_cashier" &&
+        session.loginAt != null &&
+        phTimestamp(session.loginAt) <= orderTime &&
+        (!session.logoutAt || phTimestamp(session.logoutAt) >= orderTime),
+      )
+      .sort((a, b) => phTimestamp(b.loginAt ?? "") - phTimestamp(a.loginAt ?? ""))[0];
+    if (!activeCashier) return "—";
+    const cashier = store.users.find((user) => user.id === activeCashier.userId);
+    return cashier?.name || cashier?.username || activeCashier.name || "—";
   };
   const orderBaristaInCharge = (order: Order) => {
     if (order.baristaUserId) {
@@ -550,71 +466,6 @@ export function AdminDashboard({
       ? Math.max(0, order.subtotal - (order.discount ?? 0))
       : order.total;
   const pendingVoidRequests: typeof store.voidRequests = [];
-
-  const createEntry = async (
-    event: React.FormEvent,
-    kind: AdminLedgerKind,
-    title: string,
-    reason: string,
-    amountText: string,
-  ) => {
-    event.preventDefault();
-    const amount = Number(amountText);
-    if (initialLedgerError) return;
-    if (!canEditLedgers || !title.trim() || !Number.isFinite(amount) || amount <= 0) {
-      setLedgerMessage("Enter a title and a valid amount greater than zero.");
-      return;
-    }
-    setLedgerPending(true);
-    setLedgerMessage(null);
-    try {
-      await createAdminLedgerEntry(kind, title, reason, amount);
-      if (kind === "expense") {
-        setNewExpTitle("");
-        setNewExpReason("");
-        setNewExpAmount("");
-      } else {
-        setNewCredTitle("");
-        setNewCredReason("");
-        setNewCredAmount("");
-      }
-    } catch (error) {
-      setLedgerMessage(error instanceof Error ? error.message : `Could not save ${kind}.`);
-    } finally {
-      setLedgerPending(false);
-    }
-  };
-
-  const handleAddExpense = (e: React.FormEvent) => {
-    void createEntry(e, "expense", newExpTitle, newExpReason, newExpAmount);
-  };
-
-  const removeEntry = async (id: string, kind: AdminLedgerKind) => {
-    if (!canEditLedgers || initialLedgerError) return;
-    const entry = (kind === "expense" ? expenses : credits).find((item) => item.id === id);
-    if (!entry || entry.date !== todayStr) return;
-    setLedgerPending(true);
-    setLedgerMessage(null);
-    try {
-      await deleteAdminLedgerEntry(id, kind);
-    } catch (error) {
-      setLedgerMessage(error instanceof Error ? error.message : `Could not delete ${kind}.`);
-    } finally {
-      setLedgerPending(false);
-    }
-  };
-
-  const handleAddCredit = (e: React.FormEvent) => {
-    void createEntry(e, "credit", newCredTitle, newCredReason, newCredAmount);
-  };
-
-  const handleDeleteCredit = (id: string) => {
-    void removeEntry(id, "credit");
-  };
-
-  const handleDeleteExpense = (id: string) => {
-    void removeEntry(id, "expense");
-  };
 
   if (!isClient) {
     return <div className="p-8 text-center text-neutral-500">Loading dashboard...</div>;
@@ -751,24 +602,6 @@ export function AdminDashboard({
         </section>
       ) : null}
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-[10px] tracking-[0.2em] text-neutral-500 uppercase sm:text-xs sm:tracking-[0.25em]">
-              Net Summary (Revenue - Expenses - Credits)
-            </p>
-            <h2 className="mt-2 text-2xl font-semibold sm:text-3xl">
-              {formatMoney(netProfitOrLoss)}
-            </h2>
-          </div>
-          <div className="text-left text-xs text-neutral-500 space-y-1 sm:text-right">
-            <p>Total Revenue: <span className="font-medium text-black">{formatMoney(totalSalesAmount)}</span></p>
-            <p>Total Expenses: <span className="font-medium text-black">{formatMoney(totalExpensesAmount)}</span></p>
-            <p>Total Credits: <span className="font-medium text-black">{formatMoney(totalCreditsAmount)}</span></p>
-          </div>
-        </div>
-      </section>
-
       <section className="space-y-6">
         <div className="border-b border-neutral-200 pb-3">
           <h2 className="text-xs tracking-[0.25em] text-neutral-500 uppercase">
@@ -848,12 +681,6 @@ export function AdminDashboard({
           )}
         </div>
       </section>
-
-      {ledgerMessage || initialLedgerError ? (
-        <p role="alert" className="border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {ledgerMessage ?? initialLedgerError}
-        </p>
-      ) : null}
 
       <section className="grid gap-4 xl:grid-cols-2 2xl:gap-6">
         {!isTodaySelected && (
@@ -967,180 +794,6 @@ export function AdminDashboard({
         </div>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-2 2xl:gap-6">
-        <div className="min-w-0 space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-          <div className="flex justify-between items-center">
-            <div>
-              <h2 className="text-xs tracking-[0.25em] text-neutral-500 uppercase">Expenses Tracker</h2>
-              <p className="text-sm font-semibold mt-1">Total: {formatMoney(totalExpensesAmount)}</p>
-            </div>
-          </div>
-
-          {canEditLedgers && !initialLedgerError ? (
-          <form onSubmit={handleAddExpense} className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-neutral-100">
-            <input
-              type="text"
-              placeholder="Expense title..."
-              required
-              value={newExpTitle}
-              onChange={(e) => setNewExpTitle(e.target.value)}
-              className="border border-neutral-300 rounded px-3 py-1.5 text-sm outline-none focus:border-black"
-            />
-            <input
-              type="text"
-              placeholder="Reason..."
-              value={newExpReason}
-              onChange={(e) => setNewExpReason(e.target.value)}
-              className="border border-neutral-300 rounded px-3 py-1.5 text-sm outline-none focus:border-black"
-            />
-            <input
-              type="number"
-              placeholder="Amount (₱)"
-              min="0.01"
-              step="0.01"
-              required
-              value={newExpAmount}
-              onChange={(e) => setNewExpAmount(e.target.value)}
-              className="border border-neutral-300 rounded px-3 py-1.5 text-sm outline-none focus:border-black"
-            />
-            <button
-              type="submit"
-              disabled={ledgerPending}
-              className="sm:col-span-3 bg-[#101d37] text-white rounded px-3 py-1.5 text-sm font-medium hover:bg-[#243a5e] transition"
-            >
-              {ledgerPending ? "Saving..." : "Add Expense"}
-            </button>
-          </form>
-          ) : null}
-
-          <div className="overflow-x-auto max-h-48 overflow-y-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="text-neutral-400 text-xs border-b border-neutral-100">
-                <tr>
-                  <th className="py-2">Title</th>
-                  <th className="py-2">Reason</th>
-                  <th className="py-2 text-right">Amount</th>
-                  <th className="py-2 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {periodExpenses.length === 0 ? (
-                  <tr><td colSpan={4} className="py-4 text-center text-neutral-400 text-xs">No expenses in this range.</td></tr>
-                ) : (
-                  periodExpenses.map((ex, exIdx) => (
-                    <tr key={`${ex.id}-${exIdx}`} className="border-b border-neutral-50 text-xs">
-                      <td className="py-2">{ex.title}</td>
-                      <td className="py-2 text-neutral-500">{ex.reason || "—"}</td>
-                      <td className="py-2 text-right font-medium">{formatMoney(ex.amount)}</td>
-                      <td className="py-2 text-right">
-                        {canEditLedgers && !initialLedgerError && ex.date === todayStr ? (
-                          <button
-                            type="button"
-                            disabled={ledgerPending}
-                            onClick={() => handleDeleteExpense(ex.id)}
-                            className="text-red-500 hover:text-red-700 font-medium px-2 py-1"
-                          >
-                            Delete
-                          </button>
-                        ) : (
-                          <span className="text-neutral-300">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="min-w-0 space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-          <div className="flex justify-between items-center">
-            <div>
-              <h2 className="text-xs tracking-[0.25em] text-neutral-500 uppercase">Credits</h2>
-              <p className="text-sm font-semibold mt-1">Total: {formatMoney(totalCreditsAmount)}</p>
-            </div>
-          </div>
-
-          {canEditLedgers && !initialLedgerError ? (
-          <form onSubmit={handleAddCredit} className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-neutral-100">
-            <input
-              type="text"
-              placeholder="Credit title..."
-              required
-              value={newCredTitle}
-              onChange={(e) => setNewCredTitle(e.target.value)}
-              className="border border-neutral-300 rounded px-3 py-1.5 text-sm outline-none focus:border-black"
-            />
-            <input
-              type="text"
-              placeholder="Reason..."
-              value={newCredReason}
-              onChange={(e) => setNewCredReason(e.target.value)}
-              className="border border-neutral-300 rounded px-3 py-1.5 text-sm outline-none focus:border-black"
-            />
-            <input
-              type="number"
-              placeholder="Amount (₱)"
-              min="0.01"
-              step="0.01"
-              required
-              value={newCredAmount}
-              onChange={(e) => setNewCredAmount(e.target.value)}
-              className="border border-neutral-300 rounded px-3 py-1.5 text-sm outline-none focus:border-black"
-            />
-            <button
-              type="submit"
-              disabled={ledgerPending}
-              className="sm:col-span-3 bg-[#101d37] text-white rounded px-3 py-1.5 text-sm font-medium hover:bg-[#243a5e] transition"
-            >
-              {ledgerPending ? "Saving..." : "Add Credit"}
-            </button>
-          </form>
-          ) : null}
-
-          <div className="overflow-x-auto max-h-48 overflow-y-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="text-neutral-400 text-xs border-b border-neutral-100">
-                <tr>
-                  <th className="py-2">Title</th>
-                  <th className="py-2">Reason</th>
-                  <th className="py-2 text-right">Amount</th>
-                  <th className="py-2 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {periodCredits.length === 0 ? (
-                  <tr><td colSpan={4} className="py-4 text-center text-neutral-400 text-xs">No credits in this range.</td></tr>
-                ) : (
-                  periodCredits.map((cr, crIdx) => (
-                    <tr key={`${cr.id}-${crIdx}`} className="border-b border-neutral-50 text-xs">
-                      <td className="py-2">{cr.title}</td>
-                      <td className="py-2 text-neutral-500">{cr.reason || "—"}</td>
-                      <td className="py-2 text-right font-medium">{formatMoney(cr.amount)}</td>
-                      <td className="py-2 text-right">
-                        {canEditLedgers && !initialLedgerError && cr.date === todayStr ? (
-                          <button
-                            type="button"
-                            disabled={ledgerPending}
-                            onClick={() => handleDeleteCredit(cr.id)}
-                            className="text-red-500 hover:text-red-700 font-medium px-2 py-1"
-                          >
-                            Delete
-                          </button>
-                        ) : (
-                          <span className="text-neutral-300">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
       <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex items-center gap-3">
           <h2 className="text-[10px] tracking-[0.2em] text-neutral-500 uppercase sm:text-xs sm:tracking-[0.25em]">
@@ -1217,16 +870,16 @@ export function AdminDashboard({
             </p>
           ) : (
           <div className="mt-4 overflow-x-auto">
-            <div className="min-w-[980px]">
-              <div className="hidden grid-cols-11 gap-x-3 border-b border-neutral-200 pb-2 text-xs text-neutral-500 lg:grid">
+            <div className={showPromoVoucher ? "min-w-[980px]" : "min-w-[900px]"}>
+              <div className={`hidden gap-x-3 border-b border-neutral-200 pb-2 text-xs text-neutral-500 lg:grid ${showPromoVoucher ? "grid-cols-11" : "grid-cols-10"}`}>
                 <p className="min-w-0">Time</p>
                 <p className="min-w-0">Owner</p>
-                <p className="min-w-0">Order ID</p>
+                <p className="min-w-0">Order #</p>
                 <p className="min-w-0">Items</p>
                 <p className="min-w-0">Status</p>
                 <p className="min-w-0">Cashier in Charge</p>
                 <p className="min-w-0">Barista in Charge</p>
-                <p className="min-w-0">Promo voucher</p>
+                {showPromoVoucher ? <p className="min-w-0">Promo voucher</p> : null}
                 <p className="min-w-0">Payment</p>
                 <p className="min-w-0">Service</p>
                 <p className="min-w-0 text-right">Total</p>
@@ -1235,7 +888,7 @@ export function AdminDashboard({
                 {latest.map((order: Order, ordIdx: number) => (
                   <div
                     key={`${order.id}-${ordIdx}`}
-                    className="grid grid-cols-1 gap-2 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 shadow-sm lg:grid-cols-11 lg:items-start lg:gap-x-3 lg:rounded-none lg:border-0 lg:bg-transparent lg:px-0 lg:py-3 lg:shadow-none"
+                    className={`grid grid-cols-1 gap-2 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 shadow-sm lg:items-start lg:gap-x-3 lg:rounded-none lg:border-0 lg:bg-transparent lg:px-0 lg:py-3 lg:shadow-none ${showPromoVoucher ? "lg:grid-cols-11" : "lg:grid-cols-10"}`}
                   >
                     <div className="min-w-0">
                       <p className="text-sm leading-5 text-neutral-700">
@@ -1293,10 +946,12 @@ export function AdminDashboard({
                       <span className="lg:hidden">Barista in Charge: </span>
                       {orderBaristaInCharge(order)}
                     </p>
-                    <p className="min-w-0 break-words text-xs text-neutral-500 lg:text-sm">
-                      <span className="lg:hidden">Promo voucher: </span>
-                      {order.promoLabel?.trim() || "—"}
-                    </p>
+                    {showPromoVoucher ? (
+                      <p className="min-w-0 break-words text-xs text-neutral-500 lg:text-sm">
+                        <span className="lg:hidden">Promo voucher: </span>
+                        {order.promoLabel?.trim() || "—"}
+                      </p>
+                    ) : null}
                     <p className="min-w-0 text-xs text-neutral-500 lg:text-sm">
                       <span className="lg:hidden">Payment: </span>
                       {paymentLabel(order.paymentMethod)}

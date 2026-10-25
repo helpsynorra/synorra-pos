@@ -9,8 +9,8 @@ class PrinterService {
   static const String cafeCity = 'Zamboanga City';
 
   // Most 58mm thermal printers use around 32 characters per line.
-  static const int receiptWidth = 32;
-  static const int cupLabelWidth = receiptWidth;
+  static const int slipWidth = 32;
+  static const int cupLabelWidth = slipWidth;
   static const String _boldOn = '\x1B\x45\x01';
   static const String _boldOff = '\x1B\x45\x00';
 
@@ -18,7 +18,7 @@ class PrinterService {
   // BASIC HELPERS
   // ---------------------------------------------------------------------------
 
-  static String _center(String text, {int width = receiptWidth}) {
+  static String _center(String text, {int width = slipWidth}) {
     if (text.length >= width) {
       return text.substring(0, width);
     }
@@ -27,7 +27,7 @@ class PrinterService {
     return '${' ' * leftPadding}$text';
   }
 
-  static String _line({int width = receiptWidth, String char = '-'}) {
+  static String _line({int width = slipWidth, String char = '-'}) {
     return char * width;
   }
 
@@ -43,7 +43,7 @@ class PrinterService {
     buffer.writeln();
   }
 
-  static String _doubleLine({int width = receiptWidth}) {
+  static String _doubleLine({int width = slipWidth}) {
     return '=' * width;
   }
 
@@ -54,7 +54,7 @@ class PrinterService {
   static String _row(
     String left,
     String right, {
-    int width = receiptWidth,
+    int width = slipWidth,
   }) {
     left = left.trim();
     right = right.trim();
@@ -89,7 +89,7 @@ class PrinterService {
   /// Wraps text without breaking words whenever possible.
   static List<String> _wrap(
     String text, {
-    int width = receiptWidth,
+    int width = slipWidth,
   }) {
     final trimmed = text.trim();
 
@@ -150,7 +150,7 @@ class PrinterService {
   }
 
   // ---------------------------------------------------------------------------
-  // RECEIPT HEADER
+  // slip HEADER
   // ---------------------------------------------------------------------------
 
   static void _writeHeader(
@@ -170,14 +170,16 @@ class PrinterService {
       buffer.writeln(_center(cafeCity));
       buffer.writeln();
     }
-    buffer.writeln(_doubleLine());
-
     final ticket =
         order.ticketNo.trim().isNotEmpty ? order.ticketNo.trim() : 'N/A';
+    for (final line in _wrap('CUSTOMER COPY (FOR INTERNAL USE ONLY)')) {
+      buffer.writeln(_center(line));
+    }
+    buffer.writeln(_doubleLine());
 
     _writeLine(
       buffer,
-      _row('ORDER NO.', ticket),
+      _row('ORDER #', ticket),
       bold: true,
       includePrinterCommands: includePrinterCommands,
     );
@@ -188,201 +190,10 @@ class PrinterService {
 
     buffer.writeln(_row('DATE', dateText));
 
-    final cashier =
-        order.baristaName.trim().isNotEmpty ? order.baristaName.trim() : 'N/A';
-
-    buffer.writeln(_row('OWNER', cashier));
-    buffer.writeln(_center(order.serviceMode == 'take-out' ? 'TAKE OUT' : 'DINE IN'));
-
-    buffer.writeln(_doubleLine());
-  }
-
-  // ---------------------------------------------------------------------------
-  // BIR SALES INVOICE
-  // ---------------------------------------------------------------------------
-
-  /// Invoice amounts are printed without currency symbol, e.g. `150.00`.
-  static String _birAmount(num amount) => amount.toStringAsFixed(2);
-
-  /// Writes wrapped left-aligned lines, matching the admin template layout.
-  static void _writeBirLines(StringBuffer buffer, String text) {
-    for (final line in _wrap(text)) {
-      buffer.writeln(line);
-    }
-  }
-
-  /// True when the registered tax status is VAT-registered (not NON-VAT).
-  static bool _birIsVatRegistered(Map<String, String> details) {
-    final taxStatus = (details['taxStatus'] ?? '').toUpperCase();
-    if (taxStatus.contains('NON-VAT')) return false;
-    return taxStatus.contains('VAT');
-  }
-
-  static void _writeBirHeader(
-    StringBuffer buffer,
-    Order order,
-    Map<String, String> details,
-    bool includePrinterCommands,
-  ) {
-    final registeredName = details['registeredBusinessName']?.trim() ?? '';
-    final storeName = details['tradeStoreName']?.trim() ?? '';
-    final address = details['registeredAddress']?.trim() ?? '';
-    final taxStatus = details['taxStatus']?.trim() ?? '';
-    final tin = details['tinBranchCode']?.trim() ?? '';
-
-    void writeBold(String text) {
-      if (includePrinterCommands) buffer.write(_boldOn);
-      _writeBirLines(buffer, text);
-      if (includePrinterCommands) buffer.write(_boldOff);
-    }
-
-    if (registeredName.isNotEmpty) writeBold(registeredName);
-    if (storeName.isNotEmpty && storeName != registeredName) {
-      _writeBirLines(buffer, storeName);
-    }
-    if (address.isNotEmpty) {
-      _writeBirLines(buffer, address);
-    }
-    if (tin.isNotEmpty) {
-      _writeBirLines(buffer, 'TIN / BRANCH: $tin');
-    }
-    if (taxStatus.isNotEmpty) {
-      _writeBirLines(buffer, taxStatus);
-    }
-
-    buffer.writeln(_doubleLine());
-    _writeLine(
-      buffer,
-      _center('SALES INVOICE'),
-      bold: true,
-      includePrinterCommands: includePrinterCommands,
-    );
-
-    final ticket =
-        order.ticketNo.trim().isNotEmpty ? order.ticketNo.trim() : order.id;
-    _writeBirLines(buffer, 'Invoice No.: $ticket');
-    final createdAt = ManilaTime.parse(order.createdAt) ?? ManilaTime.now();
-    _writeBirLines(
-      buffer,
-      'Date: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(createdAt)}',
-    );
-  }
-
-  // Column widths for the QTY/ITEM/PRICE/TOTAL invoice table (32 chars total).
-  static const int _birPriceWidth = 7;
-  static const int _birTotalWidth = 8;
-  static const int _birNameWidth =
-      receiptWidth - 4 - _birPriceWidth - _birTotalWidth - 2;
-
-  /// One `QTY  ITEM  PRICE  TOTAL` table row using fixed column widths.
-  static String _birTableRow(String qty, String name, String price, String total) {
-    return '${qty.padRight(4)}${name.padRight(_birNameWidth)} '
-        '${price.padLeft(_birPriceWidth)} ${total.padLeft(_birTotalWidth)}';
-  }
-
-  static void _writeBirItems(
-    StringBuffer buffer,
-    Order order,
-    bool includePrinterCommands,
-  ) {
-    buffer.writeln(_line());
-
-    _writeLine(
-      buffer,
-      _birTableRow('QTY', 'ITEM', 'PRICE', 'TOTAL'),
-      bold: true,
-      includePrinterCommands: includePrinterCommands,
-    );
-
-    buffer.writeln(_line());
-
-    for (final item in order.items) {
-      final nameLines = _wrap(item.name.trim(), width: _birNameWidth);
-      final unitPrice = _birAmount(item.unitPrice);
-      final lineTotal = _birAmount(item.lineTotal);
-
-      for (var i = 0; i < nameLines.length; i++) {
-        final chunk = nameLines[i];
-
-        if (i == 0) {
-          buffer.writeln(
-            _birTableRow('${item.qty}', chunk, unitPrice, lineTotal),
-          );
-        } else {
-          buffer.writeln(_birTableRow('', chunk, '', ''));
-        }
-      }
-    }
-
-    buffer.writeln();
-  }
-
-  static void _writeBirTotals(
-    StringBuffer buffer,
-    Order order,
-    Map<String, String> details,
-    bool includePrinterCommands,
-  ) {
-    buffer.writeln(_line());
-
-    // Prices already include VAT, so the 12% VAT is backed out of the total.
-    final vatRegistered = _birIsVatRegistered(details);
-    final totalDue = order.total;
-    final vatable = vatRegistered ? totalDue / 1.12 : 0.0;
-    final vat = vatRegistered ? totalDue - vatable : 0.0;
-    final vatExempt = vatRegistered ? 0.0 : totalDue;
-
-    buffer.writeln(_row('Vatable Sales', _birAmount(vatable)));
-    buffer.writeln(_row('12% VAT', _birAmount(vat)));
-    buffer.writeln(_row('VAT-Exempt Sales', _birAmount(vatExempt)));
-    buffer.writeln(_row('Zero-Rated Sales', _birAmount(0)));
-
-    buffer.writeln(_line());
-
-    _writeLine(
-      buffer,
-      _row('TOTAL AMOUNT DUE', _birAmount(totalDue)),
-      bold: true,
-      includePrinterCommands: includePrinterCommands,
-    );
-
-    buffer.writeln();
-
-    final paymentMethod = order.paymentMethod.trim().toUpperCase();
     buffer.writeln(
-      _row('Payment', paymentMethod.isEmpty ? 'N/A' : paymentMethod),
-    );
+        _center(order.serviceMode == 'take-out' ? 'TAKE OUT' : 'DINE IN'));
 
-    if (order.paymentMethod.toLowerCase() == 'cash') {
-      buffer.writeln(_row('Cash Tendered', _birAmount(order.paid)));
-      buffer.writeln(_row('Change', _birAmount(order.change)));
-    }
-  }
-
-  static void _writeBirFooter(
-    StringBuffer buffer,
-    Map<String, String> details,
-  ) {
     buffer.writeln(_doubleLine());
-
-    final footerDetails = <String, String>{
-      'MIN': 'min',
-      'PTU': 'ptuNumberDate',
-      'POS SERIAL': 'posSerialNumber',
-      'VENDOR': 'softwareVendorNameTinAddress',
-      'BIR ACCREDITATION': 'birAccreditationValidity',
-    };
-
-    for (final entry in footerDetails.entries) {
-      final value = details[entry.value]?.trim() ?? '';
-      if (value.isNotEmpty) {
-        _writeBirLines(buffer, '${entry.key}: $value');
-      }
-    }
-
-    if ((details['taxStatus'] ?? '').toUpperCase().contains('NON-VAT')) {
-      _writeBirLines(buffer, 'THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX');
-    }
   }
 
   // ---------------------------------------------------------------------------
@@ -404,7 +215,7 @@ class PrinterService {
     //                         P180.00
     final itemLines = _wrap(
       '$quantity x $itemName',
-      width: receiptWidth - 9,
+      width: slipWidth - 9,
     );
 
     for (var i = 0; i < itemLines.length; i++) {
@@ -432,13 +243,14 @@ class PrinterService {
       }
     }
 
-    if ((style != null && style.isNotEmpty) || (sizeName != null && sizeName.isNotEmpty)) {
+    if ((style != null && style.isNotEmpty) ||
+        (sizeName != null && sizeName.isNotEmpty)) {
       final styleLabel = style == null || style.isEmpty
           ? sizeName!
           : '${style[0].toUpperCase()}${style.substring(1)}${sizeName == null ? '' : ') $sizeName'}';
       final styleLines = _wrap(
         styleLabel,
-        width: receiptWidth - 2,
+        width: slipWidth - 2,
       );
 
       for (final line in styleLines) {
@@ -463,7 +275,7 @@ class PrinterService {
 
         final addonLines = _wrap(
           addonText,
-          width: receiptWidth - 2,
+          width: slipWidth - 2,
         );
 
         for (var i = 0; i < addonLines.length; i++) {
@@ -561,7 +373,7 @@ class PrinterService {
   }
 
   // ---------------------------------------------------------------------------
-  // RECEIPT FOOTER
+  // slip FOOTER
   // ---------------------------------------------------------------------------
 
   static void _writeFooter(
@@ -569,30 +381,23 @@ class PrinterService {
   ) {
     buffer.writeln();
 
-    buffer.writeln(_center('***'));
+    for (final line in _wrap(
+      'THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX / FOR INTERNAL STORE USE ONLY',
+    )) {
+      buffer.writeln(_center(line));
+    }
   }
 
   // ---------------------------------------------------------------------------
-  // MAIN RECEIPT
+  // MAIN slip
   // ---------------------------------------------------------------------------
 
-  /// Generates a clean plain-text thermal receipt.
-  static String formatReceipt(
+  /// Generates a clean plain-text thermal slip.
+  static String formatslip(
     Order order, {
     bool includePrinterCommands = false,
-    bool birCopy = false,
-    Map<String, String> birDetails = const {},
   }) {
     final buffer = StringBuffer();
-
-    if (birCopy) {
-      _writeBirHeader(buffer, order, birDetails, includePrinterCommands);
-      _writeBirItems(buffer, order, includePrinterCommands);
-      _writeBirTotals(buffer, order, birDetails, includePrinterCommands);
-      _writeBirFooter(buffer, birDetails);
-
-      return buffer.toString().trimRight();
-    }
 
     _writeHeader(
       buffer,
@@ -627,20 +432,6 @@ class PrinterService {
 
     return buffer.toString().trimRight();
   }
-
-  /// Returns the BIR version of the customer receipt with merchant details
-  /// that must be filled in for the registered establishment.
-  static String formatBirReceipt(
-    Order order, {
-    bool includePrinterCommands = false,
-    Map<String, String> birDetails = const {},
-  }) => formatReceipt(
-        order,
-        includePrinterCommands: includePrinterCommands,
-        birCopy: true,
-        birDetails: birDetails,
-      );
-
   // ---------------------------------------------------------------------------
   // DRINK CATEGORY
   // ---------------------------------------------------------------------------
@@ -715,13 +506,6 @@ class PrinterService {
   // CUP LABEL HELPERS
   // ---------------------------------------------------------------------------
 
-  static String _cupCenter(String text) {
-    return _center(
-      text,
-      width: cupLabelWidth,
-    );
-  }
-
   static String _cupLine() {
     return '-' * cupLabelWidth;
   }
@@ -771,20 +555,23 @@ class PrinterService {
     // QUANTITY + ITEM
     final rawItemName = item.name.toString().trim();
     final style = item.style?.toString().trim();
-    final sizeAddon = item.addons.cast<dynamic?>().firstWhere(
-      (addon) => addon?.id?.toString().startsWith('size:') == true,
-      orElse: () => null,
-    );
+    final sizeAddon = item.addons.cast<dynamic>().firstWhere(
+          (addon) => addon?.id?.toString().startsWith('size:') == true,
+          orElse: () => null,
+        );
     final sizeName = sizeAddon?.name?.toString().trim() ??
         RegExp(r'\(?-?\s*(\d+(?:\.\d+)?\s*oz)\)?', caseSensitive: false)
             .firstMatch(rawItemName)
             ?.group(1)
             ?.replaceAll(RegExp(r'\s+'), '');
     final itemName = rawItemName
-        .replaceAll(RegExp(r'\s*\(?-?\s*\d+(?:\.\d+)?\s*oz\)?', caseSensitive: false), '')
+        .replaceAll(
+            RegExp(r'\s*\(?-?\s*\d+(?:\.\d+)?\s*oz\)?', caseSensitive: false),
+            '')
         .trim()
         .toUpperCase();
-    final drinkName = '${style != null && style.isNotEmpty ? '(${style.toUpperCase()}) ' : ''}'
+    final drinkName =
+        '${style != null && style.isNotEmpty ? '(${style.toUpperCase()}) ' : ''}'
         '1X $itemName${sizeName != null && sizeName.isNotEmpty ? ' (-$sizeName)' : ''}';
 
     final itemLines = _cupWrap(

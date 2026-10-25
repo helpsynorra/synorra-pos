@@ -23,11 +23,13 @@ import {
   updateStaffPassword,
   updateLoginGates,
 } from "@/actions/users";
+import { saveAttendanceSettings } from "@/actions/attendance";
+import { createWorkShift, deleteWorkShift } from "@/actions/shifts";
 import type { PublicStaffUser } from "@/lib/users";
 import { DEFAULT_STAFF_PERMISSIONS } from "@/lib/users";
 import { phDateString, phDateTimeInputValue, phDateTimeLabel } from "@/lib/datetime";
 import { isAttendanceStaffRole, pairLoginSessions, type StaffSession } from "@/lib/staff-sessions";
-import type { LoginActivity, OffRequest, Order, PromotionCode, Session, StaffPermissions } from "@/lib/types";
+import type { AttendanceAuthMode, LoginActivity, OffRequest, Order, PosState, PromotionCode, Session, StaffPermissions, WorkShift } from "@/lib/types";
 import { formatMoney } from "@/lib/menu";
 
 const field =
@@ -53,16 +55,21 @@ type UserManagerProps = {
   baristaOnlyStaffActions?: boolean;
   printButtonHidden?: boolean;
   inventoryFeaturesEnabled?: boolean;
+  attendanceSettings?: PosState;
+  showAttendanceSettings?: boolean;
+  workShifts?: WorkShift[];
+  workShiftError?: string;
+  showScheduleTab?: boolean;
   showLoginLinksTab?: boolean;
   showPrintButtonToggle?: boolean;
   showViewPermissionsButton?: boolean;
   adminLoginPath: string;
 };
 
-type SubTab = "staff" | "inout" | "off" | "gates" | "settings" | "customWebsitePromo";
+type SubTab = "staff" | "inout" | "off" | "gates" | "settings" | "attendance" | "schedule" | "customWebsitePromo";
 type StaffRole = "Admin" | "Barista" | "Cashier" | "Owner";
 
-type PermissionFlag = Exclude<keyof StaffPermissions, "promoCodes" | "birReceiptDetails">;
+type PermissionFlag = Exclude<keyof StaffPermissions, "promoCodes">;
 
 function isPromotionExpired(promo: PromotionCode): boolean {
   if (!promo.expiresAt) return false;
@@ -74,10 +81,9 @@ const permissionOptions: { key: PermissionFlag; label: string }[] = [
   { key: "stockInventory", label: "Stock inventory" },
   { key: "restockInventory", label: "Restock inventory" },
   { key: "connectLabels", label: "Connect labels" },
-  { key: "connectReceipt", label: "Connect receipt" },
+  { key: "connectslip", label: "Connect order printer" },
   { key: "printButton", label: "Print button" },
-  { key: "customerReceipt", label: "Customer receipt" },
-  { key: "birReceipt", label: "BIR Receipt" },
+  { key: "internalslip", label: "Print order copies" },
   { key: "cupLabels", label: "Cup labels" },
   { key: "dineIn", label: "Dine in" },
   { key: "takeOut", label: "Take out" },
@@ -89,30 +95,30 @@ const permissionOptions: { key: PermissionFlag; label: string }[] = [
 const adminPermissionGroups: {
   title: string;
   description: string;
-  icon: "inventory" | "operations" | "customer";
+  icon: "inventory" | "operations" | "internal";
   permissions: PermissionFlag[];
 }[] = [
   {
     title: "Inventory & Sales",
     description: "Manage products, stock and sales operations.",
     icon: "inventory",
-    permissions: ["stockInventory", "connectReceipt", "cupLabels", "promotionDiscount", "birReceipt"],
+    permissions: ["stockInventory", "connectslip", "cupLabels", "promotionDiscount"],
   },
   {
     title: "Operations",
-    description: "Handle daily operations and customer flow.",
+    description: "Handle daily operations and internal flow.",
     icon: "operations",
     permissions: ["restockInventory", "printButton", "dineIn", "promotionsEnabled", "wasteManagement"],
   },
   {
-    title: "Customer & Labels",
-    description: "Manage customer data and label printing.",
-    icon: "customer",
-    permissions: ["connectLabels", "customerReceipt", "takeOut"],
+    title: "internal & Labels",
+    description: "Manage internal data and label printing.",
+    icon: "internal",
+    permissions: ["connectLabels", "internalslip", "takeOut"],
   },
 ];
 
-export function UserManager({ users, session, loginActivity, offRequests, showShiftTabs = true, showAdminRole = true, showOwnerRole = true, showBaristaRole = true, showCashierRole = false, showBaristasOnly = false, showEditStaffButton = true, showDeleteStaffButton = true, baristaOnlyStaffActions = false, showLoginLinksTab = true, showPrintButtonToggle = true, showViewPermissionsButton = true, adminLoginPath }: UserManagerProps) {
+export function UserManager({ users, session, loginActivity, offRequests, showShiftTabs = true, showAdminRole = true, showOwnerRole = true, showBaristaRole = true, showCashierRole = false, showBaristasOnly = false, showEditStaffButton = true, showDeleteStaffButton = true, baristaOnlyStaffActions = false, showLoginLinksTab = true, showPrintButtonToggle = true, showViewPermissionsButton = true, adminLoginPath, attendanceSettings, showAttendanceSettings = false, workShifts = [], workShiftError, showScheduleTab = false }: UserManagerProps) {
   const defaultStaffRole: StaffRole = showBaristasOnly || (!showOwnerRole && showBaristaRole)
     ? "Barista"
     : !showOwnerRole && showCashierRole
@@ -127,6 +133,16 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<StaffRole>(defaultStaffRole);
   const [password, setPassword] = useState("");
+  const [payBasis, setPayBasis] = useState<"hourly" | "daily">("hourly");
+  const [payRate, setPayRate] = useState("");
+  const [overtimeRate, setOvertimeRate] = useState("1.5");
+  const [attendanceAuthMode, setAttendanceAuthMode] = useState<AttendanceAuthMode>(attendanceSettings?.attendanceAuthMode ?? "username_password");
+  const [shiftName, setShiftName] = useState("");
+  const [shiftDate, setShiftDate] = useState(phDateString());
+  const [shiftStartTime, setShiftStartTime] = useState("09:00");
+  const [shiftEndTime, setShiftEndTime] = useState("17:00");
+  const [shiftOpeningFloat, setShiftOpeningFloat] = useState("0");
+  const [shiftStaffIds, setShiftStaffIds] = useState<string[]>([]);
   const [changingPasswordId, setChangingPasswordId] = useState<string | null>(null);
   const [staffPasswordDraft, setStaffPasswordDraft] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
@@ -273,6 +289,9 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
     setEmail("");
     setRole(defaultStaffRole);
     setPassword("");
+    setPayBasis("hourly");
+    setPayRate("");
+    setOvertimeRate("1.5");
     setNotice(null);
     setTab("staff");
   }
@@ -293,6 +312,9 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
             : "Barista",
     );
     setPassword("");
+    setPayBasis(user.dailyRate != null ? "daily" : "hourly");
+    setPayRate(String(user.dailyRate ?? user.hourlyRate ?? ""));
+    setOvertimeRate(String(user.overtimeRate ?? 1.5));
     setNotice(null);
   }
 
@@ -319,6 +341,8 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
               { id: "off", label: "Request off" },
               { id: "gates", label: "Login links" },
               ...(showPrintButtonToggle ? [{ id: "settings" as const, label: "Settings" }] : []),
+              ...(showAttendanceSettings ? [{ id: "attendance" as const, label: "Attendance" }] : []),
+              ...(showScheduleTab ? [{ id: "schedule" as const, label: "Schedule" }] : []),
               ...(isAdminConsole ? [{ id: "customWebsitePromo" as const, label: "Custom Website Promo" }] : []),
             ] as const
           )
@@ -383,6 +407,9 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                       title: role,
                       role: role === "Owner" ? "cashier" : role === "Cashier" ? "pos_cashier" : role.toLowerCase(),
                       password: submittedPassword,
+                      hourlyRate: payBasis === "hourly" ? payRate : "",
+                      dailyRate: payBasis === "daily" ? payRate : "",
+                      overtimeRate,
                     };
                     const result =
                       editingId === "new"
@@ -489,6 +516,31 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                           : `${role}s use this username and password to clock in and out on POS.`}
                     </p>
                   </section>
+                  {role === "Barista" || role === "Cashier" ? (
+                    <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:col-span-2 sm:p-5">
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-800">Pay rates</h3>
+                        <p className="mt-1 text-xs text-slate-500">Set hourly or daily pay and the overtime multiplier used by Payroll.</p>
+                      </div>
+                      <div className="grid gap-4 sm:grid-cols-3">
+                        <label className="space-y-1.5 text-xs font-semibold text-slate-600">
+                          <span className="block">Rate basis</span>
+                          <select value={payBasis} onChange={(event) => setPayBasis(event.target.value as "hourly" | "daily")} className={staffField}>
+                            <option value="hourly">Hourly</option>
+                            <option value="daily">Daily (8-hour equivalent)</option>
+                          </select>
+                        </label>
+                        <label className="space-y-1.5 text-xs font-semibold text-slate-600">
+                          <span className="block">{payBasis === "hourly" ? "Hourly rate (₱)" : "Daily rate (₱)"}</span>
+                          <input type="number" min="0" step="0.01" value={payRate} onChange={(event) => setPayRate(event.target.value)} className={staffField} />
+                        </label>
+                        <label className="space-y-1.5 text-xs font-semibold text-slate-600">
+                          <span className="block">Overtime multiplier</span>
+                          <input type="number" min="1" step="0.05" value={overtimeRate} onChange={(event) => setOvertimeRate(event.target.value)} className={staffField} />
+                        </label>
+                      </div>
+                    </section>
+                  ) : null}
                 </div>
                 <div className="flex justify-end border-t border-slate-100 bg-slate-50/70 px-5 py-4 sm:px-7">
                   <button
@@ -1276,6 +1328,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                     </svg>
                   </span>
                 ) : null}
+
                 <div className="min-w-0 flex-1">
                   <h1 className="text-xl font-semibold tracking-tight text-[#14213d]">{selectedPermissionOwnerId ? "Owner Permissions" : "Settings"}</h1>
                   <p className="mt-1 text-sm text-neutral-500">
@@ -1364,89 +1417,6 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                         </section>
                       ))}
                     </div>
-                    {permissions.birReceipt && (
-                      <section className="space-y-4 rounded-xl border border-[#e1eaf6] bg-[#fbfdff] p-4">
-                        <div>
-                          <h3 className="text-sm font-semibold text-[#172849]">BIR receipt template</h3>
-                          <p className="mt-1 text-xs text-[#8091ab]">Edit the registered details below and preview the thermal invoice layout.</p>
-                        </div>
-                        <pre className="mx-auto max-h-80 w-full max-w-[320px] overflow-auto rounded-lg border border-[#d8dee8] bg-white p-4 font-mono text-[10px] leading-[1.45] text-[#17202f] shadow-sm">{[
-                          permissions.birReceiptDetails?.registeredBusinessName || "[REGISTERED BUSINESS NAME]",
-                          permissions.birReceiptDetails?.tradeStoreName || "[TRADE / STORE NAME]",
-                          permissions.birReceiptDetails?.registeredAddress || "[REGISTERED ADDRESS]",
-                          permissions.birReceiptDetails?.tinBranchCode ? `TIN / BRANCH: ${permissions.birReceiptDetails.tinBranchCode}` : "TIN / BRANCH: [TIN + BRANCH]",
-                          permissions.birReceiptDetails?.taxStatus || "[VAT REGISTERED / NON-VAT]",
-                          "================================",
-                          "          SALES INVOICE",
-                          "Invoice No.: [SEQUENTIAL NUMBER]",
-                          "Date: [YYYY-MM-DD HH:MM:SS]",
-                          "--------------------------------",
-                          "QTY  ITEM             PRICE TOTAL",
-                          "[ITEMS AND LINE TOTALS]",
-                          "--------------------------------",
-                          "Vatable Sales           [AMOUNT]",
-                          "12% VAT                 [AMOUNT]",
-                          "VAT-Exempt Sales        [AMOUNT]",
-                          "Zero-Rated Sales        [AMOUNT]",
-                          "TOTAL AMOUNT DUE        [AMOUNT]",
-                          "Payment / Tender / Change",
-                          "================================",
-                          `MIN: ${permissions.birReceiptDetails?.min || "[MIN]"}`,
-                          `PTU: ${permissions.birReceiptDetails?.ptuNumberDate || "[NUMBER / DATE]"}`,
-                          `POS SERIAL: ${permissions.birReceiptDetails?.posSerialNumber || "[SERIAL]"}`,
-                          `VENDOR: ${permissions.birReceiptDetails?.softwareVendorNameTinAddress || "[NAME / TIN / ADDRESS]"}`,
-                          `BIR ACCREDITATION: ${permissions.birReceiptDetails?.birAccreditationValidity || "[NUMBER / VALIDITY]"}`,
-                          permissions.birReceiptDetails?.taxStatus?.toUpperCase().includes("NON-VAT") ? "THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX" : "",
-                        ].join("\n")}</pre>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          {([
-                            ["registeredBusinessName", "Registered business name"],
-                            ["tradeStoreName", "Trade / store name"],
-                            ["registeredAddress", "Registered business address"],
-                            ["tinBranchCode", "TIN + branch code"],
-                            ["taxStatus", "Tax status (VAT / NON-VAT)"],
-                            ["vatRegTin", "VAT registration TIN"],
-                            ["vatPosSerial", "VAT POS serial"],
-                            ["min", "Machine Identification Number (MIN)"],
-                            ["ptuNumberDate", "Permit to Use number and date"],
-                            ["posSerialNumber", "POS hardware / software serial number"],
-                            ["softwareVendorNameTinAddress", "Software vendor name, TIN, and address"],
-                            ["birAccreditationValidity", "BIR accreditation number and validity"],
-                          ] as const).map(([key, label]) => (
-                            <label key={key} className="block space-y-1.5 text-xs font-medium text-[#586b89]">
-                              <span>{label}</span>
-                              <input
-                                value={permissions.birReceiptDetails?.[key] ?? ""}
-                                onChange={(event) => setPermissionState((current) => ({
-                                  ...current,
-                                  [owner.id]: {
-                                    ...permissions,
-                                    birReceiptDetails: {
-                                      ...permissions.birReceiptDetails,
-                                      [key]: event.target.value,
-                                    },
-                                  },
-                                }))}
-                                className={adminField}
-                              />
-                            </label>
-                          ))}
-                        </div>
-                        <button
-                          type="button"
-                          disabled={pending}
-                          onClick={() => startTransition(async () => {
-                            const result = await updateOwnerPermissions(owner.id, permissions);
-                            if (result && "error" in result && result.error) {
-                              setNotice(result.error);
-                              return;
-                            }
-                            setNotice("BIR receipt details saved.");
-                          })}
-                          className="rounded-xl bg-[#101d37] px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
-                        >Save BIR receipt details</button>
-                      </section>
-                    )}
                     <div className={isAdminConsole ? "space-y-4 border-t border-[#e7edf6] pt-5" : "space-y-3 border-t border-neutral-200 pt-4"}>
                       <div>
                         <div className="flex items-center gap-2.5">
@@ -1635,6 +1605,156 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                 );
               })()}
           </>
+        ) : null}
+
+        {tab === "attendance" && showAttendanceSettings ? (
+          <form
+            className="space-y-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setNotice(null);
+              startTransition(async () => {
+                try {
+                  await saveAttendanceSettings({
+                    authMode: attendanceAuthMode,
+                  });
+                  setNotice("Attendance settings saved and synced to POS.");
+                } catch (error) {
+                  setNotice(error instanceof Error ? error.message : "Could not save attendance settings.");
+                }
+              });
+            }}
+          >
+            <div>
+              <h1 className="text-xl font-semibold text-slate-900">Attendance security</h1>
+              <p className="mt-1 text-sm text-slate-500">Choose how staff authenticate when clocking in or out at the POS.</p>
+            </div>
+            <label className="block space-y-1.5 text-sm font-medium text-slate-700">
+              <span>Attendance login method</span>
+              <select value={attendanceAuthMode} onChange={(event) => setAttendanceAuthMode(event.target.value as AttendanceAuthMode)} className={staffField}>
+                <option value="username_password">Username + Password</option>
+                <option value="photo_username_password">Live photo + Username + Password</option>
+                <option value="photo_full_name_pin">Live photo + Full Name + PIN (staff password)</option>
+              </select>
+              <span className="block text-xs font-normal text-slate-500">Photo modes capture a new image from the device camera for every clock-in and clock-out. Images are stored privately with attendance records; photos are not facial recognition.</span>
+            </label>
+            <button type="submit" disabled={pending} className="rounded-xl bg-[#101d37] px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">
+              {pending ? "Saving..." : "Save attendance settings"}
+            </button>
+          </form>
+        ) : null}
+
+        {tab === "schedule" && showScheduleTab ? (
+          <section className="space-y-5">
+            {workShiftError ? <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{workShiftError}</p> : null}
+            <div>
+              <p className="text-[11px] font-bold tracking-[0.2em] text-[#58789d] uppercase">Daily assignments</p>
+              <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">Staff schedule</h1>
+              <p className="mt-1 text-sm text-slate-500">Create custom shifts for a specific date, assign multiple staff, and set the opening cash float. An end time earlier than the start means the shift ends the next day. Shift hours cannot overlap so sales are attributed once.</p>
+            </div>
+            <form
+              className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 sm:p-6"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const openingFloat = Number(shiftOpeningFloat);
+                if (!Number.isFinite(openingFloat) || openingFloat < 0) {
+                  setNotice("Enter a valid non-negative opening float.");
+                  return;
+                }
+                setNotice(null);
+                startTransition(async () => {
+                  try {
+                    await createWorkShift({
+                      name: shiftName,
+                      date: shiftDate,
+                      startTime: shiftStartTime,
+                      endTime: shiftEndTime,
+                      openingFloat,
+                      staffUserIds: shiftStaffIds,
+                    });
+                    setShiftName("");
+                    setShiftStaffIds([]);
+                    setShiftOpeningFloat("0");
+                    setNotice("Shift scheduled.");
+                  } catch (error) {
+                    setNotice(error instanceof Error ? error.message : "Could not schedule shift.");
+                  }
+                });
+              }}
+            >
+              <label className="space-y-1.5 text-sm font-medium text-slate-700">
+                <span>Shift name</span>
+                <input value={shiftName} onChange={(event) => setShiftName(event.target.value)} maxLength={50} required placeholder="Morning Shift" className={staffField} />
+              </label>
+              <label className="space-y-1.5 text-sm font-medium text-slate-700">
+                <span>Date</span>
+                <input type="date" value={shiftDate} onChange={(event) => setShiftDate(event.target.value)} required className={staffField} />
+              </label>
+              <label className="space-y-1.5 text-sm font-medium text-slate-700">
+                <span>Start time</span>
+                <input type="time" value={shiftStartTime} onChange={(event) => setShiftStartTime(event.target.value)} required className={staffField} />
+              </label>
+              <label className="space-y-1.5 text-sm font-medium text-slate-700">
+                <span>End time</span>
+                <input type="time" value={shiftEndTime} onChange={(event) => setShiftEndTime(event.target.value)} required className={staffField} />
+              </label>
+              <label className="space-y-1.5 text-sm font-medium text-slate-700">
+                <span>Opening cash float (₱)</span>
+                <input type="number" min="0" step="0.01" value={shiftOpeningFloat} onChange={(event) => setShiftOpeningFloat(event.target.value)} required className={staffField} />
+              </label>
+              <fieldset className="space-y-2 sm:col-span-2">
+                <legend className="text-sm font-medium text-slate-700">Assign staff</legend>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {floorStaff.length === 0 ? <p className="text-sm text-slate-500">Add Barista or Cashier staff before scheduling a shift.</p> : floorStaff.map((user) => (
+                    <label key={user.id} className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={shiftStaffIds.includes(user.id)}
+                        onChange={() => setShiftStaffIds((current) => current.includes(user.id) ? current.filter((id) => id !== user.id) : [...current, user.id])}
+                      />
+                      <span>{user.name}</span>
+                      <span className="ml-auto text-xs text-slate-400">{user.role === "barista" ? "Barista" : "Cashier"}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <button type="submit" disabled={pending || floorStaff.length === 0} className="rounded-xl bg-[#101d37] px-5 py-3 text-sm font-semibold text-white disabled:opacity-50 sm:col-span-2 sm:justify-self-start">
+                {pending ? "Saving..." : "Schedule shift"}
+              </button>
+            </form>
+            <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <table className="w-full min-w-[760px] text-left text-sm">
+                <thead className="border-b border-slate-100 bg-slate-50 text-xs text-slate-500">
+                  <tr><th className="px-4 py-3">Date / Shift</th><th className="px-4 py-3">Hours</th><th className="px-4 py-3">Assigned staff</th><th className="px-4 py-3 text-right">Opening float</th><th className="px-4 py-3">Closing report</th><th className="px-4 py-3 text-right">Action</th></tr>
+                </thead>
+                <tbody>
+                  {[...workShifts].sort((a, b) => b.date.localeCompare(a.date) || b.startTime.localeCompare(a.startTime)).map((shift) => (
+                    <tr key={shift.id} className="border-b border-slate-50 align-top">
+                      <td className="px-4 py-3"><strong>{shift.name}</strong><span className="block text-xs text-slate-500">{shift.date}</span></td>
+                      <td className="px-4 py-3">{shift.startTime}–{shift.endTime}</td>
+                      <td className="px-4 py-3">{shift.staffUserIds.map((id) => users.find((user) => user.id === id)?.name ?? "Former staff").join(", ") || "—"}</td>
+                      <td className="px-4 py-3 text-right">{formatMoney(shift.openingFloat)}</td>
+                      <td className="px-4 py-3">{shift.closedAt ? `Closed ${phDateTimeLabel(shift.closedAt)}` : "Not closed"}</td>
+                      <td className="px-4 py-3 text-right">
+                        {!shift.closedAt ? <button type="button" disabled={pending} onClick={() => {
+                          if (!window.confirm(`Delete ${shift.name} on ${shift.date}?`)) return;
+                          startTransition(async () => {
+                            try {
+                              await deleteWorkShift(shift.id);
+                              setNotice("Shift deleted.");
+                            } catch (error) {
+                              setNotice(error instanceof Error ? error.message : "Could not delete shift.");
+                            }
+                          });
+                        }} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50">Delete</button> : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                  {workShifts.length === 0 ? <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-400">No shifts scheduled yet.</td></tr> : null}
+                </tbody>
+              </table>
+            </div>
+          </section>
         ) : null}
 
         {tab === "gates" ? (

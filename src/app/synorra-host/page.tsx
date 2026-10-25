@@ -64,6 +64,12 @@ export default async function SynorraHostPage() {
         inventoryFeaturesEnabled={store.pos.inventoryFeaturesEnabled}
         showPrintButtonToggle={true}
       />
+      <footer className="border-t border-[#e7edf5] bg-white px-4 py-4 sm:px-6">
+        <nav aria-label="Legal" className="mx-auto flex max-w-7xl flex-wrap gap-x-5 gap-y-2 text-xs text-[#65758b]">
+          <Link href="/terms" target="_blank" rel="noreferrer" className="hover:text-[#263b5d]">Terms of Use</Link>
+          <Link href="/privacy" target="_blank" rel="noreferrer" className="hover:text-[#263b5d]">Privacy &amp; Cookie Policy</Link>
+        </nav>
+      </footer>
     </main>
   );
 }

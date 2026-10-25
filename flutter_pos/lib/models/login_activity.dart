@@ -6,6 +6,7 @@ class LoginActivity {
   final String role;
   final String type; // 'login' or 'logout'
   final String at;
+  String? photoPath;
   bool isSynced;
 
   static List<LoginActivity> openBaristaShifts(
@@ -71,6 +72,7 @@ class LoginActivity {
     required this.role,
     required this.type,
     required this.at,
+    this.photoPath,
     this.isSynced = false,
   });
 
@@ -83,6 +85,7 @@ class LoginActivity {
       role: json['role'] as String? ?? 'barista',
       type: json['type'] as String? ?? 'login',
       at: json['at'] as String? ?? DateTime.now().toIso8601String(),
+      photoPath: json['photoPath'] as String? ?? json['photo_path'] as String?,
       isSynced: json['isSynced'] == true,
     );
   }
@@ -95,6 +98,7 @@ class LoginActivity {
         'role': role,
         'type': type,
         'at': at,
+        'photoPath': photoPath,
         'isSynced': isSynced,
       };
 }

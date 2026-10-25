@@ -6,7 +6,7 @@
 -- encoded them as "#cc-opt=<base64url JSON>" markers appended to
 -- menu_items.image. This adds real columns, migrates every decodable marker
 -- into them, strips the marker fragment while preserving the real image
--- path, and teaches create_order_atomic to persist the customer's selected
+-- path, and teaches create_order_atomic to persist the internal's selected
 -- style/add-ons inside the same transaction as the order, its items, the
 -- inventory deductions, and the usage logs.
 --

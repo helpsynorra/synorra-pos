@@ -607,87 +607,87 @@ class _CartPanelState extends State<CartPanel> {
                         ),
                     ],
                   ),
-                SizedBox(
-                    height: keyboardOpen ? 2 : (widget.isFullWidth ? 9 : 5)),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        isSplitPayment ? 'Cash portion' : 'Amount',
-                        style: TextStyle(
-                            fontSize: widget.isFullWidth ? 18 : 12,
-                            color: _ink,
-                            fontWeight: widget.isFullWidth
-                                ? FontWeight.w500
-                                : FontWeight.normal),
+                if (acceptsCash) ...[
+                  SizedBox(
+                      height: keyboardOpen ? 2 : (widget.isFullWidth ? 9 : 5)),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          isSplitPayment ? 'Cash portion' : 'Cash tendered',
+                          style: TextStyle(
+                              fontSize: widget.isFullWidth ? 18 : 12,
+                              color: _ink,
+                              fontWeight: widget.isFullWidth
+                                  ? FontWeight.w500
+                                  : FontWeight.normal),
+                        ),
                       ),
-                    ),
-                    SizedBox(
-                      width: widget.isFullWidth ? 138 : 92,
-                      height:
-                          keyboardOpen ? 30 : (widget.isFullWidth ? 50 : 28),
-                      child: TextField(
-                        enabled: acceptsCash,
-                        readOnly: true,
-                        showCursor: false,
-                        onTap: acceptsCash ? _openAmountKeypad : null,
-                        controller: _amountController,
-                        focusNode: _amountFocusNode,
-                        keyboardType: TextInputType.none,
-                        textAlign: TextAlign.right,
-                        style: TextStyle(
-                            fontSize: widget.isFullWidth ? 19 : 11,
-                            fontWeight: FontWeight.w700,
-                            color: _ink),
-                        decoration: InputDecoration(
-                          prefixText: widget.isFullWidth ? '₱ ' : null,
-                          prefixStyle: const TextStyle(
-                            color: Color(0xFF526681),
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(
-                                widget.isFullWidth ? 14 : 8),
-                            borderSide:
-                                const BorderSide(color: Color(0xFFD4DEEC)),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(
-                                widget.isFullWidth ? 14 : 8),
-                            borderSide: const BorderSide(
-                                color: Color(0xFFD4DEEC), width: 1.3),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(
-                                widget.isFullWidth ? 14 : 8),
-                            borderSide: const BorderSide(
-                                color: Color(0xFF5687FF), width: 1.5),
+                      SizedBox(
+                        width: widget.isFullWidth ? 138 : 92,
+                        height:
+                            keyboardOpen ? 30 : (widget.isFullWidth ? 50 : 28),
+                        child: TextField(
+                          readOnly: true,
+                          showCursor: false,
+                          onTap: _openAmountKeypad,
+                          controller: _amountController,
+                          focusNode: _amountFocusNode,
+                          keyboardType: TextInputType.none,
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                              fontSize: widget.isFullWidth ? 19 : 11,
+                              fontWeight: FontWeight.w700,
+                              color: _ink),
+                          decoration: InputDecoration(
+                            prefixText: widget.isFullWidth ? '₱ ' : null,
+                            prefixStyle: const TextStyle(
+                              color: Color(0xFF526681),
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(
+                                  widget.isFullWidth ? 14 : 8),
+                              borderSide:
+                                  const BorderSide(color: Color(0xFFD4DEEC)),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(
+                                  widget.isFullWidth ? 14 : 8),
+                              borderSide: const BorderSide(
+                                  color: Color(0xFFD4DEEC), width: 1.3),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(
+                                  widget.isFullWidth ? 14 : 8),
+                              borderSide: const BorderSide(
+                                  color: Color(0xFF5687FF), width: 1.5),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                SizedBox(
-                    height: keyboardOpen ? 1 : (widget.isFullWidth ? 8 : 4)),
-                if (widget.isFullWidth && !keyboardOpen)
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 6),
-                    child: Text(
-                      'Quick Cash Bills',
-                      style: TextStyle(
-                          color: _muted,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600),
-                    ),
+                    ],
                   ),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
+                  SizedBox(
+                      height: keyboardOpen ? 1 : (widget.isFullWidth ? 8 : 4)),
+                  if (widget.isFullWidth && !keyboardOpen)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 6),
+                      child: Text(
+                        'Quick Cash Bills',
+                        style: TextStyle(
+                            color: _muted,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
                       _buildPresetPill(
                         presetId: 'exact',
                         label: 'Exact',
@@ -786,9 +786,10 @@ class _CartPanelState extends State<CartPanel> {
                           });
                         },
                       ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
+                ],
                 if (!keyboardOpen) ...[
                   const SizedBox(height: 4),
                   Text(

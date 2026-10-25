@@ -32,9 +32,9 @@ A standalone, local-first Flutter Point-of-Sale (POS) terminal application for *
   - Add-ons with quantity increments and price adjustments.
   - Real-time line item total, subtotal, and total due calculation.
 - **Order Actions**:
-  - **Proceed Order**: Finalizes sale, assigns ticket sequence, deducts inventory, queues for sync, and triggers receipt view.
+  - **Proceed Order**: 
   - **Void Order**: Filter active orders by ticket number or item, require manager credentials, restore inventory stock, and update Supabase.
-  - **Print / Reprint**: Full ESC/POS thermal receipt formatting with ticket number, barista, itemized , and store branding.
+  - **Print / Reprint**: Full ESC/POS thermal  formatting with ticket number, barista, itemized , and store branding.
 - **Sidebar Menus**:
   - **POS Terminal**: Main cash register and catalog interface.
   - **Stock Inventory**: Live ingredient stock levels, low-stock warnings, and unit costs.

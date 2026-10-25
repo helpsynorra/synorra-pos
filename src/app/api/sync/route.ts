@@ -139,9 +139,9 @@ export async function GET(request: NextRequest) {
               stockInventory: true,
               restockInventory: true,
               connectLabels: true,
-              connectReceipt: true,
+              connectslip: true,
               printButton: true,
-              customerReceipt: true,
+              internalslip: true,
               cupLabels: true,
               dineIn: true,
               takeOut: true,
@@ -295,10 +295,15 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const updatedUser = user.email?.trim() ? user : { ...user, email };
-      if (!user.email?.trim()) {
-        await withStoreTenant(user.id, () => upsertStaffUserRecord({ ...updatedUser, ownerId: user.id }));
-      }
+      const updatedUser = {
+        ...user,
+        email: user.email?.trim() ? user.email : email,
+        agreedToTerms: true,
+        agreedAt: new Date().toISOString(),
+      };
+      await withStoreTenant(user.id, () =>
+        upsertStaffUserRecord({ ...updatedUser, ownerId: user.id }),
+      );
       if (!updatedUser.passwordChanged) {
         return NextResponse.json(
           { ok: true, requiresPasswordChange: true },
@@ -1012,6 +1017,105 @@ export async function POST(req: NextRequest) {
         if ((!staff && !isOwnStaffShift) || (staff && staffRole !== "barista" && staffRole !== "pos_cashier")) {
           return NextResponse.json({ ok: false, error: "Staff account not found." }, { status: 404, headers: corsHeaders });
         }
+        if (!staff) {
+          return NextResponse.json({ ok: false, error: "Staff account could not be verified." }, { status: 401, headers: corsHeaders });
+        }
+
+        const rawCredentials = body.credentials ?? raw.credentials;
+        const credentials = rawCredentials && typeof rawCredentials === "object"
+          ? rawCredentials as Record<string, unknown>
+          : {};
+        const credentialUsername = String(credentials.username ?? "").trim().toLowerCase();
+        const credentialPassword = String(credentials.password ?? "");
+        if (
+          !credentialUsername ||
+          credentialUsername !== staff.username.trim().toLowerCase() ||
+          !credentialPassword
+        ) {
+          return NextResponse.json({ ok: false, error: "Enter this staff member’s valid username and password or PIN." }, { status: 401, headers: corsHeaders });
+        }
+        const passwordMatches = staff.password.startsWith("$2")
+          ? await bcrypt.compare(credentialPassword, staff.password)
+          : staff.password === credentialPassword || staff.password.trim() === credentialPassword.trim();
+        if (!passwordMatches) {
+          return NextResponse.json({ ok: false, error: "Staff password or PIN is incorrect." }, { status: 401, headers: corsHeaders });
+        }
+
+        const authMode = store.pos.attendanceAuthMode;
+        const requiresPhoto = authMode === "photo_username_password" || authMode === "photo_full_name_pin";
+        const rawPhoto = body.photoBase64 ?? raw.photoBase64;
+        const photoBase64 = typeof rawPhoto === "string" ? rawPhoto : "";
+        if (requiresPhoto && !photoBase64) {
+          return NextResponse.json({ ok: false, error: "Capture a live attendance photo before recording this shift." }, { status: 400, headers: corsHeaders });
+        }
+        if (requiresPhoto && photoBase64.length > 2_800_000) {
+          return NextResponse.json({ ok: false, error: "Attendance photo must be smaller than 2 MB." }, { status: 413, headers: corsHeaders });
+        }
+
+        const isClockingIn = raw.type !== "logout";
+        const alreadyOnShift = pairLoginSessions(store.loginActivity).some(
+          (session) => session.userId === staff!.id && !session.logoutAt,
+        );
+        if (isClockingIn === alreadyOnShift) {
+          return NextResponse.json({
+            ok: false,
+            error: alreadyOnShift ? "This staff member is already clocked in." : "This staff member is not clocked in.",
+          }, { status: 409, headers: corsHeaders });
+        }
+
+        let photoPath: string | undefined;
+        if (requiresPhoto) {
+          if (!/^[A-Za-z0-9+/]+={0,2}$/.test(photoBase64)) {
+            return NextResponse.json({ ok: false, error: "Attendance photo data is invalid." }, { status: 400, headers: corsHeaders });
+          }
+          const photoBytes = Buffer.from(photoBase64, "base64");
+          if (
+            photoBytes.length === 0 ||
+            photoBytes.length > 2 * 1024 * 1024 ||
+            photoBytes[0] !== 0xff ||
+            photoBytes[1] !== 0xd8 ||
+            photoBytes[2] !== 0xff
+          ) {
+            return NextResponse.json({ ok: false, error: "Capture a valid JPEG attendance photo smaller than 2 MB." }, { status: 400, headers: corsHeaders });
+          }
+          const activityId = String(raw.id || `log-${Date.now()}`).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 100);
+          const safeTenantId = tenantId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 100);
+          const safeStaffId = staff.id.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 100);
+          photoPath = `${safeTenantId}/${safeStaffId}/${activityId || crypto.randomUUID()}.jpg`;
+          const { error: uploadError } = await supabaseAdmin()
+            .storage
+            .from("attendance-photos")
+            .upload(photoPath, photoBytes, { contentType: "image/jpeg", upsert: false });
+          if (uploadError) {
+            throw new Error(`Unable to save attendance photo: ${uploadError.message}`);
+          }
+        }
+
+        const entry = {
+          id: String(raw.id || `log-${Date.now()}`),
+          userId: staff.id,
+          username: staff.username,
+          name: staff.name,
+          role: staff.role,
+          type: (raw.type === "logout" ? "logout" : "login") as "login" | "logout",
+          at: phIsoTimestamp(String(raw.at ?? "")) || new Date().toISOString(),
+          photoPath,
+        };
+        try {
+          await insertLoginActivityRecord(entry);
+        } catch (error) {
+          if (photoPath) {
+            const { error: cleanupError } = await supabaseAdmin()
+              .storage
+              .from("attendance-photos")
+              .remove([photoPath]);
+            if (cleanupError) {
+              throw new Error(`Unable to record attendance (${error instanceof Error ? error.message : "unknown error"}); photo cleanup also failed: ${cleanupError.message}`);
+            }
+          }
+          throw error;
+        }
+        return NextResponse.json({ ok: true, photoPath }, { headers: corsHeaders });
       }
       const entry = {
         id: String(raw.id || `log-${Date.now()}`),

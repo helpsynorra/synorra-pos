@@ -27,7 +27,7 @@ class _BluetoothPrinterPickerDialogState
   String? _error;
   LabelPrinterLanguage _language = LabelPrinterLanguage.tspl;
 
-  bool get _isReceipt => widget.role == PrinterRole.receipt;
+  bool get _isslip => widget.role == PrinterRole.slip;
 
   @override
   void initState() {
@@ -110,7 +110,7 @@ class _BluetoothPrinterPickerDialogState
       await _printers.connect(
         widget.role,
         device,
-        language: _isReceipt ? null : _language,
+        language: _isslip ? null : _language,
       );
       if (mounted) Navigator.pop(context, true);
     } catch (error) {
@@ -133,7 +133,7 @@ class _BluetoothPrinterPickerDialogState
 
   @override
   Widget build(BuildContext context) {
-    final title = _isReceipt ? 'Connect receipt' : 'Connect labels';
+    final title = _isslip ? 'Connect slip' : 'Connect labels';
     return AlertDialog(
       titlePadding: const EdgeInsets.fromLTRB(20, 18, 16, 8),
       contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
@@ -161,7 +161,7 @@ class _BluetoothPrinterPickerDialogState
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (!_isReceipt)
+            if (!_isslip)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: SegmentedButton<LabelPrinterLanguage>(

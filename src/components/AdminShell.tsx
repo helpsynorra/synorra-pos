@@ -14,33 +14,37 @@ type AdminShellProps = {
   users: PublicStaffUser[];
   store: StoreData;
   children: ReactNode;
+  financeContent: ReactNode;
+  attendanceSettings: StoreData["pos"];
 };
 
 function readSavedPanel(): AdminPanel {
   const savedPanel = window.localStorage.getItem("admin_activePanel");
   const savedSection = window.localStorage.getItem("admin_section");
   if (savedPanel === "staff" || savedSection === "staff") return "sales";
-  if (savedPanel === "menu" || savedPanel === "transactions") {
+  if (savedPanel === "menu" || savedPanel === "transactions" || savedPanel === "finance") {
     return savedPanel;
   }
   return "sales";
 }
 
-export function AdminShell({ session, users, store, children }: AdminShellProps) {
+export function AdminShell({ session, users, store, children, financeContent, attendanceSettings }: AdminShellProps) {
   const [panel, setPanel] = useState<AdminPanel>("sales");
   const [isMounted, setIsMounted] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    if (panel !== "transactions" && panel !== "sales" && panel !== "staff") return;
+    if (panel !== "transactions" && panel !== "sales" && panel !== "staff" && panel !== "finance") return;
     const refreshTimer = window.setInterval(() => router.refresh(), 5000);
     return () => window.clearInterval(refreshTimer);
   }, [panel, router]);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setPanel(readSavedPanel());
     setIsMounted(true);
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   function handlePanelChange(next: AdminPanel) {
     setPanel(next);
@@ -74,6 +78,11 @@ export function AdminShell({ session, users, store, children }: AdminShellProps)
               showPrintButtonToggle={session.role !== "cashier"}
               showViewPermissionsButton={session.role !== "cashier"}
               adminLoginPath={store.loginGates.admin}
+              attendanceSettings={attendanceSettings}
+              workShifts={store.workShifts}
+              workShiftError={store.workShiftError}
+              showAttendanceSettings={session.role === "cashier"}
+              showScheduleTab={session.role === "cashier"}
             />
           ) : null}
           {current === "sales" ? children : null}
@@ -86,6 +95,7 @@ export function AdminShell({ session, users, store, children }: AdminShellProps)
             />
           ) : null}
           {current === "transactions" ? <SalePurchaseTransactions store={store} /> : null}
+          {current === "finance" ? financeContent : null}
         </div>
       </div>
     </>

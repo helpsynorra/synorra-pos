@@ -23,14 +23,16 @@ class SyncService extends ChangeNotifier {
   bool isOnline = true;
   bool inventoryFeaturesEnabled = true;
   bool printButtonHidden = false;
+  String attendanceAuthMode = 'username_password';
+  List<int> attendanceWorkdays = [1, 2, 3, 4, 5];
+  String attendanceStartTime = '09:00';
   final Map<String, bool> ownerPermissions = {
     'stockInventory': true,
     'restockInventory': true,
     'connectLabels': true,
-    'connectReceipt': true,
+    'connectslip': true,
     'printButton': true,
-    'customerReceipt': true,
-    'birReceipt': false,
+    'internalslip': true,
     'cupLabels': true,
     'dineIn': true,
     'takeOut': true,
@@ -38,7 +40,6 @@ class SyncService extends ChangeNotifier {
     'promotionsEnabled': false,
     'wasteManagement': true,
   };
-  Map<String, String> birReceiptDetails = {};
   List<Map<String, dynamic>> promotionCodes = [];
 
   bool hasPermission(String key) => ownerPermissions[key] ?? true;
@@ -62,18 +63,35 @@ class SyncService extends ChangeNotifier {
       inventoryFeaturesEnabled =
           cachedSettings['inventoryFeaturesEnabled'] != false;
       printButtonHidden = cachedSettings['printButtonHidden'] == true;
+      final cachedAuthMode = cachedSettings['attendanceAuthMode'];
+      if (cachedAuthMode is String &&
+          const {
+            'username_password',
+            'photo_username_password',
+            'photo_full_name_pin',
+          }.contains(cachedAuthMode)) {
+        attendanceAuthMode = cachedAuthMode;
+      }
+      final cachedWorkdays = cachedSettings['attendanceWorkdays'];
+      if (cachedWorkdays is List) {
+        attendanceWorkdays = cachedWorkdays
+            .whereType<num>()
+            .map((day) => day.toInt())
+            .where((day) => day >= 1 && day <= 7)
+            .toSet()
+            .toList()
+          ..sort();
+      }
+      final cachedStartTime = cachedSettings['attendanceStartTime'];
+      if (cachedStartTime is String && cachedStartTime.length >= 5) {
+        attendanceStartTime = cachedStartTime.substring(0, 5);
+      }
       final cachedPermissions = cachedSettings['permissions'];
       if (cachedPermissions is Map) {
         for (final key in ownerPermissions.keys.toList()) {
           if (cachedPermissions.containsKey(key)) {
             ownerPermissions[key] = cachedPermissions[key] == true;
           }
-        }
-        final cachedBirDetails = cachedPermissions['birReceiptDetails'];
-        if (cachedBirDetails is Map) {
-          birReceiptDetails = cachedBirDetails.map(
-            (key, value) => MapEntry(key.toString(), value.toString()),
-          );
         }
       }
     }
@@ -224,8 +242,8 @@ class SyncService extends ChangeNotifier {
       // 1. Push any pending offline queues FIRST so newly created POS actions are persisted before pulling
       final pendingPunches = localStorage.getPendingLoginActivity();
       for (final punch in pendingPunches) {
-        final ok = await supabaseService.pushLoginActivity(punch);
-        if (ok) {
+        final result = await supabaseService.pushLoginActivity(punch);
+        if (result['ok'] == true) {
           punch.isSynced = true;
           await localStorage.removePendingLoginActivity(punch.id);
         }
@@ -313,13 +331,36 @@ class SyncService extends ChangeNotifier {
           inventoryFeaturesEnabled =
               posState['inventoryFeaturesEnabled'] != false;
           printButtonHidden = posState['printButtonHidden'] == true;
+          final authMode = posState['attendanceAuthMode'];
+          if (authMode is String &&
+              const {
+                'username_password',
+                'photo_username_password',
+                'photo_full_name_pin',
+              }.contains(authMode)) {
+            attendanceAuthMode = authMode;
+          }
+          final workdays = posState['attendanceWorkdays'];
+          if (workdays is List) {
+            attendanceWorkdays = workdays
+                .whereType<num>()
+                .map((day) => day.toInt())
+                .where((day) => day >= 1 && day <= 7)
+                .toSet()
+                .toList()
+              ..sort();
+          }
+          final startTime = posState['attendanceStartTime'];
+          if (startTime is String && startTime.length >= 5) {
+            attendanceStartTime = startTime.substring(0, 5);
+          }
           await localStorage.saveCachedPosFeatureSettings(
             inventoryFeaturesEnabled: inventoryFeaturesEnabled,
             printButtonHidden: printButtonHidden,
-            permissions: {
-              ...ownerPermissions,
-              'birReceiptDetails': birReceiptDetails,
-            },
+            attendanceAuthMode: attendanceAuthMode,
+            attendanceWorkdays: attendanceWorkdays,
+            attendanceStartTime: attendanceStartTime,
+            permissions: ownerPermissions,
           );
         }
         if (fullStore['menu'] is List) {
@@ -332,9 +373,9 @@ class SyncService extends ChangeNotifier {
           // run in the background so menu synchronization is not delayed.
           unawaited(OfflineImageCache.cacheUrls(
             freshMenu.expand((item) => [
-              item.image,
-              ...item.addons.map((addon) => addon.image ?? ''),
-            ]),
+                  item.image,
+                  ...item.addons.map((addon) => addon.image ?? ''),
+                ]),
           ));
         }
 
@@ -377,28 +418,26 @@ class SyncService extends ChangeNotifier {
           promotionCodes = [];
           if (permissions is Map) {
             for (final key in ownerPermissions.keys.toList()) {
-              ownerPermissions[key] = key == 'birReceipt'
-                  ? permissions[key] == true
-                  : permissions[key] != false;
+              ownerPermissions[key] = permissions[key] != false;
             }
             ownerPermissions['promotionDiscount'] =
                 permissions['promotionDiscount'] == true;
             ownerPermissions['promotionsEnabled'] =
                 permissions['promotionsEnabled'] == true;
-            final rawBirDetails = permissions['birReceiptDetails'];
-            birReceiptDetails = rawBirDetails is Map
-                ? rawBirDetails.map((key, value) => MapEntry(key.toString(), value.toString()))
-                : {};
             final rawPromotions = permissions['promoCodes'];
             if (rawPromotions is List) {
-              promotionCodes = rawPromotions.whereType<Map>()
+              promotionCodes = rawPromotions
+                  .whereType<Map>()
                   .map((entry) => Map<String, dynamic>.from(entry))
                   .toList();
             }
             await localStorage.saveCachedPosFeatureSettings(
               inventoryFeaturesEnabled: inventoryFeaturesEnabled,
               printButtonHidden: printButtonHidden,
-              permissions: {...ownerPermissions, 'birReceiptDetails': birReceiptDetails},
+              attendanceAuthMode: attendanceAuthMode,
+              attendanceWorkdays: attendanceWorkdays,
+              attendanceStartTime: attendanceStartTime,
+              permissions: ownerPermissions,
             );
           }
           final freshStaff = (fullStore['users'] as List)
@@ -599,13 +638,16 @@ class SyncService extends ChangeNotifier {
       if (menuItem?.inventoryMode == 'none') continue;
       if (menuItem?.inventoryMode == 'stock_only') {
         final selectedSize = line.addons
-            .where((addon) => addon.id?.startsWith('size:') == true && addon.qty > 0)
+            .where((addon) =>
+                addon.id?.startsWith('size:') == true && addon.qty > 0)
             .firstOrNull;
         final sizeSpec = selectedSize == null
             ? null
-            : menuItem?.addons.where((addon) =>
-                addon.id == selectedSize.id ||
-                addon.name.trim().toLowerCase() == selectedSize.name.trim().toLowerCase())
+            : menuItem?.addons
+                .where((addon) =>
+                    addon.id == selectedSize.id ||
+                    addon.name.trim().toLowerCase() ==
+                        selectedSize.name.trim().toLowerCase())
                 .firstOrNull;
         final stockId = selectedSize == null
             ? menuItem?.stockInventoryItemId
@@ -646,18 +688,17 @@ class SyncService extends ChangeNotifier {
 
       if (matchedCosting != null) {
         final style = line.style ??
-            ((menuItem?.styles.length ?? 0) == 1 ? menuItem!.styles.first : null);
+            ((menuItem?.styles.length ?? 0) == 1
+                ? menuItem!.styles.first
+                : null);
         final selectedSize = line.addons
             .where((addon) =>
                 addon.id?.startsWith('size:') == true && addon.qty > 0)
             .firstOrNull;
-        String sizeKey(String value) => value
-            .trim()
-            .toLowerCase()
-            .replaceAll(RegExp(r'[^a-z0-9.]'), '');
-        final selectedSizeKey = selectedSize == null
-            ? ''
-            : sizeKey(selectedSize.name);
+        String sizeKey(String value) =>
+            value.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9.]'), '');
+        final selectedSizeKey =
+            selectedSize == null ? '' : sizeKey(selectedSize.name);
         final configuredCupId = style == 'hot'
             ? matchedCosting['hotCupInventoryItemId']?.toString()
             : style == 'iced'
@@ -669,7 +710,8 @@ class SyncService extends ChangeNotifier {
                 .toSet()
             : <String>{};
         final assignedCupIds = <String>{
-          if (configuredCupId != null && configuredCupId.isNotEmpty) configuredCupId,
+          if (configuredCupId != null && configuredCupId.isNotEmpty)
+            configuredCupId,
           ...extraCupIds,
         };
         final matchesSelectedCup = (InventoryItem item) {
@@ -683,16 +725,27 @@ class SyncService extends ChangeNotifier {
         };
         final sizeCup = selectedSizeKey.isEmpty
             ? null
-            : inventory.where((item) => matchesSelectedCup(item) && assignedCupIds.contains(item.id)).firstOrNull ??
-                inventory.where((item) => matchesSelectedCup(item) && (style == null || item.inventoryType == 'cup_$style')).firstOrNull ??
+            : inventory
+                    .where((item) =>
+                        matchesSelectedCup(item) &&
+                        assignedCupIds.contains(item.id))
+                    .firstOrNull ??
+                inventory
+                    .where((item) =>
+                        matchesSelectedCup(item) &&
+                        (style == null || item.inventoryType == 'cup_$style'))
+                    .firstOrNull ??
                 inventory.where(matchesSelectedCup).firstOrNull;
         final cupStock = sizeCup ??
             (configuredCupId == null
                 ? null
-                : inventory.where((item) => item.id == configuredCupId).firstOrNull);
+                : inventory
+                    .where((item) => item.id == configuredCupId)
+                    .firstOrNull);
         final cupId = cupStock?.id ?? configuredCupId;
 
-        final cupRecipesRaw = matchedCosting['cupRecipes'] ?? matchedCosting['cup_recipes'];
+        final cupRecipesRaw =
+            matchedCosting['cupRecipes'] ?? matchedCosting['cup_recipes'];
         final cupRecipes = cupRecipesRaw is Map
             ? Map<String, dynamic>.from(cupRecipesRaw)
             : <String, dynamic>{};
@@ -709,33 +762,33 @@ class SyncService extends ChangeNotifier {
             rawIng is Map && ((rawIng['amount'] as num?)?.toDouble() ?? 0) > 0);
 
         for (final rawIng in recipeIngredients) {
-            if (rawIng is Map) {
-              final ingId = rawIng['inventoryItemId']?.toString() ?? '';
-              final ingName = rawIng['name']?.toString() ?? '';
-              final amount = (rawIng['amount'] as num?)?.toDouble() ?? 0.0;
-              final unit = rawIng['unit']?.toString() ?? 'pcs';
-              if (amount > 0) {
-                final stockItem = inventory
-                    .where((i) =>
-                        i.id == ingId ||
-                        i.name.toLowerCase() == ingName.toLowerCase())
-                    .firstOrNull;
-                if (stockItem != null) {
-                  deductions.add({
-                    'inventoryItemId': stockItem.id,
-                    'itemName': stockItem.name,
-                    'amount': amount * line.qty,
-                    'unit': unit,
-                    'orderItemId': line.productId,
-                  });
-                }
+          if (rawIng is Map) {
+            final ingId = rawIng['inventoryItemId']?.toString() ?? '';
+            final ingName = rawIng['name']?.toString() ?? '';
+            final amount = (rawIng['amount'] as num?)?.toDouble() ?? 0.0;
+            final unit = rawIng['unit']?.toString() ?? 'pcs';
+            if (amount > 0) {
+              final stockItem = inventory
+                  .where((i) =>
+                      i.id == ingId ||
+                      i.name.toLowerCase() == ingName.toLowerCase())
+                  .firstOrNull;
+              if (stockItem != null) {
+                deductions.add({
+                  'inventoryItemId': stockItem.id,
+                  'itemName': stockItem.name,
+                  'amount': amount * line.qty,
+                  'unit': unit,
+                  'orderItemId': line.productId,
+                });
               }
             }
           }
+        }
         // Cup from recipeCosting
         if (hasConfiguredRecipe && cupId != null && cupId.isNotEmpty) {
-          final resolvedCupStock = cupStock ??
-              inventory.where((i) => i.id == cupId).firstOrNull;
+          final resolvedCupStock =
+              cupStock ?? inventory.where((i) => i.id == cupId).firstOrNull;
           if (resolvedCupStock != null) {
             deductions.add({
               'inventoryItemId': resolvedCupStock.id,
@@ -751,11 +804,12 @@ class SyncService extends ChangeNotifier {
         // Known menu items without a current costing must never resurrect a
         // stale legacy recipe. Legacy fallback is only for non-menu orders.
         // 2. Check recipes map
-        final recipeList = preparedRecipesMap[line.productId] ??
-            preparedRecipesMap[itemName];
+        final recipeList =
+            preparedRecipesMap[line.productId] ?? preparedRecipesMap[itemName];
         if (recipeList is List) {
           hasConfiguredRecipe = recipeList.any((rawIng) =>
-              rawIng is Map && ((rawIng['amount'] as num?)?.toDouble() ?? 0) > 0);
+              rawIng is Map &&
+              ((rawIng['amount'] as num?)?.toDouble() ?? 0) > 0);
           for (final rawIng in recipeList) {
             if (rawIng is Map) {
               final ingId = rawIng['inventoryItemId']?.toString() ?? '';
@@ -788,7 +842,8 @@ class SyncService extends ChangeNotifier {
                 c['ingredients'] is List) {
               final costingIngredients = c['ingredients'] as List;
               hasConfiguredRecipe = costingIngredients.any((rawIng) =>
-                  rawIng is Map && ((rawIng['amount'] as num?)?.toDouble() ?? 0) > 0);
+                  rawIng is Map &&
+                  ((rawIng['amount'] as num?)?.toDouble() ?? 0) > 0);
               for (final rawIng in costingIngredients) {
                 if (rawIng is Map) {
                   final ingName = rawIng['name']?.toString() ?? '';
@@ -821,29 +876,31 @@ class SyncService extends ChangeNotifier {
       }
 
       // 4. Addon inventory deductions configured in Admin
-      if (hasConfiguredRecipe) for (final addon in line.addons) {
-        if (addon.inventoryItemId != null &&
-            addon.inventoryItemId!.isNotEmpty) {
-          final stockItem =
-              inventory.where((i) => i.id == addon.inventoryItemId).firstOrNull;
-          if (stockItem != null) {
-            final usagePerAddon =
-                (addon.usageAmount != null && addon.usageAmount! > 0)
-                    ? addon.usageAmount!
-                    : (stockItem.cupUsageAmount != null &&
-                            stockItem.cupUsageAmount! > 0
-                        ? stockItem.cupUsageAmount!
-                        : 1.0);
-            deductions.add({
-              'inventoryItemId': stockItem.id,
-              'itemName': stockItem.name,
-              'amount': usagePerAddon * addon.qty * line.qty,
-              'unit': addon.usageUnit ?? stockItem.unit,
-              'orderItemId': line.productId,
-            });
+      if (hasConfiguredRecipe)
+        for (final addon in line.addons) {
+          if (addon.inventoryItemId != null &&
+              addon.inventoryItemId!.isNotEmpty) {
+            final stockItem = inventory
+                .where((i) => i.id == addon.inventoryItemId)
+                .firstOrNull;
+            if (stockItem != null) {
+              final usagePerAddon =
+                  (addon.usageAmount != null && addon.usageAmount! > 0)
+                      ? addon.usageAmount!
+                      : (stockItem.cupUsageAmount != null &&
+                              stockItem.cupUsageAmount! > 0
+                          ? stockItem.cupUsageAmount!
+                          : 1.0);
+              deductions.add({
+                'inventoryItemId': stockItem.id,
+                'itemName': stockItem.name,
+                'amount': usagePerAddon * addon.qty * line.qty,
+                'unit': addon.usageUnit ?? stockItem.unit,
+                'orderItemId': line.productId,
+              });
+            }
           }
         }
-      }
     }
 
     return deductions;

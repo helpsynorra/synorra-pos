@@ -280,7 +280,7 @@ class _VoidDialogState extends State<VoidDialog> {
                 textInputAction: TextInputAction.newline,
                 style: const TextStyle(fontSize: 14),
                 decoration: _decoration(
-                  'e.g., Customer changed mind, wrong order input...',
+                  'e.g., internal changed mind, wrong order input...',
                 ),
               ),
               if (_errorMessage != null) ...[

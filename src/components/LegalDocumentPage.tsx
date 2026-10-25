@@ -1,5 +1,6 @@
 import Link from "next/link";
 import {
+  cookieCategories,
   cookiePolicy,
   privacyPolicy,
   termsOfUse,
@@ -13,21 +14,21 @@ type LegalDocumentPageProps = {
 export function LegalDocumentPage({ kind }: LegalDocumentPageProps) {
   const title =
     kind === "terms"
-      ? "Terms of Use"
+      ? "Terms & Conditions (Terms of Service)"
       : kind === "privacy"
-        ? "Privacy Policy"
+        ? "Privacy & Cookie Policy"
         : "Cookie Policy";
   const sections: LegalSection[] =
     kind === "terms"
       ? termsOfUse
       : kind === "privacy"
-        ? privacyPolicy
+        ? [...privacyPolicy, ...cookiePolicy]
         : cookiePolicy;
   const relatedDocument =
     kind === "terms"
-      ? { href: "/privacy", label: "Privacy Policy" }
+      ? { href: "/privacy", label: "Privacy & Cookie Policy" }
       : kind === "privacy"
-        ? { href: "/cookies", label: "Cookie Policy" }
+        ? { href: "/terms", label: "Terms of Use" }
         : { href: "/terms", label: "Terms of Use" };
 
   return (
@@ -44,7 +45,7 @@ export function LegalDocumentPage({ kind }: LegalDocumentPageProps) {
         </p>
         <h1 className="mt-3 text-4xl font-semibold tracking-tight">{title}</h1>
         <p className="mt-3 text-sm text-[#667085]">
-          Last updated October 19, 2026
+          Last updated October 25, 2026
         </p>
         <p className="mt-8 rounded-2xl bg-[#f5f6f8] p-5 text-sm leading-6 text-[#53627f]">
           This document describes the current Synorra POS app behavior. It is
@@ -59,6 +60,31 @@ export function LegalDocumentPage({ kind }: LegalDocumentPageProps) {
               <p className="mt-2 leading-7 text-[#53627f]">{section.body}</p>
             </section>
           ))}
+          {(kind === "privacy" || kind === "cookies") && (
+            <section>
+              <h2 className="text-lg font-semibold">Cookie categories</h2>
+              <div className="mt-3 overflow-x-auto rounded-xl border border-[#e4e8ef]">
+                <table className="w-full min-w-[620px] border-collapse text-left text-sm">
+                  <thead className="bg-[#f5f6f8] text-[#18263e]">
+                    <tr>
+                      <th scope="col" className="px-4 py-3 font-semibold">Category</th>
+                      <th scope="col" className="px-4 py-3 font-semibold">Purpose</th>
+                      <th scope="col" className="px-4 py-3 font-semibold">Current use</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cookieCategories.map((cookie) => (
+                      <tr key={cookie.category} className="border-t border-[#e4e8ef] align-top text-[#53627f]">
+                        <th scope="row" className="px-4 py-3 font-semibold text-[#18263e]">{cookie.category}</th>
+                        <td className="px-4 py-3 leading-6">{cookie.purpose}</td>
+                        <td className="px-4 py-3 leading-6">{cookie.currentUse}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
         </div>
         <div className="mt-10 border-t border-[#e4e8ef] pt-6 text-sm text-[#667085]">
           Questions? Email{" "}

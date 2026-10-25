@@ -4,18 +4,18 @@ import { useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
 import { CAFE } from "@/lib/cafe";
 import {
-  drinkReceipts,
+  drinkslips,
   itemCount,
-  receiptMoney,
-  receiptWhen,
+  slipMoney,
+  slipWhen,
   type PaperWidth,
-  type ReceiptTicket,
+  type slipTicket,
 } from "@/lib/escpos";
 import { drinkDisplayName, hydrateOrderLine } from "@/lib/menu";
 import { paymentLabel } from "@/lib/payments";
 import type { OrderItem, PrintJob } from "@/lib/types";
 
-function receiptOptions(item: OrderItem) {
+function slipOptions(item: OrderItem) {
   const hydrated = hydrateOrderLine(item);
   const size = hydrated.addons?.find((addon) => addon.id.startsWith("size:"));
   const addons = (hydrated.addons ?? []).filter((addon) => !addon.id.startsWith("size:"));
@@ -26,33 +26,33 @@ function receiptOptions(item: OrderItem) {
       const quantity = Math.max(1, addon.qty || 1);
       const name = quantity > 1 ? `${quantity} x ${addon.name}` : addon.name;
       const total = addon.price * quantity;
-      return `+ ${name}${total > 0 ? ` ${receiptMoney(total)}` : ""}`;
+      return `+ ${name}${total > 0 ? ` ${slipMoney(total)}` : ""}`;
     }),
   };
 }
 
-type ReceiptPreviewProps = {
-  ticket: ReceiptTicket;
+type SlipPreviewProps = {
+  ticket: slipTicket;
   orderId: string;
   orderOptions: { id: string; label: string }[];
   printJobs: PrintJob[];
   labelPaperWidth: PaperWidth;
-  receiptPaperWidth: PaperWidth;
+  slipPaperWidth: PaperWidth;
   labelBaudRate: number;
-  receiptBaudRate: number;
+  slipBaudRate: number;
   labelPrinterReady: boolean;
-  receiptPrinterReady: boolean;
+  slipPrinterReady: boolean;
   testPrinterEnabled: boolean;
   pending: boolean;
   onClose: () => void;
   onSelectOrder: (orderId: string) => void;
   onPrintLabels: () => void;
-  onPrintReceipt: () => void;
+  onPrintslip: () => void;
   onRetryJob: (job: PrintJob) => void;
   onSetLabelPaperWidth: (width: PaperWidth) => void;
-  onSetReceiptPaperWidth: (width: PaperWidth) => void;
+  onSetslipPaperWidth: (width: PaperWidth) => void;
   onSetLabelBaudRate: (baudRate: number) => void;
-  onSetReceiptBaudRate: (baudRate: number) => void;
+  onSetslipBaudRate: (baudRate: number) => void;
 };
 
 function Slip({
@@ -92,7 +92,7 @@ function Row({ left, right, strong }: { left: string; right: string; strong?: bo
   );
 }
 
-function CustomerSlip({ ticket }: { ticket: ReceiptTicket }) {
+function internalSlip({ ticket }: { ticket: slipTicket }) {
   return (
     <>
       <div className="flex justify-center">
@@ -111,46 +111,50 @@ function CustomerSlip({ ticket }: { ticket: ReceiptTicket }) {
       <p className="text-center">{CAFE.city}</p>
       <p className="text-center">Tel {CAFE.phone}</p>
       <Rule />
-      <p className="text-center text-base font-bold">Order No. {ticket.ticketNo}</p>
-      <p className="text-center">{receiptWhen(ticket.at)}</p>
+      <p className="text-center text-base font-bold">Order #{ticket.ticketNo}</p>
+      <p className="text-center">{slipWhen(ticket.at)}</p>
       <p className="text-center">Owner: {ticket.barista}</p>
       {ticket.serviceMode ? <p className="text-center font-semibold">{ticket.serviceMode === "take-out" ? "Take out" : "Dine in"}</p> : null}
       <Rule />
       <Row left="Item" right="Amount" strong />
       {ticket.items.map((item, index) => {
-        const details = receiptOptions(item);
+        const details = slipOptions(item);
         return (
           <div key={`${item.productId}-${index}`} className="mt-2">
             <p>{drinkDisplayName(item)}</p>
             {details.sizeLine ? <p className="text-[10px] text-neutral-600">{details.sizeLine}</p> : null}
             {details.addons.length > 0 ? <p className="text-[10px] text-neutral-600">Add-ons {details.addons.join(", ")}</p> : null}
             <Row
-              left={`  ${item.qty} x ${receiptMoney(item.price)}`}
-              right={receiptMoney(item.price * item.qty)}
+              left={`  ${item.qty} x ${slipMoney(item.price)}`}
+              right={slipMoney(item.price * item.qty)}
             />
           </div>
         );
       })}
       <Rule />
-      <Row left="Subtotal" right={receiptMoney(ticket.subtotal)} />
+      <Row left="Subtotal" right={slipMoney(ticket.subtotal)} />
       {ticket.discount > 0 ? (
         <Row
           left={ticket.promoLabel ?? "Discount"}
-          right={`-${receiptMoney(ticket.discount)}`}
+          right={`-${slipMoney(ticket.discount)}`}
         />
       ) : null}
-      <Row left="TOTAL" right={receiptMoney(ticket.total)} strong />
+      <Row left="TOTAL" right={slipMoney(ticket.total)} strong />
       <Rule />
       <Row left="Payment" right={paymentLabel(ticket.paymentMethod)} />
       <Row
         left={ticket.paymentMethod === "cash" ? "Cash / Tendered" : "Paid"}
-        right={receiptMoney(ticket.paid ?? ticket.total)}
+        right={slipMoney(ticket.paid ?? ticket.total)}
       />
-      <Row left="Change" right={receiptMoney(ticket.change ?? 0)} />
+      <Row left="Change" right={slipMoney(ticket.change ?? 0)} />
       <Rule />
       <p className="text-center lowercase">{CAFE.tagline.toLowerCase()}</p>
       <p className="mt-1 text-center">have a seat, take a sip</p>
       <p className="mt-1 text-center">Thank you. Please come again.</p>
+      <Rule />
+      <p className="text-center text-[9px] font-semibold leading-3">
+        THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX / FOR INTERNAL STORE USE ONLY
+      </p>
     </>
   );
 }
@@ -173,8 +177,8 @@ function JobRow({
           ? "bg-neutral-200 text-neutral-500"
           : "bg-amber-100 text-amber-800";
   const title =
-    job.type === "customer-receipt"
-      ? "Customer receipt"
+    job.type === "internal-slip"
+      ? ""
       : `${job.label?.name ?? "Cup label"} #${(job.label?.copyIndex ?? 0) + 1}`;
   return (
     <div className="rounded-lg border border-neutral-200 bg-white px-2.5 py-2 text-[11px]">
@@ -203,15 +207,15 @@ function JobRow({
   );
 }
 
-function BaristaSlip({ ticket }: { ticket: ReceiptTicket }) {
+function BaristaSlip({ ticket }: { ticket: slipTicket }) {
   const drinks = itemCount(ticket.items);
   return (
     <>
       <p className="text-center text-[10px]">MAKE THESE DRINKS</p>
       <Rule />
-      <p className="text-center font-bold">ORDER NO. {ticket.ticketNo}</p>
+      <p className="text-center font-bold">ORDER #{ticket.ticketNo}</p>
       {ticket.serviceMode ? <p className="text-center font-semibold">{ticket.serviceMode === "take-out" ? "TAKE OUT" : "DINE IN"}</p> : null}
-      <p className="text-center">{receiptWhen(ticket.at)}</p>
+      <p className="text-center">{slipWhen(ticket.at)}</p>
       <Rule />
       <p className="flex gap-2 font-semibold text-neutral-500">
         <span className="w-8 shrink-0">Qty</span>
@@ -251,7 +255,7 @@ function TestLabel({
   ticket,
   index,
 }: {
-  ticket: ReceiptTicket;
+  ticket: slipTicket;
   index: number;
 }) {
   return (
@@ -271,33 +275,33 @@ function TestLabel({
   );
 }
 
-export function ReceiptPreview({
+export function SlipPreview({
   ticket,
   orderId,
   orderOptions,
   printJobs,
   labelPaperWidth,
-  receiptPaperWidth,
+  slipPaperWidth,
   labelBaudRate,
-  receiptBaudRate,
+  slipBaudRate,
   labelPrinterReady,
-  receiptPrinterReady,
+  slipPrinterReady,
   testPrinterEnabled,
   pending,
   onClose,
   onSelectOrder,
   onPrintLabels,
-  onPrintReceipt,
+  onPrintslip,
   onRetryJob,
   onSetLabelPaperWidth,
-  onSetReceiptPaperWidth,
+  onSetslipPaperWidth,
   onSetLabelBaudRate,
-  onSetReceiptBaudRate,
-}: ReceiptPreviewProps) {
-  const receipts = drinkReceipts(ticket);
-  const receiptJobs = printJobs.filter((job) => job.type === "customer-receipt");
+  onSetslipBaudRate,
+}: SlipPreviewProps) {
+  const slips = drinkslips(ticket);
+  const slipJobs = printJobs.filter((job) => job.type === "internal-slip");
   const labelJobs = printJobs.filter((job) => job.type === "cup-label");
-  const receiptNeedsRetry = receiptJobs.some(
+  const slipNeedsRetry = slipJobs.some(
     (job) => job.status === "pending" || job.status === "failed",
   );
   const labelsNeedRetry = labelJobs.some(
@@ -387,20 +391,20 @@ export function ReceiptPreview({
         showTestOutput ? "test-print-active" : ""
       }`}
     >
-      <div className="receipt-preview-dialog flex max-h-[90svh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-neutral-200 text-black shadow-2xl">
-        <div className="receipt-preview-header flex shrink-0 items-center justify-between px-4 py-3">
+      <div className="slip-preview-dialog flex max-h-[90svh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-neutral-200 text-black shadow-2xl">
+        <div className="slip-preview-header flex shrink-0 items-center justify-between px-4 py-3">
           <div className="min-w-0">
             <h3 className="text-lg font-semibold">
-              {showTestOutput ? "Test printer output" : "Print order"}
+              {showTestOutput ? "Test printer output" : "Print Order"}
             </h3>
             <p className="text-xs text-neutral-500">
               {showTestOutput ? (
                 <>
-                  {receipts.length} virtual {receipts.length === 1 ? "label" : "labels"} ·
+                  {slips.length} virtual {slips.length === 1 ? "label" : "labels"} ·
                   50 × 30 mm
                 </>
               ) : (
-                "Receipt and cup-label jobs are independent"
+                "INTERNAL COPY and cup-label jobs are independent"
               )}
             </p>
           </div>
@@ -415,16 +419,16 @@ export function ReceiptPreview({
             </svg>
           </button>
         </div>
-        <div className="receipt-preview-body min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+        <div className="slip-preview-body min-h-0 flex-1 overflow-y-auto px-4 pb-4">
           {showTestOutput ? (
             <div
               ref={labelsRef}
-              className="receipt-preview-labels flex flex-wrap items-start justify-center gap-8 py-2"
+              className="slip-preview-labels flex flex-wrap items-start justify-center gap-8 py-2"
             >
-              {receipts.map((receipt, index) => (
+              {slips.map((slip, index) => (
                   <TestLabel
-                    key={`${receipt.items[0].productId}-${index}`}
-                    ticket={receipt}
+                    key={`${slip.items[0].productId}-${index}`}
+                    ticket={slip}
                     index={index}
                   />
                 ))}
@@ -450,17 +454,16 @@ export function ReceiptPreview({
                 <section className="rounded-2xl bg-neutral-100 p-3">
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <div>
-                      <h4 className="text-sm font-semibold">Customer receipt</h4>
                       <p className="text-[11px] text-neutral-500">
-                        {receiptPrinterReady ? "Receipt printer connected" : "Receipt printer disconnected"}
+                        {slipPrinterReady ? "Order printer connected" : "Order printer disconnected"}
                       </p>
                     </div>
                     <div className="flex gap-1">
                       <select
-                        aria-label="Receipt printer baud rate"
-                        disabled={receiptPrinterReady}
-                        value={receiptBaudRate}
-                        onChange={(event) => onSetReceiptBaudRate(Number(event.target.value))}
+                        aria-label="Order printer baud rate"
+                        disabled={slipPrinterReady}
+                        value={slipBaudRate}
+                        onChange={(event) => onSetslipBaudRate(Number(event.target.value))}
                         className="rounded-lg border border-neutral-300 bg-white px-2 py-1 text-xs disabled:opacity-50"
                       >
                         {[9600, 19200, 38400, 115200].map((rate) => (
@@ -468,10 +471,10 @@ export function ReceiptPreview({
                         ))}
                       </select>
                       <select
-                        aria-label="Receipt paper width"
-                        value={receiptPaperWidth}
+                        aria-label="Order paper width"
+                        value={slipPaperWidth}
                         onChange={(event) =>
-                          onSetReceiptPaperWidth(Number(event.target.value) as PaperWidth)
+                          onSetslipPaperWidth(Number(event.target.value) as PaperWidth)
                         }
                         className="rounded-lg border border-neutral-300 bg-white px-2 py-1 text-xs"
                       >
@@ -481,12 +484,13 @@ export function ReceiptPreview({
                     </div>
                   </div>
                   <div className="flex justify-center overflow-x-auto py-2">
+
                   </div>
                   <div className="mt-3 space-y-2">
-                    {receiptJobs.length === 0 ? (
-                      <p className="text-center text-[11px] text-neutral-500">No receipt job yet.</p>
+                    {slipJobs.length === 0 ? (
+                      <p className="text-center text-[11px] text-neutral-500">No slip job yet.</p>
                     ) : (
-                      receiptJobs.slice().reverse().slice(0, 4).map((job) => (
+                      slipJobs.slice().reverse().slice(0, 4).map((job) => (
                         <JobRow
                           key={job.id}
                           job={job}
@@ -532,16 +536,16 @@ export function ReceiptPreview({
                     </div>
                   </div>
                   <div className="flex flex-wrap items-start justify-center gap-4 py-2">
-                    {receipts.length === 0 ? (
+                    {slips.length === 0 ? (
                       <p className="py-8 text-xs text-neutral-500">This order has no cup labels.</p>
                     ) : (
-                      receipts.map((receipt, index) => (
+                      slips.map((slip, index) => (
                         <Slip
-                          key={`${receipt.items[0].productId}-${index}`}
+                          key={`${slip.items[0].productId}-${index}`}
                           title={`Label ${index + 1}`}
                           paperWidth={labelPaperWidth}
                         >
-                          <BaristaSlip ticket={receipt} />
+                          <BaristaSlip ticket={slip} />
                         </Slip>
                       ))
                     )}
@@ -565,7 +569,7 @@ export function ReceiptPreview({
             </>
           )}
         </div>
-        <div className="receipt-preview-footer flex shrink-0 gap-2 border-t border-neutral-300 bg-white p-4">
+        <div className="slip-preview-footer flex shrink-0 gap-2 border-t border-neutral-300 bg-white p-4">
           {showTestOutput ? (
             <>
               <button
@@ -605,14 +609,14 @@ export function ReceiptPreview({
               <button
                 type="button"
                 disabled={pending}
-                onClick={onPrintReceipt}
+                onClick={onPrintslip}
                 className="flex-1 rounded-xl border border-black py-2.5 text-sm disabled:opacity-40"
               >
-                {receiptNeedsRetry ? "Retry receipt" : "Reprint receipt"}
+                {slipNeedsRetry ? "Retry INTERNAL COPY" : "Reprint INTERNAL COPY"}
               </button>
               <button
                 type="button"
-                disabled={pending || receipts.length === 0}
+                disabled={pending || slips.length === 0}
                 onClick={onPrintLabels}
                 className="flex-1 rounded-xl bg-black py-2.5 text-sm text-white disabled:opacity-40"
               >

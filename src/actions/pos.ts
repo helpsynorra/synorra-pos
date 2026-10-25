@@ -129,9 +129,9 @@ function initialPrintJobs(order: Order, menu: MenuItem[]): PrintJob[] {
   return [
     ...labelJobsForOrder(order, menu, order.id, createdAt),
     {
-      id: `${order.id}-receipt`,
+      id: `${order.id}-slip`,
       orderId: order.id,
-      type: "customer-receipt",
+      type: "internal-slip",
       status: "pending",
       attempts: 0,
       createdAt,
@@ -998,7 +998,7 @@ export async function queueReprintJobs(
   sourceLabelJobId?: string,
 ) {
   await requirePos();
-  if (type !== "cup-label" && type !== "customer-receipt") {
+  if (type !== "cup-label" && type !== "internal-slip") {
     return { error: "Invalid print job type." };
   }
   let error: string | undefined;
@@ -1012,7 +1012,7 @@ export async function queueReprintJobs(
     }
 
     const createdAt = new Date().toISOString();
-    if (type === "customer-receipt") {
+    if (type === "internal-slip") {
       created = [
         {
           id: reprintId(order.id, type),

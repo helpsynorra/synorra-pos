@@ -748,7 +748,7 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                   <div className="mb-1.5 flex items-center justify-between gap-2">
                     <div>
                       <h3 className="text-sm font-semibold text-neutral-900">Types</h3>
-                      <p className="mt-1 text-xs text-neutral-500">Optional choices customers can select. Set an extra price only when needed.</p>
+                      <p className="mt-1 text-xs text-neutral-500">Optional choices internals can select. Set an extra price only when needed.</p>
                     </div>
                     <button
                       type="button"

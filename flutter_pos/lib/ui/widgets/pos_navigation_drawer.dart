@@ -10,14 +10,14 @@ class PosNavigationDrawer extends StatelessWidget {
   final PosSection selectedSection;
   final String cashierName;
   final String labelsConnection;
-  final String receiptConnection;
+  final String slipConnection;
   final String syncStatus;
   final bool canLogout;
   final bool inventoryFeaturesEnabled;
   final bool stockInventoryEnabled;
   final bool restockInventoryEnabled;
   final bool connectLabelsEnabled;
-  final bool connectReceiptEnabled;
+  final bool connectslipEnabled;
   final String logoutDisabledMessage;
   final VoidCallback onOpenTerminal;
   final VoidCallback onOpenStock;
@@ -27,7 +27,7 @@ class PosNavigationDrawer extends StatelessWidget {
   final VoidCallback onOpenBackOffice;
   final VoidCallback onOpenHelpCenter;
   final VoidCallback onConnectLabels;
-  final VoidCallback onConnectReceipt;
+  final VoidCallback onConnectslip;
   final VoidCallback onSync;
   final VoidCallback onLogout;
 
@@ -36,14 +36,14 @@ class PosNavigationDrawer extends StatelessWidget {
     required this.selectedSection,
     required this.cashierName,
     required this.labelsConnection,
-    required this.receiptConnection,
+    required this.slipConnection,
     required this.syncStatus,
     required this.canLogout,
     required this.inventoryFeaturesEnabled,
     required this.stockInventoryEnabled,
     required this.restockInventoryEnabled,
     required this.connectLabelsEnabled,
-    required this.connectReceiptEnabled,
+    required this.connectslipEnabled,
     required this.logoutDisabledMessage,
     required this.onOpenTerminal,
     required this.onOpenStock,
@@ -53,7 +53,7 @@ class PosNavigationDrawer extends StatelessWidget {
     required this.onOpenBackOffice,
     required this.onOpenHelpCenter,
     required this.onConnectLabels,
-    required this.onConnectReceipt,
+    required this.onConnectslip,
     required this.onSync,
     required this.onLogout,
   });
@@ -95,7 +95,8 @@ class PosNavigationDrawer extends StatelessWidget {
                     onTap: () =>
                         _select(context, PosSection.terminal, onOpenTerminal),
                   ),
-                  ...[
+                  if (inventoryFeaturesEnabled &&
+                      (stockInventoryEnabled || restockInventoryEnabled)) ...[
                     const SizedBox(height: 20),
                     _sectionLabel('INVENTORY'),
                     if (stockInventoryEnabled)
@@ -114,18 +115,18 @@ class PosNavigationDrawer extends StatelessWidget {
                         onTap: () =>
                             _select(context, PosSection.restock, onOpenRestock),
                       ),
-                   
                   ],
+                  if (inventoryFeaturesEnabled && stockInventoryEnabled) ...[
                       const SizedBox(height: 20),
-                    _sectionLabel('ORDER HISTORY'),
-                    if (stockInventoryEnabled)
+                      _sectionLabel('ORDER HISTORY'),
                       _row(
-                      icon: Icons.receipt_long_outlined,
-                      title: 'Order History',
+                        icon: Icons.receipt_long_outlined,
+                        title: 'Order History',
                       selected: selectedSection == PosSection.orderHistory,
                       onTap: () => _select(
                           context, PosSection.orderHistory, onOpenOrderHistory),
                     ),
+                  ],
                   const SizedBox(height: 20),
                   _sectionLabel('STAFF & SHIFT'),
                   _row(
@@ -148,9 +149,9 @@ class PosNavigationDrawer extends StatelessWidget {
                     title: 'Support',
                     onTap: () => _closeThen(context, onOpenHelpCenter),
                   ),
-                   _sectionLabel('PRINTERS'),
-
-                  if (connectLabelsEnabled || connectReceiptEnabled) ...[
+                  if (connectLabelsEnabled || connectslipEnabled) ...[
+                    const SizedBox(height: 20),
+                    _sectionLabel('PRINTERS'),
                     if (connectLabelsEnabled)
                       _row(
                         icon: Icons.local_cafe_outlined,
@@ -158,12 +159,12 @@ class PosNavigationDrawer extends StatelessWidget {
                         subtitle: labelsConnection,
                         onTap: () => _closeThen(context, onConnectLabels),
                       ),
-                    if (connectReceiptEnabled)
+                    if (connectslipEnabled)
                       _row(
                         icon: Icons.receipt_long_outlined,
-                        title: 'Connect receipt',
-                        subtitle: receiptConnection,
-                        onTap: () => _closeThen(context, onConnectReceipt),
+                        title: 'Connect slip',
+                        subtitle: slipConnection,
+                        onTap: () => _closeThen(context, onConnectslip),
                       ),
                   ],
                   const SizedBox(height: 20),
