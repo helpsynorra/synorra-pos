@@ -62,7 +62,7 @@ type UserManagerProps = {
 type SubTab = "staff" | "inout" | "off" | "gates" | "settings" | "customWebsitePromo";
 type StaffRole = "Admin" | "Barista" | "Cashier" | "Owner";
 
-type PermissionFlag = Exclude<keyof StaffPermissions, "promoCodes">;
+type PermissionFlag = Exclude<keyof StaffPermissions, "promoCodes" | "birReceiptDetails">;
 
 function isPromotionExpired(promo: PromotionCode): boolean {
   if (!promo.expiresAt) return false;
@@ -77,6 +77,7 @@ const permissionOptions: { key: PermissionFlag; label: string }[] = [
   { key: "connectReceipt", label: "Connect receipt" },
   { key: "printButton", label: "Print button" },
   { key: "customerReceipt", label: "Customer receipt" },
+  { key: "birReceipt", label: "BIR Receipt" },
   { key: "cupLabels", label: "Cup labels" },
   { key: "dineIn", label: "Dine in" },
   { key: "takeOut", label: "Take out" },
@@ -94,7 +95,7 @@ const adminPermissionGroups: {
     title: "Inventory & Sales",
     description: "Manage products, stock and sales operations.",
     icon: "inventory",
-    permissions: ["stockInventory", "connectReceipt", "cupLabels", "promotionDiscount"],
+    permissions: ["stockInventory", "connectReceipt", "cupLabels", "promotionDiscount", "birReceipt"],
   },
   {
     title: "Operations",
@@ -1362,6 +1363,89 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                         </section>
                       ))}
                     </div>
+                    {permissions.birReceipt && (
+                      <section className="space-y-4 rounded-xl border border-[#e1eaf6] bg-[#fbfdff] p-4">
+                        <div>
+                          <h3 className="text-sm font-semibold text-[#172849]">BIR receipt template</h3>
+                          <p className="mt-1 text-xs text-[#8091ab]">Edit the registered details below and preview the thermal invoice layout.</p>
+                        </div>
+                        <pre className="mx-auto max-h-80 w-full max-w-[320px] overflow-auto rounded-lg border border-[#d8dee8] bg-white p-4 font-mono text-[10px] leading-[1.45] text-[#17202f] shadow-sm">{[
+                          permissions.birReceiptDetails?.registeredBusinessName || "[REGISTERED BUSINESS NAME]",
+                          permissions.birReceiptDetails?.tradeStoreName || "[TRADE / STORE NAME]",
+                          permissions.birReceiptDetails?.registeredAddress || "[REGISTERED ADDRESS]",
+                          permissions.birReceiptDetails?.tinBranchCode ? `TIN / BRANCH: ${permissions.birReceiptDetails.tinBranchCode}` : "TIN / BRANCH: [TIN + BRANCH]",
+                          permissions.birReceiptDetails?.taxStatus || "[VAT REGISTERED / NON-VAT]",
+                          "================================",
+                          "          SALES INVOICE",
+                          "Invoice No.: [SEQUENTIAL NUMBER]",
+                          "Date: [YYYY-MM-DD HH:MM:SS]",
+                          "--------------------------------",
+                          "QTY  ITEM             PRICE TOTAL",
+                          "[ITEMS AND LINE TOTALS]",
+                          "--------------------------------",
+                          "Vatable Sales           [AMOUNT]",
+                          "12% VAT                 [AMOUNT]",
+                          "VAT-Exempt Sales        [AMOUNT]",
+                          "Zero-Rated Sales        [AMOUNT]",
+                          "TOTAL AMOUNT DUE        [AMOUNT]",
+                          "Payment / Tender / Change",
+                          "================================",
+                          `MIN: ${permissions.birReceiptDetails?.min || "[MIN]"}`,
+                          `PTU: ${permissions.birReceiptDetails?.ptuNumberDate || "[NUMBER / DATE]"}`,
+                          `POS SERIAL: ${permissions.birReceiptDetails?.posSerialNumber || "[SERIAL]"}`,
+                          `VENDOR: ${permissions.birReceiptDetails?.softwareVendorNameTinAddress || "[NAME / TIN / ADDRESS]"}`,
+                          `BIR ACCREDITATION: ${permissions.birReceiptDetails?.birAccreditationValidity || "[NUMBER / VALIDITY]"}`,
+                          permissions.birReceiptDetails?.taxStatus?.toUpperCase().includes("NON-VAT") ? "THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX" : "",
+                        ].join("\n")}</pre>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {([
+                            ["registeredBusinessName", "Registered business name"],
+                            ["tradeStoreName", "Trade / store name"],
+                            ["registeredAddress", "Registered business address"],
+                            ["tinBranchCode", "TIN + branch code"],
+                            ["taxStatus", "Tax status (VAT / NON-VAT)"],
+                            ["vatRegTin", "VAT registration TIN"],
+                            ["vatPosSerial", "VAT POS serial"],
+                            ["min", "Machine Identification Number (MIN)"],
+                            ["ptuNumberDate", "Permit to Use number and date"],
+                            ["posSerialNumber", "POS hardware / software serial number"],
+                            ["softwareVendorNameTinAddress", "Software vendor name, TIN, and address"],
+                            ["birAccreditationValidity", "BIR accreditation number and validity"],
+                          ] as const).map(([key, label]) => (
+                            <label key={key} className="block space-y-1.5 text-xs font-medium text-[#586b89]">
+                              <span>{label}</span>
+                              <input
+                                value={permissions.birReceiptDetails?.[key] ?? ""}
+                                onChange={(event) => setPermissionState((current) => ({
+                                  ...current,
+                                  [owner.id]: {
+                                    ...permissions,
+                                    birReceiptDetails: {
+                                      ...permissions.birReceiptDetails,
+                                      [key]: event.target.value,
+                                    },
+                                  },
+                                }))}
+                                className={adminField}
+                              />
+                            </label>
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={() => startTransition(async () => {
+                            const result = await updateOwnerPermissions(owner.id, permissions);
+                            if (result && "error" in result && result.error) {
+                              setNotice(result.error);
+                              return;
+                            }
+                            setNotice("BIR receipt details saved.");
+                          })}
+                          className="rounded-xl bg-[#101d37] px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
+                        >Save BIR receipt details</button>
+                      </section>
+                    )}
                     <div className={isAdminConsole ? "space-y-4 border-t border-[#e7edf6] pt-5" : "space-y-3 border-t border-neutral-200 pt-4"}>
                       <div>
                         <div className="flex items-center gap-2.5">
