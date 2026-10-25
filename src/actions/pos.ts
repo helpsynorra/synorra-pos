@@ -6,7 +6,8 @@ import { isDrinkCategory } from "@/lib/escpos";
 import { orderLineOptionsLabel, pricedOrderLine } from "@/lib/menu";
 import { parsePayment } from "@/lib/payments";
 import { ingredientsForOrderLine, roundQty } from "@/lib/inventory";
-import { canUsePos } from "@/lib/users";
+import { canUsePos, DEFAULT_STAFF_PERMISSIONS } from "@/lib/users";
+import { openBaristaShifts, pairLoginSessions } from "@/lib/staff-sessions";
 import {
   appendPrintJobs,
   approveVoidRequestAtomic,
@@ -785,6 +786,135 @@ export async function voidCheckout(
   revalidatePath("/pos");
   revalidatePath("/owner");
   return { ok: true, id: orderId };
+}
+
+export async function recordWaste(
+  cart: OrderItem[],
+  reason: string,
+  baristaUserIds: string[] = [],
+) {
+  const session = await requireCashier();
+  const trimmedReason = reason?.trim();
+  if (!trimmedReason) {
+    return { ok: false as const, error: "Please provide a reason or note for the waste." };
+  }
+  if (!cart || cart.length === 0) {
+    return { ok: false as const, error: "Add wasted items to the cart first." };
+  }
+  const store = await getFreshStore();
+  const owner = store.users.find((user) => user.id === session.userId && user.role === "cashier");
+  if (!owner) {
+    return { ok: false as const, error: "Owner account not found." };
+  }
+  if ((owner.permissions?.wasteManagement ?? DEFAULT_STAFF_PERMISSIONS.wasteManagement) === false) {
+    return { ok: false as const, error: "Waste recording is disabled for this POS." };
+  }
+  if (!store.pos.isOpen) {
+    return { ok: false as const, error: "Open the POS before recording waste." };
+  }
+
+  const priced: OrderItem[] = [];
+  for (const line of cart) {
+    const menuItem = store.menu.find((item) => item.id === line.productId);
+    const qty = Number(line.qty);
+    if (!menuItem || !menuItem.available) {
+      return { ok: false as const, error: "One of the items is no longer on the menu." };
+    }
+    if (!Number.isSafeInteger(qty) || qty < 1 || qty > 99) {
+      return { ok: false as const, error: "Each item quantity must be a whole number from 1 to 99." };
+    }
+    priced.push({
+      ...pricedOrderLine(menuItem, { ...line, qty }),
+      price: 0,
+    });
+  }
+
+  const normalize = (value: string) => value.trim().toLowerCase().replace(/[-_]+/g, " ").replace(/\s+/g, " ");
+  const deductionsByItem = new Map<string, { itemName: string; amount: number; unit: string; orderItemId: string }>();
+  for (const line of priced) {
+    for (const ingredient of ingredientsForOrderLine(store, line)) {
+      const inventory = store.inventory.find(
+        (item) => item.id === ingredient.inventoryItemId || normalize(item.name) === normalize(ingredient.name),
+      );
+      if (!inventory) continue;
+      const amount = roundQty(ingredient.amount * line.qty);
+      const existing = deductionsByItem.get(inventory.id);
+      if (existing) {
+        existing.amount = roundQty(existing.amount + amount);
+      } else {
+        deductionsByItem.set(inventory.id, { itemName: inventory.name, amount, unit: ingredient.unit, orderItemId: line.productId });
+      }
+    }
+  }
+  const deductions = Array.from(deductionsByItem.entries()).map(([inventoryItemId, value]) => ({
+    inventoryItemId,
+    ...value,
+  }));
+
+  const orderId = `waste-${Date.now()}`;
+  const createdAt = new Date().toISOString();
+  const activeBaristaShifts = openBaristaShifts(store.loginActivity ?? [])
+    .filter((shift) => shift.role === "barista");
+  const activeBaristaIds = new Set(activeBaristaShifts.map((shift) => shift.userId));
+  const selectedBaristaIds = Array.from(
+    new Set((baristaUserIds ?? []).map((id) => id.trim()).filter(Boolean)),
+  );
+  if (selectedBaristaIds.some((id) => !activeBaristaIds.has(id))) {
+    return { ok: false as const, error: "Only currently clocked-in baristas can be selected." };
+  }
+  const wasteBaristaIds = selectedBaristaIds.length > 0
+    ? selectedBaristaIds
+    : activeBaristaShifts.map((shift) => shift.userId);
+  const selectedWasteBaristas = Array.from(
+    new Set(
+      wasteBaristaIds.flatMap((id) => {
+        const shift = activeBaristaShifts.find((entry) => entry.userId === id);
+        const staff = store.users.find((user) => user.id === id && user.role === "barista");
+        const name = staff?.name || staff?.username || shift?.name || "";
+        return name.trim() ? [name.trim()] : [];
+      }),
+    ),
+  );
+  const cashierShift = pairLoginSessions(store.loginActivity ?? [])
+    .filter((shift) =>
+      shift.role === "pos_cashier" &&
+      Boolean(shift.loginAt) &&
+      shift.loginAt! <= createdAt &&
+      (!shift.logoutAt || shift.logoutAt >= createdAt),
+    )
+    .sort((a, b) => (b.loginAt ?? "").localeCompare(a.loginAt ?? ""))[0];
+  const cashier = cashierShift
+    ? store.users.find((user) => user.id === cashierShift.userId && user.role === "pos_cashier")
+    : undefined;
+
+  const createdOrder: Order = {
+    id: orderId,
+    createdAt,
+    baristaName: cashier?.name || cashier?.username || cashierShift?.name || "—",
+    baristaUserId: cashier?.id,
+    items: priced,
+    subtotal: 0,
+    discount: 0,
+    total: 0,
+    paymentMethod: "waste",
+    serviceMode: "dine-in",
+    ticketNo: "",
+    paid: 0,
+    change: 0,
+    voided: false,
+    recordType: "Waste",
+    wasteReason: trimmedReason,
+    wasteBaristas: selectedWasteBaristas.length > 0 ? selectedWasteBaristas : undefined,
+  };
+
+  const result = await createOrderAtomic({ order: createdOrder, deductions });
+  if (!result.ok) {
+    return { ok: false as const, error: result.error };
+  }
+
+  revalidatePath("/pos");
+  revalidatePath("/owner");
+  return { ok: true as const, order: createdOrder };
 }
 
 export async function beginPrintJob(jobId: string) {

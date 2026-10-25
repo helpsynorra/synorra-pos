@@ -20,7 +20,13 @@ class Order {
   bool voided;
   String? voidReason;
   String? voidedBy;
+  String? wasteReason;
   bool isSynced;
+
+  bool get isWaste =>
+      paymentMethod == 'waste' ||
+      id.toLowerCase().startsWith('waste-') ||
+      (wasteReason != null && wasteReason!.trim().isNotEmpty);
 
   Order({
     required this.id,
@@ -42,6 +48,7 @@ class Order {
     this.voided = false,
     this.voidReason,
     this.voidedBy,
+    this.wasteReason,
     this.isSynced = false,
   });
 
@@ -74,6 +81,11 @@ class Order {
       voided: json['voided'] == true,
       voidReason: json['voidReason'] as String? ?? json['void_reason'] as String?,
       voidedBy: json['voidedBy'] as String? ?? json['voided_by'] as String?,
+      wasteReason: json['wasteReason'] as String? ??
+          json['waste_reason'] as String? ??
+          ((json['paymentMethod'] == 'waste' || json['payment_method'] == 'waste' || (json['id'] as String? ?? '').toLowerCase().startsWith('waste-'))
+              ? (json['voidReason'] as String? ?? json['void_reason'] as String?)
+              : null),
       isSynced: json['isSynced'] == true,
     );
   }
@@ -98,6 +110,8 @@ class Order {
     'voided': voided,
     if (voidReason != null) 'voidReason': voidReason,
     if (voidedBy != null) 'voidedBy': voidedBy,
+    if (wasteReason != null) 'wasteReason': wasteReason,
+    if (wasteReason != null) 'waste_reason': wasteReason,
     'isSynced': isSynced,
   };
 }

@@ -9,11 +9,13 @@ export const DEFAULT_STAFF_PERMISSIONS = {
   connectReceipt: true,
   printButton: true,
   customerReceipt: true,
+  birReceipt: false,
   cupLabels: true,
   dineIn: true,
   takeOut: true,
   promotionDiscount: false,
   promotionsEnabled: false,
+  wasteManagement: true,
 } as const;
 
 export const DEFAULT_USERS: StaffUser[] = [
@@ -58,7 +60,7 @@ export function toSession(user: StaffUser): Session {
     name: user.name,
     role: user.role,
     mustChangePassword: user.role === "cashier" && !user.passwordChanged,
-    permissions: user.permissions ?? DEFAULT_STAFF_PERMISSIONS,
+    permissions: { ...DEFAULT_STAFF_PERMISSIONS, ...user.permissions },
   };
 }
 
@@ -71,7 +73,7 @@ export function publicUser(user: StaffUser): PublicStaffUser {
     name: user.name,
     role: user.role,
     title: user.title,
-    permissions: user.permissions ?? DEFAULT_STAFF_PERMISSIONS,
+    permissions: { ...DEFAULT_STAFF_PERMISSIONS, ...user.permissions },
   };
 }
 

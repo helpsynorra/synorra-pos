@@ -15,6 +15,46 @@ import '../services/sync_service.dart';
 
 enum RestockDeleteResult { deleted, queued, failed }
 
+int? _ticketNumberForOrder(Order order) {
+  final value = order.ticketNo.trim();
+  if (value.isEmpty) return null;
+  final digits = value.replaceFirst('#', '').replaceAll(RegExp(r'[^0-9]'), '');
+  if (digits.isEmpty) return null;
+  final parsed = int.tryParse(digits);
+  return parsed != null && parsed > 0 ? parsed : null;
+}
+
+String nextTicketNoForOrders(List<Order> orders, DateTime now) {
+  final sameDay = orders.where((order) {
+    final createdAt = ManilaTime.parse(order.createdAt);
+    if (createdAt == null) return false;
+    if (createdAt.year != now.year ||
+        createdAt.month != now.month ||
+        createdAt.day != now.day) {
+      return false;
+    }
+    if (order.isWaste ||
+        order.paymentMethod == 'waste' ||
+        order.id.toLowerCase().startsWith('waste-')) {
+      return false;
+    }
+    return true;
+  }).toList();
+
+  final activeTicketNumbers = <int>{};
+  for (final order in sameDay) {
+    final ticketNo = _ticketNumberForOrder(order);
+    if (ticketNo == null) continue;
+    if (!order.voided) activeTicketNumbers.add(ticketNo);
+  }
+
+  var nextTicket = 1;
+  while (activeTicketNumbers.contains(nextTicket)) {
+    nextTicket++;
+  }
+  return '#${nextTicket.toString().padLeft(3, '0')}';
+}
+
 class PosController extends ChangeNotifier {
   final LocalStorageService localStorage;
   final SupabaseService supabaseService;
@@ -75,12 +115,10 @@ class PosController extends ChangeNotifier {
     categories = [
       'All',
       ...savedOrder.where(
-        (category) =>
-            category != 'All' && availableCategories.remove(category),
+        (category) => category != 'All' && availableCategories.remove(category),
       ),
       ...syncedCategories.where(
-        (category) =>
-            category != 'All' && availableCategories.remove(category),
+        (category) => category != 'All' && availableCategories.remove(category),
       ),
     ];
     if (!categories.contains(selectedCategory)) {
@@ -115,7 +153,8 @@ class PosController extends ChangeNotifier {
             staffUsers.where((staff) => staff.id == event.userId).firstOrNull)
         .whereType<StaffUser>()
         .toList();
-    final onShift = active.where((event) => event.role == 'barista').firstOrNull;
+    final onShift =
+        active.where((event) => event.role == 'barista').firstOrNull;
     currentBaristaName = onShift?.name ?? 'Barista';
     currentBaristaUserId = onShift?.userId;
   }
@@ -215,7 +254,8 @@ class PosController extends ChangeNotifier {
       promoId = saved['promoId'] as String?;
       promoLabel = saved['promoLabel'] as String?;
       promoItemIndex = (saved['promoItemIndex'] as num?)?.toInt();
-      promoItemQty = (saved['promoItemQty'] as num?)?.toInt() ?? (promoItemIndex == null ? null : 1);
+      promoItemQty = (saved['promoItemQty'] as num?)?.toInt() ??
+          (promoItemIndex == null ? null : 1);
       if (promoLabel != null) {
         paymentMethod = 'gcash';
         tenderedAmount = total;
@@ -418,17 +458,16 @@ class PosController extends ChangeNotifier {
               ? item.purchaseUnitSize!
               : 1.0;
       final remainingBase = item.stock;
-      final openingBase =
-          (remainingBase - totalRestocked + totalUsed)
-              .clamp(0.0, double.infinity);
+      final openingBase = (remainingBase - totalRestocked + totalUsed)
+          .clamp(0.0, double.infinity);
       final openingPcs = openingBase / pieceSize;
       final restockedPcs = totalRestocked / pieceSize;
       final usedPcs =
           (item.purchaseUnitSize != null && item.purchaseUnitSize! > 0)
               ? totalUsed / item.purchaseUnitSize!
               : -1.0;
-      final remainingPcs = (remainingBase / pieceSize)
-          .clamp(0.0, double.infinity);
+      final remainingPcs =
+          (remainingBase / pieceSize).clamp(0.0, double.infinity);
 
       double? cupsLeft;
       if (item.unit.trim().toLowerCase() != 'pcs') {
@@ -502,19 +541,27 @@ class PosController extends ChangeNotifier {
         !syncService.hasPermission('promotionDiscount')) {
       return 'Promotions are not enabled for this Owner.';
     }
-    if (!RegExp(r'^(?:[A-Z0-9]{6}|[A-Z0-9]{1,16}-[A-Z0-9]{6})$').hasMatch(code)) {
+    if (!RegExp(r'^(?:[A-Z0-9]{6}|[A-Z0-9]{1,16}-[A-Z0-9]{6})$')
+        .hasMatch(code)) {
       return 'Invalid promo voucher.';
     }
-    final promo = syncService.promotionCodes.where(
-      (entry) => entry['code']?.toString().trim().toUpperCase() == code,
-    ).firstOrNull;
+    final promo = syncService.promotionCodes
+        .where(
+          (entry) => entry['code']?.toString().trim().toUpperCase() == code,
+        )
+        .firstOrNull;
     if (promo == null || code.isEmpty) return 'Invalid promo voucher.';
     if (_isPromotionRedeemed(promo)) return 'Promo voucher already used.';
     if (_isPromotionExpired(promo)) return 'This promo voucher has expired.';
     final value = (promo['discountValue'] as num?)?.toDouble() ?? 0;
     final isFreeItem = promo['discountType'] == 'item';
     final freeItemQty = value.round().clamp(1, 99).toInt();
-    if (isFreeItem && (itemIndex == null || itemIndex < 0 || itemIndex >= cart.length || itemQty != freeItemQty || itemQty! > cart[itemIndex].qty)) {
+    if (isFreeItem &&
+        (itemIndex == null ||
+            itemIndex < 0 ||
+            itemIndex >= cart.length ||
+            itemQty != freeItemQty ||
+            itemQty! > cart[itemIndex].qty)) {
       return 'Choose an item with quantity $freeItemQty or more.';
     }
     final amount = isFreeItem
@@ -540,9 +587,11 @@ class PosController extends ChangeNotifier {
   void _refreshPromotionDiscount() {
     final code = promoId?.trim().toUpperCase();
     if (code == null) return;
-    final promo = syncService.promotionCodes.where(
-      (entry) => entry['code']?.toString().trim().toUpperCase() == code,
-    ).firstOrNull;
+    final promo = syncService.promotionCodes
+        .where(
+          (entry) => entry['code']?.toString().trim().toUpperCase() == code,
+        )
+        .firstOrNull;
     if (promo == null ||
         _isPromotionRedeemed(promo) ||
         _isPromotionExpired(promo) ||
@@ -556,15 +605,21 @@ class PosController extends ChangeNotifier {
     paymentMethod = 'gcash';
     tenderedAmount = total;
     if (promo['discountType'] == 'item') {
-      if (promoItemIndex == null || promoItemIndex! < 0 || promoItemIndex! >= cart.length || promoItemQty == null || promoItemQty! > cart[promoItemIndex!].qty) {
+      if (promoItemIndex == null ||
+          promoItemIndex! < 0 ||
+          promoItemIndex! >= cart.length ||
+          promoItemQty == null ||
+          promoItemQty! > cart[promoItemIndex!].qty) {
         clearPromotion();
         return;
       }
-      discountAmount = (cart[promoItemIndex!].unitPrice * promoItemQty!).roundToDouble();
+      discountAmount =
+          (cart[promoItemIndex!].unitPrice * promoItemQty!).roundToDouble();
       return;
     }
     final value = (promo['discountValue'] as num?)?.toDouble() ?? 0;
-    final amount = promo['discountType'] == 'amount' ? value : subtotal * value / 100;
+    final amount =
+        promo['discountType'] == 'amount' ? value : subtotal * value / 100;
     discountAmount = amount.clamp(0, subtotal).roundToDouble();
   }
 
@@ -584,12 +639,15 @@ class PosController extends ChangeNotifier {
     promoItemIndex = null;
     promoItemQty = null;
     discountAmount = 0;
-    if (paymentMethod != 'cash' || tenderedAmount == 0 || tenderedAmount == previousTotal) {
+    if (paymentMethod != 'cash' ||
+        tenderedAmount == 0 ||
+        tenderedAmount == previousTotal) {
       tenderedAmount = total;
     }
     _persistActiveCheckout();
     notifyListeners();
   }
+
   double get change => paymentMethod == 'cash' && tenderedAmount >= total
       ? (tenderedAmount - total)
       : 0.0;
@@ -732,15 +790,7 @@ class PosController extends ChangeNotifier {
       final createdAt = ManilaTime.utcIsoFromManilaWallTime(now);
       final orderId = 'ord-${now.millisecondsSinceEpoch}';
 
-      final existingTodayCount = orders.where((o) {
-        final d = ManilaTime.parse(o.createdAt);
-        return d != null &&
-            d.year == now.year &&
-            d.month == now.month &&
-            d.day == now.day;
-      }).length;
-      final localTicketNo =
-          '#${(existingTodayCount + 1).toString().padLeft(3, '0')}';
+      final localTicketNo = nextTicketNoForOrders(orders, now);
 
       final order = Order(
         id: orderId,
@@ -833,6 +883,112 @@ class PosController extends ChangeNotifier {
       isProcessing = false;
       notifyListeners();
       return {'ok': false, 'error': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> recordWasteOrder(
+      {required String reason}) async {
+    if (!syncService.hasPermission('wasteManagement')) {
+      return {'ok': false, 'error': 'Waste recording is disabled for this POS.'};
+    }
+    if (isVoidRequestPending) {
+      return {'ok': false, 'error': 'Resolve the pending void request first.'};
+    }
+    final trimmedReason = reason.trim();
+    if (trimmedReason.isEmpty) {
+      return {
+        'ok': false,
+        'error': 'Please provide a reason or note for the waste.'
+      };
+    }
+    if (cart.isEmpty) return {'ok': false, 'error': 'Add wasted items first.'};
+    if (isProcessing)
+      return {'ok': false, 'error': 'Please wait for the current order.'};
+
+    isProcessing = true;
+    notifyListeners();
+    try {
+      final now = ManilaTime.now();
+      final createdAt = ManilaTime.utcIsoFromManilaWallTime(now);
+      final cashierShift = LoginActivity.openStaffShifts(shiftLogs)
+          .where((shift) => shift.role.trim().toLowerCase() == 'pos_cashier')
+          .firstOrNull;
+      final cashier = cashierShift == null
+          ? null
+          : staffUsers
+              .where((staff) => staff.id == cashierShift.userId)
+              .firstOrNull;
+      final order = Order(
+        id: 'waste-${now.millisecondsSinceEpoch}',
+        createdAt: createdAt,
+        baristaName: cashier?.name ?? cashierShift?.name ?? '—',
+        baristaUserId: cashier?.id ?? cashierShift?.userId,
+        items: List.from(cart),
+        subtotal: 0,
+        discount: 0,
+        total: 0,
+        paymentMethod: 'waste',
+        serviceMode: serviceMode,
+        ticketNo: '',
+        paid: 0,
+        change: 0,
+        voided: false,
+        wasteReason: trimmedReason,
+        isSynced: false,
+      );
+      final deductions = syncService.buildDeductionsForOrder(order);
+      final hasPosApiToken = syncService.isOnline &&
+          await syncService.ensurePosApiToken(forceRefresh: true);
+      final pushRes = !syncService.isOnline || !hasPosApiToken
+          ? {
+              'ok': false,
+              'error': !hasPosApiToken
+                  ? 'POS session required to sync this waste record.'
+                  : 'Device is offline.',
+              'retryable': !syncService.isOnline,
+            }
+          : await supabaseService.pushOrderAtomic(order, deductions);
+      final authRequired = !hasPosApiToken ||
+          pushRes['error']?.toString().contains('POS session expired.') == true;
+      final shouldQueueForRetry =
+          !syncService.isOnline || authRequired || pushRes['retryable'] == true;
+      if (pushRes['ok'] != true && !shouldQueueForRetry) {
+        return {
+          'ok': false,
+          'error':
+              pushRes['error']?.toString() ?? 'Could not save waste record.',
+        };
+      }
+      if (pushRes['ok'] == true) {
+        order.isSynced = true;
+      }
+      await localStorage.addOrder(order);
+      orders.insert(0, order);
+      for (final deduction in deductions) {
+        final stockItem = inventory
+            .where((item) => item.id == deduction['inventoryItemId'])
+            .firstOrNull;
+        final amount = (deduction['amount'] as num?)?.toDouble() ?? 0;
+        if (stockItem != null && amount > 0) {
+          stockItem.stock =
+              (stockItem.stock - amount).clamp(0.0, double.infinity);
+        }
+      }
+      await localStorage.saveInventory(inventory);
+      clearCart();
+      syncService.updatePendingCount();
+      if (pushRes['ok'] == true) syncService.syncAll();
+      return {
+        'ok': true,
+        'order': order,
+        'synced': pushRes['ok'] == true,
+        'networkFailure': !syncService.isOnline || pushRes['retryable'] == true,
+      };
+    } catch (error) {
+      return {'ok': false, 'error': error.toString()};
+    } finally {
+      isProcessing = false;
+      notifyListeners();
     }
   }
 

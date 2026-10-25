@@ -49,7 +49,13 @@ export function paperColumns(width: PaperWidth): number {
 
 export function nextTicketNo(orders: Order[], now = new Date()): string {
   const day = phDateString(now);
-  const dayOrders = orders.filter((order) => phDateString(order.createdAt) === day && !order.deletedAt);
+  const dayOrders = orders.filter((order) => {
+    if (phDateString(order.createdAt) !== day || order.deletedAt) return false;
+    if (order.recordType === "Waste" || order.paymentMethod === "waste" || order.id.startsWith("waste-") || Boolean(order.wasteReason)) {
+      return false;
+    }
+    return true;
+  });
   const ticketNumber = (order: Order) => {
     const ticket = Number(String(order.ticketNo ?? "").replace(/^#/, ""));
     return Number.isInteger(ticket) && ticket > 0 ? ticket : null;

@@ -7,12 +7,14 @@ export const PAYMENT_METHODS = [
 ];
 
 export function parsePayment(value: string | null | undefined): PaymentMethod {
+  if (value === "waste") return "waste";
   if (value?.startsWith("split:")) return value as PaymentMethod;
   if (value === "gcash" || value === "maya") return value;
   return "cash";
 }
 
 export function paymentLabel(method?: PaymentMethod | string | null): string {
+  if (method === "waste") return "Waste";
   if (method?.startsWith("split:")) {
     const parts = method.slice("split:".length).split(",").map((part) => part.split("=")[0]);
     const labels = parts.map((part) => part === "gcash" ? "GCash" : part === "maya" ? "Maya" : "Cash");

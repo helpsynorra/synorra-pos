@@ -16,12 +16,30 @@ export type StaffPermissions = {
   connectReceipt: boolean;
   printButton: boolean;
   customerReceipt: boolean;
+  birReceipt: boolean;
+  birReceiptDetails?: BirReceiptDetails;
   cupLabels: boolean;
   dineIn: boolean;
   takeOut: boolean;
   promotionDiscount: boolean;
   promotionsEnabled: boolean;
+  wasteManagement: boolean;
   promoCodes?: PromotionCode[];
+};
+
+export type BirReceiptDetails = {
+  registeredBusinessName?: string;
+  tradeStoreName?: string;
+  registeredAddress?: string;
+  tinBranchCode?: string;
+  taxStatus?: string;
+  vatRegTin?: string;
+  vatPosSerial?: string;
+  min?: string;
+  ptuNumberDate?: string;
+  posSerialNumber?: string;
+  softwareVendorNameTinAddress?: string;
+  birAccreditationValidity?: string;
 };
 
 export type PromotionCode = {
@@ -106,7 +124,7 @@ export type OrderItem = {
   serviceMode?: "dine-in" | "take-out";
 };
 
-export type PaymentMethod = "cash" | "gcash" | "maya" | `split:${string}`;
+export type PaymentMethod = "cash" | "gcash" | "maya" | "waste" | `split:${string}`;
 
 export type Order = {
   id: string;
@@ -130,8 +148,11 @@ export type Order = {
   voidedBy?: string;
   voidedByName?: string;
   voidReason?: string;
+  wasteReason?: string;
+  /** Baristas recorded as in charge on waste orders; supports two or more names. */
+  wasteBaristas?: string[];
   deletedAt?: string;
-  recordType?: "Sale" | "Purchase";
+  recordType?: "Sale" | "Purchase" | "Waste";
 };
 
 export type PrintJobType = "cup-label" | "customer-receipt";

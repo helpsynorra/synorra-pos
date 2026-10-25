@@ -7,6 +7,7 @@ class StaffUser {
   final String name;
   final String role; // 'admin', 'cashier' (Owner), 'pos_cashier', 'barista'
   final String title;
+  final Map<String, dynamic> permissions;
 
   const StaffUser({
     required this.id,
@@ -17,6 +18,7 @@ class StaffUser {
     required this.name,
     required this.role,
     this.title = '',
+    this.permissions = const {},
   });
 
   bool get canUsePos => role == 'cashier';
@@ -67,6 +69,9 @@ class StaffUser {
               : resolvedRole == 'pos_cashier'
                   ? 'Cashier'
               : (rawTitle.isNotEmpty ? rawTitle : 'Barista'),
+      permissions: json['permissions'] is Map
+          ? Map<String, dynamic>.from(json['permissions'] as Map)
+          : const {},
     );
   }
 
@@ -78,5 +83,6 @@ class StaffUser {
         'name': name,
         'role': role,
         'title': title,
+        'permissions': permissions,
       };
 }

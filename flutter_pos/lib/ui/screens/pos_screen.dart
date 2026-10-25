@@ -121,10 +121,30 @@ class _PosScreenState extends State<PosScreen> {
   }
 
   Future<void> _printOrder(Order order) async {
+    if (order.isWaste || order.voided) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Waste and voided records cannot be printed as sales receipts.'),
+          ),
+        );
+      }
+      return;
+    }
+
     final results = <String>[];
-    if (widget.controller.syncService.hasPermission('customerReceipt')) {
+    final customerCopyEnabled =
+        widget.controller.syncService.hasPermission('customerReceipt');
+    final birCopyEnabled =
+        widget.controller.syncService.hasPermission('birReceipt');
+    if (customerCopyEnabled || birCopyEnabled) {
       try {
-        await _printerService.printReceipt(order);
+        await _printerService.printReceipt(
+          order,
+          includeCustomerCopy: customerCopyEnabled,
+          includeBirCopy: birCopyEnabled,
+          birDetails: widget.controller.syncService.birReceiptDetails,
+        );
         results.add('Receipt sent');
       } catch (error) {
         results.add('Receipt: $error');
@@ -231,11 +251,22 @@ class _PosScreenState extends State<PosScreen> {
 
   void _openReceiptDialog([Order? targetOrder]) {
     if (!widget.controller.syncService.hasPermission('printButton')) return;
+    if (targetOrder?.isWaste == true || targetOrder?.voided == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Waste and voided records cannot be printed as sales receipts.'),
+        ),
+      );
+      return;
+    }
+    final lastOrder = widget.controller.lastCompletedOrder;
     final order = targetOrder ??
-        widget.controller.lastCompletedOrder ??
-        (widget.controller.orders.isNotEmpty
-            ? widget.controller.orders.first
-            : null);
+        (lastOrder != null && !lastOrder.isWaste && !lastOrder.voided
+            ? lastOrder
+            : null) ??
+        widget.controller.orders
+            .where((entry) => !entry.isWaste && !entry.voided)
+            .firstOrNull;
     if (order == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No orders found to print')),
@@ -252,6 +283,9 @@ class _PosScreenState extends State<PosScreen> {
         onPrint: _printOrder,
         customerReceiptEnabled:
             widget.controller.syncService.hasPermission('customerReceipt'),
+        birReceiptEnabled:
+            widget.controller.syncService.hasPermission('birReceipt'),
+        birReceiptDetails: widget.controller.syncService.birReceiptDetails,
         cupLabelsEnabled:
             widget.controller.syncService.hasPermission('cupLabels'),
         printButtonEnabled:
@@ -364,6 +398,176 @@ class _PosScreenState extends State<PosScreen> {
     }
   }
 
+  Future<void> _handleRecordWaste({VoidCallback? closeMobileCheckout}) async {
+    final controller = widget.controller;
+    if (controller.cart.isEmpty || controller.isProcessing) return;
+
+    final totalWasteItems = controller.cart.fold<int>(0, (total, item) => total + item.qty);
+    final presets = ['Spilled', 'Expired', 'Wrong Preparation', 'Damaged'];
+
+    final selectedReason = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        final reasonController = TextEditingController();
+        String activePreset = '';
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final isValid = reasonController.text.trim().isNotEmpty;
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF4E5),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.delete_outline_rounded, color: Color(0xFFB45309), size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Record Wasted Items',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 440,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Records $totalWasteItems item(s) as waste and deducts stock from inventory with no sale or payment.',
+                      style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Select or enter reason / note:',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: presets.map((preset) {
+                        final isSelected = activePreset == preset;
+                        return ChoiceChip(
+                          label: Text(preset),
+                          selected: isSelected,
+                          selectedColor: const Color(0xFFFEF3C7),
+                          backgroundColor: const Color(0xFFF1F5F9),
+                          labelStyle: TextStyle(
+                            fontSize: 12,
+                            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                            color: isSelected ? const Color(0xFF92400E) : const Color(0xFF475569),
+                          ),
+                          onSelected: (selected) {
+                            setDialogState(() {
+                              activePreset = selected ? preset : '';
+                              if (selected) {
+                                reasonController.text = preset;
+                                reasonController.selection = TextSelection.fromPosition(
+                                  TextPosition(offset: preset.length),
+                                );
+                              }
+                            });
+                          },
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: reasonController,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        labelText: 'Reason / Note *',
+                        hintText: 'e.g. Spilled, Expired, Wrong Preparation, Damaged',
+                        hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      ),
+                      onChanged: (value) {
+                        setDialogState(() {
+                          if (presets.contains(value.trim())) {
+                            activePreset = value.trim();
+                          } else {
+                            activePreset = '';
+                          }
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, null),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: isValid
+                      ? () => Navigator.pop(dialogContext, reasonController.text.trim())
+                      : null,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFB42332),
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Record Waste'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (selectedReason == null || selectedReason.trim().isEmpty || !mounted) return;
+
+    final stockShortfalls =
+        controller.syncService.findStockShortfalls(controller.cart);
+    if (stockShortfalls.isNotEmpty) {
+      final number = NumberFormat('0.##');
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Insufficient inventory'),
+          content: Text(stockShortfalls.map((item) =>
+              '${item['itemName']}: ${number.format(item['required'])} ${item['unit']} required, ${number.format(item['available'])} available').join('\n')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final result = await controller.recordWasteOrder(reason: selectedReason.trim());
+    if (!mounted) return;
+    if (result['ok'] == true) {
+      closeMobileCheckout?.call();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['synced'] == true
+              ? 'Waste recorded ($selectedReason) and inventory deducted.'
+              : 'Waste saved ($selectedReason) on this device and queued to sync.'),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not record waste: ${result['error']}')),
+      );
+    }
+  }
+
   void _openMobileCartSheet() {
     final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     showModalBottomSheet(
@@ -387,9 +591,15 @@ class _PosScreenState extends State<PosScreen> {
                     widget.controller.syncService.hasPermission('dineIn'),
                 takeOutEnabled:
                     widget.controller.syncService.hasPermission('takeOut'),
+                canRecordWaste: widget.controller.syncService.hasPermission('wasteManagement'),
                 isFullWidth: true,
                 isKeyboardOpen: keyboardOpen,
                 onProceedOrder: () => _handleProceedOrder(
+                  closeMobileCheckout: () {
+                    if (ctx.mounted) Navigator.of(ctx).pop();
+                  },
+                ),
+                onRecordWaste: () => _handleRecordWaste(
                   closeMobileCheckout: () {
                     if (ctx.mounted) Navigator.of(ctx).pop();
                   },
@@ -725,8 +935,10 @@ class _PosScreenState extends State<PosScreen> {
                   controller: controller,
                   dineInEnabled: sync.hasPermission('dineIn'),
                   takeOutEnabled: sync.hasPermission('takeOut'),
+                  canRecordWaste: sync.hasPermission('wasteManagement'),
                   isKeyboardOpen: keyboardOpen,
                   onProceedOrder: _handleProceedOrder,
+                onRecordWaste: _handleRecordWaste,
                 ),
               ),
             ],

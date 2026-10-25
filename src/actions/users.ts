@@ -324,11 +324,14 @@ export async function updateOwnerPermissions(userId: string, permissions: StaffP
     connectReceipt: permissions.connectReceipt === true,
     printButton: permissions.printButton === true,
     customerReceipt: permissions.customerReceipt === true,
+    birReceipt: permissions.birReceipt === true,
+    birReceiptDetails: permissions.birReceiptDetails ?? user.permissions?.birReceiptDetails ?? {},
     cupLabels: permissions.cupLabels === true,
     dineIn: permissions.dineIn === true,
     takeOut: permissions.takeOut === true,
     promotionDiscount: permissions.promotionDiscount === true,
     promotionsEnabled: permissions.promotionsEnabled === true,
+    wasteManagement: permissions.wasteManagement === true,
     promoCodes: user.permissions?.promoCodes ?? [],
   };
   // Supabase stores promotion records separately, while the in-memory store

@@ -458,6 +458,7 @@ void main() {
                 isFullWidth: true,
                 isKeyboardOpen: true,
                 onProceedOrder: () {},
+                onRecordWaste: () {},
               ),
             ),
           ),
@@ -472,13 +473,24 @@ void main() {
 
     var controllerNotifications = 0;
     controller.addListener(() => controllerNotifications++);
-    await tester.enterText(find.byType(TextField), '123');
+
+    // The Amount field is read-only; tapping it opens the external numeric keypad.
+    expect(tester.widget<TextField>(find.byType(TextField)).readOnly, isTrue);
+    await tester.tap(find.byType(TextField));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(OutlinedButton, '1'));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(OutlinedButton, '2'));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(OutlinedButton, '3'));
     await tester.pump();
 
     expect(controller.tenderedAmount, 123);
     expect(controllerNotifications, 0);
-    expect(tester.widget<TextField>(find.byType(TextField)).focusNode?.hasFocus,
-        isTrue);
+
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
 
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();

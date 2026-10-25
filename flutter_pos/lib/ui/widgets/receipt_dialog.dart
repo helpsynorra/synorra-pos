@@ -67,6 +67,8 @@ class ReceiptDialog extends StatefulWidget {
   final List<MenuItem> menu;
   final Future<void> Function(Order order) onPrint;
   final bool customerReceiptEnabled;
+  final bool birReceiptEnabled;
+  final Map<String, String> birReceiptDetails;
   final bool cupLabelsEnabled;
   final bool printButtonEnabled;
 
@@ -77,6 +79,8 @@ class ReceiptDialog extends StatefulWidget {
     required this.menu,
     required this.onPrint,
     this.customerReceiptEnabled = true,
+    this.birReceiptEnabled = false,
+    this.birReceiptDetails = const {},
     this.cupLabelsEnabled = true,
     this.printButtonEnabled = true,
   });
@@ -97,9 +101,11 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
   List<Order> get _completedOrders {
     final byId = <String, Order>{
       for (final order in widget.orders)
-        if (!order.voided) order.id: order,
+        if (!order.voided && !order.isWaste) order.id: order,
     };
-    if (!widget.order.voided) byId[widget.order.id] = widget.order;
+    if (!widget.order.voided && !widget.order.isWaste) {
+      byId[widget.order.id] = widget.order;
+    }
     return byId.values.toList()
       ..sort((a, b) => (ManilaTime.parse(b.createdAt) ?? DateTime(0)).compareTo(
             ManilaTime.parse(a.createdAt) ?? DateTime(0),
@@ -125,6 +131,10 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
             .firstOrNull ??
         widget.order;
     final receiptText = PrinterService.formatReceipt(selectedOrder);
+    final birReceiptText = PrinterService.formatBirReceipt(
+      selectedOrder,
+      birDetails: widget.birReceiptDetails,
+    );
     final labelItemIndexes =
         PrinterService.cupLabelItemIndexes(selectedOrder, widget.menu);
 
@@ -242,7 +252,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                         spacing: 16,
                         runSpacing: 16,
                         children: [
-                      if (widget.customerReceiptEnabled) SizedBox(
+                      if (widget.birReceiptEnabled) SizedBox(
                         width: panelWidth,
                         child: Container(
                           padding: const EdgeInsets.all(14),
@@ -258,7 +268,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                                     MainAxisAlignment.spaceBetween,
                                 children: [
                                   const Text(
-                                    'Customer receipt',
+                                    'BIR receipt',
                                     style: TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w700,
@@ -286,8 +296,8 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                               const SizedBox(height: 10),
                               Center(
                                 child: _ThermalSlip(
-                                  title: 'Customer copy',
-                                  content: receiptText,
+                                  title: 'BIR copy',
+                                  content: birReceiptText,
                                   width: slipWidth,
                                 ),
                               ),
@@ -295,6 +305,38 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                           ),
                         ),
                       ),
+                      if (widget.customerReceiptEnabled)
+                        SizedBox(
+                          width: panelWidth,
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF3F4F6),
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Internal receipt',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: SynorraTheme.textMain,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Center(
+                                  child: _ThermalSlip(
+                                    title: 'Internal copy',
+                                    content: receiptText,
+                                    width: slipWidth,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       if (widget.cupLabelsEnabled) SizedBox(
                         width: panelWidth,
                         child: Container(
@@ -394,8 +436,8 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                     child: const Text('Close'),
                   ),
                 ),
-                if (widget.printButtonEnabled && (widget.customerReceiptEnabled || widget.cupLabelsEnabled)) const SizedBox(width: 12),
-                if (widget.printButtonEnabled && (widget.customerReceiptEnabled || widget.cupLabelsEnabled)) Expanded(
+                if (widget.printButtonEnabled && (widget.customerReceiptEnabled || widget.birReceiptEnabled || widget.cupLabelsEnabled)) const SizedBox(width: 12),
+                if (widget.printButtonEnabled && (widget.customerReceiptEnabled || widget.birReceiptEnabled || widget.cupLabelsEnabled)) Expanded(
                   child: ElevatedButton.icon(
                     onPressed: () async => widget.onPrint(selectedOrder),
                     icon: const Icon(Icons.print_outlined, size: 18),

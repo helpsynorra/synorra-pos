@@ -83,6 +83,7 @@ const permissionOptions: { key: PermissionFlag; label: string }[] = [
   { key: "takeOut", label: "Take out" },
   { key: "promotionDiscount", label: "Promotion discounts in POS" },
   { key: "promotionsEnabled", label: "Promotions enabled" },
+  { key: "wasteManagement", label: "Waste recording in POS" },
 ];
 
 const adminPermissionGroups: {
@@ -101,7 +102,7 @@ const adminPermissionGroups: {
     title: "Operations",
     description: "Handle daily operations and customer flow.",
     icon: "operations",
-    permissions: ["restockInventory", "printButton", "dineIn", "promotionsEnabled"],
+    permissions: ["restockInventory", "printButton", "dineIn", "promotionsEnabled", "wasteManagement"],
   },
   {
     title: "Customer & Labels",

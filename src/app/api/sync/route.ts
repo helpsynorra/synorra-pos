@@ -5,6 +5,7 @@ import { ingredientsForOrderLine, roundQty } from "@/lib/inventory";
 import { normalizeMenuAddons, normalizeMenuStyles } from "@/lib/menu";
 import { parsePayment } from "@/lib/payments";
 import { createPosApiToken, readPosApiToken } from "@/lib/pos-api-auth";
+import { pairLoginSessions } from "@/lib/staff-sessions";
 import {
   createOrderAtomic,
   createRestockAtomic,
@@ -613,35 +614,72 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ ok: false, error: "Promotion discount does not match this code." }, { status: 400, headers: corsHeaders });
         }
       }
+      const isWasteOrder = String(rawOrder.paymentMethod ?? "").trim().toLowerCase() === "waste" ||
+        String(rawOrder.recordType ?? "").trim().toLowerCase() === "waste" ||
+        String(rawOrder.id ?? "").trim().toLowerCase().startsWith("waste-") ||
+        Boolean(rawOrder.wasteReason);
+      const wastePermissionOwner = ownerAccount ?? store.users.find(
+        (user) => user.id === tenantId && user.role === "cashier",
+      );
+      if (isWasteOrder && wastePermissionOwner?.permissions?.wasteManagement === false) {
+        return NextResponse.json(
+          { ok: false, error: "Waste recording is disabled for this POS." },
+          { status: 403, headers: corsHeaders },
+        );
+      }
       const requestedCashierId = String(rawOrder.baristaUserId ?? '').trim();
       const requestedCashier = store.users.find((user) => {
         if (user.id !== requestedCashierId) return false;
         const role = parseRole(String(user.title ?? ''), user.role);
-        return ['cashier', 'admin'].includes(role);
+        return isWasteOrder
+          ? role === "pos_cashier"
+          : ["cashier", "admin"].includes(role);
       });
+      const cashierShift = isWasteOrder
+        ? pairLoginSessions(store.loginActivity ?? []).find((shift) =>
+            shift.role === "pos_cashier" &&
+            Boolean(shift.loginAt) &&
+            shift.loginAt! <= createdAt &&
+            (!shift.logoutAt || shift.logoutAt >= createdAt),
+          )
+        : undefined;
+      const wasteCashier = isWasteOrder
+        ? requestedCashier ?? store.users.find(
+            (user) => user.id === cashierShift?.userId && user.role === "pos_cashier",
+          )
+        : undefined;
+      const wasteReason = typeof rawOrder.wasteReason === "string" && rawOrder.wasteReason.trim()
+        ? rawOrder.wasteReason.trim()
+        : isWasteOrder && typeof rawOrder.voidReason === "string" && rawOrder.voidReason.trim()
+          ? rawOrder.voidReason.trim()
+          : undefined;
       const order: Order = {
-        id: String(rawOrder.id || `ord-${Date.now()}`),
+        id: String(rawOrder.id || (isWasteOrder ? `waste-${Date.now()}` : `ord-${Date.now()}`)),
         createdAt,
-        baristaName: requestedCashier?.name ?? claims.name,
-        baristaUserId: requestedCashier?.id,
+        baristaName: isWasteOrder
+          ? wasteCashier?.name ?? wasteCashier?.username ?? cashierShift?.name ?? "—"
+          : requestedCashier?.name ?? claims.name,
+        baristaUserId: isWasteOrder ? wasteCashier?.id : requestedCashier?.id,
         items: orderItems,
-        subtotal: Number(rawOrder.subtotal) || 0,
-        discount: Number(rawOrder.discount) || 0,
-        promoLabel: typeof rawOrder.promoLabel === "string" ? rawOrder.promoLabel : undefined,
+        subtotal: isWasteOrder ? 0 : Number(rawOrder.subtotal) || 0,
+        discount: isWasteOrder ? 0 : Number(rawOrder.discount) || 0,
+        promoLabel: !isWasteOrder && typeof rawOrder.promoLabel === "string" ? rawOrder.promoLabel : undefined,
         promoItemIndex: typeof rawOrder.promoItemIndex === "number" && Number.isInteger(rawOrder.promoItemIndex)
           ? rawOrder.promoItemIndex
           : undefined,
         promoItemQty: typeof rawOrder.promoItemQty === "number" && Number.isInteger(rawOrder.promoItemQty)
           ? rawOrder.promoItemQty
           : undefined,
-        total: Number(rawOrder.total) || 0,
-        paymentMethod: parsePayment(rawOrder.paymentMethod),
+        total: isWasteOrder ? 0 : Number(rawOrder.total) || 0,
+        paymentMethod: isWasteOrder ? "waste" : parsePayment(rawOrder.paymentMethod),
         serviceMode,
-        ticketNo: typeof rawOrder.ticketNo === "string" ? rawOrder.ticketNo : "",
-        paid: Number(rawOrder.paid ?? rawOrder.total) || 0,
-        change: Number(rawOrder.change) || 0,
-        voided: Boolean(rawOrder.voided),
-        voidReason: typeof rawOrder.voidReason === "string" ? rawOrder.voidReason : undefined,
+        ticketNo: isWasteOrder ? "" : typeof rawOrder.ticketNo === "string" ? rawOrder.ticketNo : "",
+        paid: isWasteOrder ? 0 : Number(rawOrder.paid ?? rawOrder.total) || 0,
+        change: isWasteOrder ? 0 : Number(rawOrder.change) || 0,
+        recordType: isWasteOrder ? "Waste" : "Sale",
+        voided: isWasteOrder ? false : Boolean(rawOrder.voided),
+        voidReason: isWasteOrder ? undefined : (typeof rawOrder.voidReason === "string" ? rawOrder.voidReason : undefined),
+        wasteReason,
       };
 
       // Calculate deductions using the exact Admin recipe/costing/addon configuration
@@ -695,7 +733,11 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      order.ticketNo = result.ticketNo || order.ticketNo;
+      if (isWasteOrder) {
+        order.ticketNo = "";
+      } else {
+        order.ticketNo = result.ticketNo || order.ticketNo;
+      }
       return NextResponse.json(
         { ok: true, ticketNo: order.ticketNo, order },
         { headers: corsHeaders },

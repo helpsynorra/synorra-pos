@@ -23,6 +23,7 @@ import type {
   UsageLog,
   VoidRequest,
 } from "@/lib/types";
+import { isWasteOrder } from "@/lib/analytics";
 import { roundQty } from "@/lib/inventory";
 import { hydrateOrderLine, inferMenuCategoryType, normalizeMenuAddons, normalizeMenuCategoryType, normalizeMenuStyles, normalizeMenuTypes, normalizeMenuTypeOptions, parseDrinkStyle, parseMenuImageOptions, parseStoredOrderAddons, stripMenuImage } from "@/lib/menu";
 import { parsePayment } from "@/lib/payments";
@@ -798,14 +799,18 @@ async function readStore(options?: { fresh?: boolean; ownerId?: string | null })
         serviceMode: row.service_mode === "dine-in" || row.service_mode === "take-out"
           ? row.service_mode
           : items.find((item) => item.order_id === row.id && (item.service_mode === "dine-in" || item.service_mode === "take-out"))?.service_mode,
-        ticketNo: row.ticket_no,
-        recordType: row.record_type === "Purchase" ? "Purchase" : "Sale",
+        ticketNo: (row.payment_method === "waste" || row.record_type === "Waste") ? "" : row.ticket_no,
+        recordType: (row.payment_method === "waste" || row.record_type === "Waste")
+          ? "Waste"
+          : row.record_type === "Purchase" ? "Purchase" : "Sale",
         paid: row.paid,
         change: row.change,
         voided: row.voided,
         voidedBy: row.voided_by ?? undefined,
         voidedByName: row.voided_by_name ?? undefined,
-        voidReason: row.void_reason ?? undefined,
+        voidReason: row.payment_method === "waste" ? undefined : (row.void_reason ?? undefined),
+        wasteReason: row.waste_reason ?? (row.payment_method === "waste" ? row.void_reason ?? undefined : undefined),
+        wasteBaristas: Array.isArray(row.waste_baristas) ? row.waste_baristas.map(String).filter(Boolean) : undefined,
       })),
       usageLogs: (usageLogs.data ?? []).filter((row) => !row.order_id || activeOrderIds.has(row.order_id)).map((row) => ({ id: row.id, ownerId: row.owner_id ?? undefined, orderId: row.order_id ?? "", orderItemId: row.order_item_id ?? "", inventoryItemId: row.inventory_item_id ?? undefined, date: row.created_at, itemName: row.item_name_snapshot, usedAmount: Number(row.used_amount), unit: row.unit })),
       restocks: (restocks.data ?? []).map((row) => ({ id: row.id, ownerId: row.owner_id ?? undefined, inventoryItemId: row.inventory_item_id ?? undefined, itemName: row.item_name_snapshot, quantityAdded: Number(row.quantity_added), purchaseQty: row.purchase_qty == null ? undefined : Number(row.purchase_qty), purchaseUnit: row.purchase_unit ?? undefined, date: row.created_at })),
@@ -1325,7 +1330,10 @@ export async function createOrderAtomic(input: {
           promoCodes: promoOwner.permissions!.promoCodes!.map((entry) => entry.code === promoEntry!.code ? redeemedPromo : entry),
         };
       }
-      if (!order.ticketNo) {
+      const isWaste = order.paymentMethod === "waste" || order.recordType === "Waste" || isWasteOrder(order);
+      if (isWaste) {
+        order.ticketNo = "";
+      } else if (!order.ticketNo) {
         order.ticketNo = `#${nextTicketNo(memoryStore.orders, new Date(order.createdAt))}`;
       }
       memoryStore.orders.push(order);
@@ -1352,6 +1360,7 @@ export async function createOrderAtomic(input: {
     const supabase = supabaseAdmin();
     const { order, deductions } = input;
     const ownerId = await activeOwnerId() ?? POS_STATE_ID;
+    const isWaste = order.paymentMethod === "waste" || order.recordType === "Waste" || isWasteOrder(order);
     const rpcArgs = {
       p_order_id: order.id,
       p_created_at: order.createdAt,
@@ -1366,12 +1375,16 @@ export async function createOrderAtomic(input: {
       p_payment_method: order.paymentMethod ?? "cash",
       // The RPC allocates the ticket number itself on a per-PH-day counter;
       // p_ticket_no is ignored. The assigned number comes back in the result.
+      // Waste orders never allocate a ticket number, so sales keep their sequence.
       p_ticket_no: null,
       p_paid: order.paid ?? order.total,
       p_change: order.change ?? 0,
       p_deductions: deductions,
       p_voided: order.voided ?? false,
-      p_void_reason: order.voidReason ?? null,
+      p_void_reason: isWaste
+        ? (order.wasteReason ?? order.voidReason ?? null)
+        : (order.voidReason ?? null),
+      p_waste_baristas: isWaste && order.wasteBaristas?.length ? order.wasteBaristas : null,
       p_voided_by: input.voidedBy ?? null,
     };
     const promoRpcArgs = order.promoLabel
@@ -1404,7 +1417,11 @@ export async function createOrderAtomic(input: {
       if (insufficient) return { ok: false, error: `Not enough ${insufficient[1]} in stock.` };
       throw new Error(`Unable to create order: ${error.message}`);
     }
-    if (data?.ticketNo) order.ticketNo = data.ticketNo;
+    if (order.paymentMethod === "waste" || order.recordType === "Waste" || isWasteOrder(order)) {
+      order.ticketNo = "";
+    } else if (data?.ticketNo) {
+      order.ticketNo = data.ticketNo;
+    }
     if (memoryStore) {
       memoryStore.orders.push(order);
       for (const deduction of deductions) {

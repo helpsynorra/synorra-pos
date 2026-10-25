@@ -1,8 +1,10 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createRestock, deleteAdminRecord, deleteRestock, saveAdminData } from "@/actions/pos";
+import { isWasteOrder } from "@/lib/analytics";
 import { formatQty, ingredientsForOrderLine, itemNameEquals, looksLikeCupItem, matchesInventoryRow, remainingForUsages, roundQty, stockLedgerForRange } from "@/lib/inventory";
 import { phDateString, phDateTimeLabel, phIsoFromDate, phPeriodBounds, type PeriodRange } from "@/lib/datetime";
 import { cartLineUnitPrice, drinkDisplayName, normalizeMenuAddons, normalizeMenuStyles, orderLineOptionsLabel, orderSoldAsLabel, orderSoldAsLines, orderSoldAsParts } from "@/lib/menu";
+import { pairLoginSessions } from "@/lib/staff-sessions";
 import type { Order, RecipeIngredient, StoreData } from "@/lib/types";
 
 function inventoryUsagePerPiece(item: StockItem, used: number) {
@@ -51,12 +53,12 @@ function toBaseQuantity(item: Pick<StockItem, "purchaseUnitSize">, pieces: numbe
   return pieces * pieceSize(item);
 }
 
-export type InventoryTab = "transactions" | "stock" | "restock" | "used" | "units" | "recipes";
+export type InventoryTab = "transactions" | "waste" | "stock" | "restock" | "used" | "units" | "recipes";
 
 type InventoryStore = Pick<
   StoreData,
   "orders" | "inventory" | "usageLogs" | "restocks"
-> & Partial<Pick<StoreData, "recipes" | "recipeCostings" | "menu">>;
+> & Partial<Pick<StoreData, "recipes" | "recipeCostings" | "menu" | "users" | "loginActivity">>;
 
 type SalePurchaseTransactionsProps = {
   store: InventoryStore;
@@ -71,26 +73,36 @@ type Transaction = {
   productName: string;
   productLines: { title: string; detail?: string }[];
   productRows: { name: string; detail?: string; quantity: number; price: number; amount: number }[];
-  type: "Purchase" | "Sale";
+  type: "Purchase" | "Sale" | "Waste";
   quantity: number;
   price: number;
   amount: number;
   date: string;
   createdAt: string;
+  ticketNo?: string;
+  cashier: string;
+  baristas: string[];
+  wasteReason?: string;
 };
 
-function ordersToTransactions(orders: Order[]): Transaction[] {
+function ordersToTransactions(
+  orders: Order[],
+  users: StoreData["users"] = [],
+  loginActivity: StoreData["loginActivity"] = [],
+): Transaction[] {
+  const cashierShifts = pairLoginSessions(loginActivity);
   return orders
     .filter((order) => !order.voided)
     .map((order) => {
+      const isWaste = isWasteOrder(order);
       const quantity = order.items.reduce((sum, item) => sum + item.qty, 0);
-      const amount = order.total;
+      const amount = isWaste ? 0 : order.total;
       const productLines = orderSoldAsParts(order.items);
       const grossLines = order.items.map((item) => ({
         name: drinkDisplayName(item),
         detail: orderLineOptionsLabel(item) || undefined,
         quantity: item.qty,
-        price: cartLineUnitPrice(item),
+        price: isWaste ? 0 : cartLineUnitPrice(item),
       }));
       const grossTotal = grossLines.reduce((sum, item) => sum + item.price * item.quantity, 0);
       let allocatedAmount = 0;
@@ -105,17 +117,58 @@ function ordersToTransactions(orders: Order[]): Transaction[] {
         allocatedAmount += lineAmount;
         return { ...item, amount: lineAmount };
       });
+      const cashier = isWaste
+        ? (() => {
+            const linkedCashier = users.find(
+              (user) => user.id === order.baristaUserId && user.role === "pos_cashier",
+            );
+            if (linkedCashier) return linkedCashier.name || linkedCashier.username || "—";
+            const shift = cashierShifts.find((entry) =>
+              entry.role === "pos_cashier" &&
+              Boolean(entry.loginAt) &&
+              entry.loginAt! <= order.createdAt &&
+              (!entry.logoutAt || entry.logoutAt >= order.createdAt),
+            );
+            return shift?.name || "—";
+          })()
+        : order.baristaName || "—";
+      const recordedWasteBaristas = Array.isArray(order.wasteBaristas)
+        ? order.wasteBaristas.map((name) => name.trim()).filter(Boolean)
+        : [];
+      const onShiftBaristas = new Map<string, string>();
+      if (isWaste && recordedWasteBaristas.length === 0) {
+        for (const shift of cashierShifts) {
+          if (
+            shift.role === "barista" &&
+            shift.loginAt &&
+            shift.loginAt <= order.createdAt &&
+            (!shift.logoutAt || shift.logoutAt >= order.createdAt) &&
+            shift.name.trim()
+          ) {
+            onShiftBaristas.set(shift.userId, shift.name.trim());
+          }
+        }
+      }
+      const wasteBaristas = recordedWasteBaristas.length > 0
+        ? recordedWasteBaristas
+        : Array.from(onShiftBaristas.values());
       return {
         id: order.id,
         productName: orderSoldAsLines(order.items).join(", "),
         productLines,
         productRows,
-        type: (order.recordType === "Purchase" ? "Purchase" : "Sale") as "Purchase" | "Sale",
+        type: (isWaste
+          ? "Waste"
+          : order.recordType === "Purchase" ? "Purchase" : "Sale") as Transaction["type"],
         quantity,
-        price: quantity > 0 ? amount / quantity : amount,
+        price: isWaste ? 0 : (quantity > 0 ? amount / quantity : amount),
         amount,
         date: phDateString(order.createdAt),
         createdAt: order.createdAt,
+        ticketNo: isWaste ? undefined : order.ticketNo,
+        cashier,
+        baristas: wasteBaristas,
+        wasteReason: order.wasteReason || (order.paymentMethod === "waste" ? order.voidReason : undefined),
       };
     })
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
@@ -251,11 +304,20 @@ function aggregateUsageRows<
 
 export function SalePurchaseTransactions({
   store,
-  tabs = ["transactions", "stock", "restock", "recipes", "used", "units"],
+  tabs = ["transactions", "waste", "stock", "restock", "recipes", "used", "units"],
   activeTab: controlledActiveTab,
   onTabChange,
   showTabs = true,
 }: SalePurchaseTransactionsProps) {
+  const {
+    inventory,
+    menu,
+    orders,
+    recipeCostings: storeRecipeCostings,
+    recipes,
+    restocks: restockSource,
+    usageLogs,
+  } = store;
   const [internalActiveTab, setInternalActiveTab] = useState<InventoryTab>(() => {
     if (typeof window !== "undefined") {
       const savedTab = window.localStorage.getItem("inventory-active-tab");
@@ -279,65 +341,82 @@ export function SalePurchaseTransactions({
 
     onTabChange?.(tab);
   }
-  const persistedTransactions: Transaction[] = ordersToTransactions(store.orders);
-  const persistedStocks: StockItem[] = store.inventory.map((item) => ({
-    id: item.id,
-    name: item.name,
-    stock: item.stock,
-    openingStock: item.openingStock ?? (item.purchaseUnitSize ? 10 * item.purchaseUnitSize : item.stock),
-    unit: looksLikeCupItem(item, store.recipeCostings) ? "pcs" : item.unit || "pcs",
-    purchaseUnitSize: item.purchaseUnitSize,
-    cupUsageAmount: item.cupUsageAmount,
-    cupsMake: item.cupsMake,
-    inventoryType: item.inventoryType,
-    cupSize: item.cupSize,
-  }));
-  const loggedOrderIds = new Set(
-    (store.usageLogs ?? [])
-      .map((entry) => entry.orderId)
-      .filter((orderId): orderId is string => Boolean(orderId)),
+  const allOrderTransactions: Transaction[] = ordersToTransactions(
+    store.orders,
+    store.users,
+    store.loginActivity,
   );
-  const orderUsageRows = store.orders
-    .filter((order) => !order.voided && !loggedOrderIds.has(order.id))
-    .flatMap((order) => order.items.flatMap((line) => ingredientsForOrderLine(store, line).map((ingredient, ingredientIndex) => ({
-      id: `${order.id}-${line.productId}-${ingredientIndex}`,
-      orderId: order.id,
-      inventoryItemId: ingredient.inventoryItemId && ingredient.inventoryItemId !== "other" ? ingredient.inventoryItemId : undefined,
-      date: order.createdAt,
-      itemName: ingredient.name,
-      usedAmount: roundQty(Number(ingredient.amount) * line.qty),
-      unit: ingredient.unit,
-      soldAs: orderSoldAsLabel(order.items),
-    }))));
-  const extraUsageLogs = (store.usageLogs ?? [])
-    .flatMap((entry) => {
-      if (entry.itemName === "__usage_snapshot_empty__") return [];
-      const order = store.orders.find((item) => item.id === entry.orderId);
-      if (entry.orderId && (!order || order.voided || order.deletedAt)) return [];
-      return [{
+  const persistedTransactions = allOrderTransactions.filter((transaction) => transaction.type !== "Waste");
+  const wasteTransactions = allOrderTransactions.filter((transaction) => transaction.type === "Waste");
+  const persistedStocks: StockItem[] = useMemo(
+    () => inventory.map((item) => ({
+      id: item.id,
+      name: item.name,
+      stock: item.stock,
+      openingStock: item.openingStock ?? (item.purchaseUnitSize ? 10 * item.purchaseUnitSize : item.stock),
+      unit: looksLikeCupItem(item, storeRecipeCostings) ? "pcs" : item.unit || "pcs",
+      purchaseUnitSize: item.purchaseUnitSize,
+      cupUsageAmount: item.cupUsageAmount,
+      cupsMake: item.cupsMake,
+      inventoryType: item.inventoryType,
+      cupSize: item.cupSize,
+    })),
+    [inventory, storeRecipeCostings],
+  );
+  const persistedRestocks = useMemo(() => restockSource ?? [], [restockSource]);
+  const persistedUsages: UsageRecord[] = useMemo(() => {
+    const loggedOrderIds = new Set(
+      (usageLogs ?? [])
+        .map((entry) => entry.orderId)
+        .filter((orderId): orderId is string => Boolean(orderId)),
+    );
+    const orderUsageRows = orders
+      .filter((order) => !order.voided && !loggedOrderIds.has(order.id))
+      .flatMap((order) => order.items.flatMap((line) => ingredientsForOrderLine({
+        menu,
+        recipes,
+        recipeCostings: storeRecipeCostings,
+        inventory,
+      }, line).map((ingredient, ingredientIndex) => ({
+        id: `${order.id}-${line.productId}-${ingredientIndex}`,
+        orderId: order.id,
+        inventoryItemId: ingredient.inventoryItemId && ingredient.inventoryItemId !== "other" ? ingredient.inventoryItemId : undefined,
+        date: order.createdAt,
+        itemName: ingredient.name,
+        usedAmount: roundQty(Number(ingredient.amount) * line.qty),
+        unit: ingredient.unit,
+        soldAs: orderSoldAsLabel(order.items),
+      }))));
+    const extraUsageLogs = (usageLogs ?? [])
+      .flatMap((entry) => {
+        if (entry.itemName === "__usage_snapshot_empty__") return [];
+        const order = orders.find((item) => item.id === entry.orderId);
+        if (entry.orderId && (!order || order.voided || order.deletedAt)) return [];
+        return [{
+          ...entry,
+          soldAs: order ? orderSoldAsLabel(order.items) : "",
+        }];
+      });
+    const sourceUsages = aggregateUsageRows([...orderUsageRows, ...extraUsageLogs]);
+    const reconstructedRemaining = remainingForUsages(
+      sourceUsages,
+      restockSource ?? [],
+      inventory,
+    );
+    return sourceUsages
+      .map((entry, index) => ({
         ...entry,
-        soldAs: order ? orderSoldAsLabel(order.items) : "",
-      }];
-    });
-  const sourceUsages = aggregateUsageRows([...orderUsageRows, ...extraUsageLogs]);
-  const reconstructedRemaining = remainingForUsages(
-    sourceUsages,
-    store.restocks ?? [],
-    store.inventory,
-  );
-  const persistedUsages: UsageRecord[] = sourceUsages
-    .map((entry, index) => ({
-      ...entry,
-      id: entry.id,
-      orderId: entry.orderId,
-      date: entry.date,
-      itemName: entry.itemName,
-      usedAmount: entry.usedAmount,
-      unit: entry.unit,
-      remaining: reconstructedRemaining[index] ?? ("remaining" in entry ? entry.remaining : 0),
-      soldAs: "soldAs" in entry ? entry.soldAs : "",
-    }))
-    .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+        id: entry.id,
+        orderId: entry.orderId,
+        date: entry.date,
+        itemName: entry.itemName,
+        usedAmount: entry.usedAmount,
+        unit: entry.unit,
+        remaining: reconstructedRemaining[index] ?? ("remaining" in entry ? entry.remaining : 0),
+        soldAs: "soldAs" in entry ? entry.soldAs : "",
+      }))
+      .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+  }, [inventory, menu, orders, recipes, restockSource, storeRecipeCostings, usageLogs]);
 
   const getTodayDate = () => phDateString();
 
@@ -346,22 +425,28 @@ export function SalePurchaseTransactions({
   const [transactionNotice, setTransactionNotice] = useState<string | null>(null);
 
   const [stocks, setStocks] = useState<StockItem[]>(persistedStocks);
+  const stocksRef = useRef(stocks);
   const [stockItemFilter, setStockItemFilter] = useState("all");
   const [cupsLeftFilter, setCupsLeftFilter] = useState("all");
   const [unitSetupDrafts, setUnitSetupDrafts] = useState<Record<string, { purchaseUnitSize: string; unit?: string; cupUsageAmount: string }>>({});
-  const stocksRef = useRef(stocks);
-  stocksRef.current = stocks;
 
-  const [restocks, setRestocks] = useState<RestockRecord[]>(store.restocks ?? []);
+  const [restocks, setRestocks] = useState<RestockRecord[]>(persistedRestocks);
   const [costingNotice, setCostingNotice] = useState<string | null>(null);
 
   const [usages, setUsages] = useState<UsageRecord[]>(persistedUsages);
+  const recipeMenu = useMemo(() => store.menu ?? [], [store.menu]);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setStocks(persistedStocks);
     setUsages(persistedUsages);
-    setRestocks(store.restocks ?? []);
-  }, [store.orders, store.inventory, store.usageLogs, store.restocks, store.recipes, store.recipeCostings]);
+    setRestocks(persistedRestocks);
+  }, [persistedStocks, persistedUsages, persistedRestocks]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  useEffect(() => {
+    stocksRef.current = stocks;
+  }, [stocks]);
 
   const [editStockId, setEditStockId] = useState<string | null>(null);
   const [stockName, setStockName] = useState("");
@@ -389,8 +474,6 @@ export function SalePurchaseTransactions({
   const [inlineRestockValues, setInlineRestockValues] = useState<{ [key: string]: string }>({});
   const [stockNotice, setStockNotice] = useState<string | null>(null);
   const [restockingItemId, setRestockingItemId] = useState<string | null>(null);
-  const recipeMenu = store.menu ?? [];
-  const recipeMap = store.recipes ?? {};
   type Costing = {
     id?: string;
     name: string;
@@ -1029,6 +1112,7 @@ export function SalePurchaseTransactions({
   }
 
   const transactionsInRange = transactions.filter((transaction) => inDateRange(transaction.date));
+  const wasteInRange = wasteTransactions.filter((transaction) => inDateRange(transaction.date));
   const transactionKeyword = filterKeyword.trim().toLowerCase();
   const filteredTransactions = transactionsInRange.flatMap((transaction) => {
     if (!transactionKeyword) return [{ transaction, productRows: transaction.productRows }];
@@ -1044,6 +1128,16 @@ export function SalePurchaseTransactions({
         ? [{ transaction, productRows: matchingRows }]
         : [];
   });
+  const filteredWasteTransactions = wasteInRange.filter((transaction) => {
+    if (!transactionKeyword) return true;
+    const searchable = [
+      transaction.productName,
+      transaction.cashier,
+      transaction.baristas.join(" "),
+      transaction.wasteReason ?? "",
+    ].join(" ");
+    return searchable.toLowerCase().includes(transactionKeyword);
+  });
 
   const usageGroups = useMemo(() => {
     const keyword = filterKeyword.trim().toLowerCase();
@@ -1053,9 +1147,12 @@ export function SalePurchaseTransactions({
         const items = aggregateUsageRows(usages.filter((usage) => usage.orderId === order.id));
         const soldAsLines = orderSoldAsParts(order.items);
         const soldAs = orderSoldAsLines(order.items).join(", ");
+        const isWaste = isWasteOrder(order);
         return {
           orderId: order.id,
-          orderLabel: order.ticketNo != null ? `#${order.ticketNo}` : order.id,
+          isWaste,
+          wasteReason: order.wasteReason || (order.paymentMethod === "waste" ? order.voidReason : undefined),
+          orderLabel: isWaste ? "Waste" : (order.ticketNo != null && String(order.ticketNo).trim() !== "" ? (order.ticketNo.startsWith("#") ? order.ticketNo : `#${order.ticketNo}`) : order.id),
           date: order.createdAt,
           soldAs,
           soldAsLines,
@@ -1129,7 +1226,7 @@ export function SalePurchaseTransactions({
             onClick={() => setActiveTab(tab)}
             className={`shrink-0 rounded-xl px-3 py-2 text-[11px] font-bold uppercase transition sm:px-4 sm:text-xs ${activeTab === tab ? "bg-slate-900 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100"}`}
           >
-            {tab === "transactions" ? "Transactions" : tab === "stock" ? "Stock Inventory" : tab === "restock" ? "Restock History" : tab === "used" ? "Usage Logbook" : "Recipes"}
+            {tab === "transactions" ? "Transactions" : tab === "waste" ? "Waste Records" : tab === "stock" ? "Stock Inventory" : tab === "restock" ? "Restock History" : tab === "used" ? "Usage Logbook" : "Recipes"}
           </button>
         ))}
       </div> : null}
@@ -1565,6 +1662,7 @@ export function SalePurchaseTransactions({
                 <tr className="bg-black border-b border-black text-white font-semibold text-xs">
                   <th className="p-3 border-r border-white/15">Date</th>
                   <th className="p-3 border-r border-white/15">Product Name</th>
+                  <th className="p-3 border-r border-white/15">Type</th>
                   <th className="p-3 border-r border-white/15 text-right">Quantity</th>
                   <th className="p-3 border-r border-white/15 text-right">Price</th>
                   <th className="p-3 border-r border-white/15 text-right">Amount</th>
@@ -1573,7 +1671,7 @@ export function SalePurchaseTransactions({
               </thead>
               <tbody>
                 {filteredTransactions.length === 0 ? (
-                  <tr><td colSpan={6} className="p-4 text-center text-neutral-500 text-xs">No transactions found for this date range.</td></tr>
+                  <tr><td colSpan={7} className="p-4 text-center text-neutral-500 text-xs">No transactions found for this date range.</td></tr>
                 ) : (
                   filteredTransactions.map(({ transaction, productRows }) => (
                     <tr
@@ -1595,6 +1693,11 @@ export function SalePurchaseTransactions({
                           ))}
                         </ul>
                       </td>
+                      <td className="p-3 border-r border-neutral-200">
+                        <span className={transaction.type === "Waste" ? "rounded-full bg-amber-100 px-2 py-1 text-[10px] font-semibold text-amber-800" : "text-neutral-600"}>
+                          {transaction.type}
+                        </span>
+                      </td>
                       <td className="p-3 border-r border-neutral-200 text-right">{transaction.quantity}</td>
                       <td className="p-3 border-r border-neutral-200 text-right">₱{transaction.price.toFixed(2)}</td>
                       <td className="p-3 border-r border-neutral-200 text-right font-semibold">₱{transaction.amount.toFixed(2)}</td>
@@ -1612,6 +1715,85 @@ export function SalePurchaseTransactions({
             </table>
           </div>
         </div>
+      )}
+
+      {activeTab === "waste" && (
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">Waste Records</h2>
+            <p className="mt-1 text-xs text-slate-500">Wasted items are recorded here and deducted from inventory. They are excluded from sales, revenue, and profit.</p>
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-amber-200 bg-white shadow-sm">
+            <table className="w-full min-w-[980px] border-collapse text-left text-sm">
+              <thead>
+                <tr className="border-b border-amber-200 bg-amber-50 text-xs font-semibold text-amber-950">
+                  <th className="p-3">Date</th>
+                  <th className="p-3">Wasted items</th>
+                  <th className="p-3 text-right">Quantity</th>
+                  <th className="p-3">Cashier in Charge</th>
+                  <th className="p-3">Barista in Charge</th>
+                  <th className="p-3">Reason / Note</th>
+                  <th className="p-3">Inventory Deduction</th>
+                  <th className="p-3 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredWasteTransactions.length === 0 ? (
+                  <tr><td colSpan={8} className="p-4 text-center text-xs text-neutral-500">No waste records found for this date range.</td></tr>
+                ) : filteredWasteTransactions.map((transaction) => {
+                  const deductions = aggregateUsageRows(usages.filter((u) => u.orderId === transaction.id));
+                  const baristaNames = transaction.baristas.length > 0 ? transaction.baristas.join(", ") : "—";
+                  return (
+                    <tr key={transaction.id} className="border-b border-neutral-100 text-xs last:border-0 hover:bg-amber-50/30">
+                      <td className="whitespace-nowrap p-3 text-neutral-600">{phDateTimeLabel(transaction.createdAt)}</td>
+                      <td className="p-3 font-medium">
+                        <ul className="space-y-1">
+                          {transaction.productRows.map((product, index) => (
+                            <li key={`${product.name}-${index}`} className="break-words">
+                              <p>{product.quantity}x {product.name}</p>
+                              {product.detail ? (
+                                <p className="text-[11px] font-normal text-neutral-500">{product.detail}</p>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      </td>
+                      <td className="p-3 text-right font-medium">{transaction.quantity}</td>
+                      <td className="p-3">{transaction.cashier || "—"}</td>
+                      <td className="p-3">{baristaNames}</td>
+                      <td className="p-3">
+                        <span className="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
+                          {transaction.wasteReason?.trim() || "Waste"}
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        {deductions.length > 0 ? (
+                          <ul className="space-y-0.5 text-[11px] text-neutral-600">
+                            {deductions.map((deduction, idx) => (
+                              <li key={`${deduction.itemName}-${idx}`} className="whitespace-nowrap">
+                                <span className="font-medium text-neutral-800">{deduction.itemName}:</span>{" "}
+                                <span className="text-red-700 font-medium">-{deduction.usedAmount} {deduction.unit}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <span className="text-neutral-400 italic">No inventory tracked</span>
+                        )}
+                      </td>
+                      <td className="p-3 text-center">
+                        <RowActions
+                          deleteLabel="Delete waste record and restore stock"
+                          deleteDisabled={deletingTransactionId === transaction.id}
+                          onDelete={() => void handleDeleteTransaction(transaction.id)}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
 
       {activeTab === "stock" && (
@@ -1998,7 +2180,13 @@ export function SalePurchaseTransactions({
                               >
                                 <path d="M9 6l6 6-6 6" strokeWidth="1.8" />
                               </svg>
-                              {group.orderLabel}
+                              {group.isWaste ? (
+                                <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+                                  Waste {group.wasteReason ? `· ${group.wasteReason}` : ""}
+                                </span>
+                              ) : (
+                                group.orderLabel
+                              )}
                             </span>
                           </td>
                           <td className="p-3 border-r border-neutral-200 text-neutral-600 font-medium whitespace-nowrap">

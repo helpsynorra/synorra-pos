@@ -10,7 +10,7 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
-  if (pathname.startsWith("/synorra-host")) {
+  if (pathname.startsWith("/synorra-host") || pathname.startsWith("/synorra/")) {
     if (!session) {
       return NextResponse.redirect(new URL("/", request.url));
     }
@@ -32,5 +32,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/owner/:path*", "/synorra-host/:path*", "/admin/:path*", "/login"],
+  matcher: ["/owner/:path*", "/synorra-host/:path*", "/synorra", "/synorra/:path*", "/admin/:path*", "/login"],
 };

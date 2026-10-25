@@ -30,12 +30,15 @@ class SyncService extends ChangeNotifier {
     'connectReceipt': true,
     'printButton': true,
     'customerReceipt': true,
+    'birReceipt': false,
     'cupLabels': true,
     'dineIn': true,
     'takeOut': true,
     'promotionDiscount': false,
     'promotionsEnabled': false,
+    'wasteManagement': true,
   };
+  Map<String, String> birReceiptDetails = {};
   List<Map<String, dynamic>> promotionCodes = [];
 
   bool hasPermission(String key) => ownerPermissions[key] ?? true;
@@ -65,6 +68,12 @@ class SyncService extends ChangeNotifier {
           if (cachedPermissions.containsKey(key)) {
             ownerPermissions[key] = cachedPermissions[key] == true;
           }
+        }
+        final cachedBirDetails = cachedPermissions['birReceiptDetails'];
+        if (cachedBirDetails is Map) {
+          birReceiptDetails = cachedBirDetails.map(
+            (key, value) => MapEntry(key.toString(), value.toString()),
+          );
         }
       }
     }
@@ -307,7 +316,10 @@ class SyncService extends ChangeNotifier {
           await localStorage.saveCachedPosFeatureSettings(
             inventoryFeaturesEnabled: inventoryFeaturesEnabled,
             printButtonHidden: printButtonHidden,
-            permissions: ownerPermissions,
+            permissions: {
+              ...ownerPermissions,
+              'birReceiptDetails': birReceiptDetails,
+            },
           );
         }
         if (fullStore['menu'] is List) {
@@ -365,12 +377,18 @@ class SyncService extends ChangeNotifier {
           promotionCodes = [];
           if (permissions is Map) {
             for (final key in ownerPermissions.keys.toList()) {
-              ownerPermissions[key] = permissions[key] != false;
+              ownerPermissions[key] = key == 'birReceipt'
+                  ? permissions[key] == true
+                  : permissions[key] != false;
             }
             ownerPermissions['promotionDiscount'] =
                 permissions['promotionDiscount'] == true;
             ownerPermissions['promotionsEnabled'] =
                 permissions['promotionsEnabled'] == true;
+            final rawBirDetails = permissions['birReceiptDetails'];
+            birReceiptDetails = rawBirDetails is Map
+                ? rawBirDetails.map((key, value) => MapEntry(key.toString(), value.toString()))
+                : {};
             final rawPromotions = permissions['promoCodes'];
             if (rawPromotions is List) {
               promotionCodes = rawPromotions.whereType<Map>()
@@ -380,7 +398,7 @@ class SyncService extends ChangeNotifier {
             await localStorage.saveCachedPosFeatureSettings(
               inventoryFeaturesEnabled: inventoryFeaturesEnabled,
               printButtonHidden: printButtonHidden,
-              permissions: ownerPermissions,
+              permissions: {...ownerPermissions, 'birReceiptDetails': birReceiptDetails},
             );
           }
           final freshStaff = (fullStore['users'] as List)

@@ -8,21 +8,25 @@ import '../../state/pos_controller.dart';
 class CartPanel extends StatefulWidget {
   final PosController controller;
   final VoidCallback onProceedOrder;
+  final VoidCallback onRecordWaste;
   final bool isFullWidth;
   final double panelWidth;
   final bool isKeyboardOpen;
   final bool dineInEnabled;
   final bool takeOutEnabled;
+  final bool canRecordWaste;
 
   const CartPanel({
     super.key,
     required this.controller,
     required this.onProceedOrder,
+    required this.onRecordWaste,
     this.isFullWidth = false,
     this.panelWidth = 350,
     this.isKeyboardOpen = false,
     this.dineInEnabled = true,
     this.takeOutEnabled = true,
+    this.canRecordWaste = true,
   });
 
   @override
@@ -943,6 +947,23 @@ class _CartPanelState extends State<CartPanel> {
                   ),
                   const SizedBox(height: 5),
                 ],
+                if (widget.canRecordWaste)
+                  SizedBox(
+                    width: double.infinity,
+                    child: TextButton.icon(
+                      onPressed: controller.cart.isEmpty ||
+                              controller.isProcessing ||
+                              controller.isVoidRequestPending
+                          ? null
+                          : widget.onRecordWaste,
+                      icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                      label: const Text('Record Waste'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFFB42332),
+                        minimumSize: Size(0, keyboardOpen ? 32 : 38),
+                      ),
+                    ),
+                  ),
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton(

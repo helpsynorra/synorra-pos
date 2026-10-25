@@ -35,8 +35,20 @@ function startOfDayPH(date: Date): Date {
   return new Date(`${phDateStr}T00:00:00+08:00`);
 }
 
+export function isWasteOrder(order: Partial<Order>): boolean {
+  return order.recordType?.toLowerCase() === "waste" ||
+    order.paymentMethod?.toLowerCase() === "waste" ||
+    (order.id ? order.id.trim().toLowerCase().startsWith("waste-") : false) ||
+    (order.ticketNo ? order.ticketNo.trim().toLowerCase().startsWith("w-") : false) ||
+    Boolean(order.wasteReason);
+}
+
 export function liveOrders(orders: Order[]): Order[] {
-  return orders.filter((order) => !order.voided && !order.deletedAt);
+  return orders.filter((order) =>
+    !order.voided &&
+    !order.deletedAt &&
+    !isWasteOrder(order),
+  );
 }
 
 export function sumSales(orders: Order[]): number {
@@ -273,7 +285,7 @@ export function totalDiscount(orders: Order[]): number {
 
 export function paymentStats(orders: Order[]) {
   const buckets: Record<
-    Exclude<PaymentMethod, `split:${string}`>,
+    Exclude<PaymentMethod, `split:${string}` | "waste">,
     { method: PaymentMethod; label: string; count: number; sales: number }
   > = {
     cash: { method: "cash", label: paymentLabel("cash"), count: 0, sales: 0 },

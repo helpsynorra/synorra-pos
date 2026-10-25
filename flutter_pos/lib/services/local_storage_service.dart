@@ -204,7 +204,7 @@ class LocalStorageService {
   Future<void> saveCachedPosFeatureSettings({
     required bool inventoryFeaturesEnabled,
     required bool printButtonHidden,
-    required Map<String, bool> permissions,
+    required Map<String, dynamic> permissions,
   }) async {
     await _prefs.setString(
       _keyPosFeatureSettings,

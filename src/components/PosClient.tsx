@@ -8,6 +8,7 @@ import { punchBaristaShift } from "@/actions/users";
 import {
   beginPrintJob,
   createOrder,
+  recordWaste,
   finishPrintJob,
   getVoidRequestStatus,
   openPos,
@@ -180,11 +181,15 @@ export function PosClient({
   const [voidSearch, setVoidSearch] = useState("");
   const [voidTodayOnly, setVoidTodayOnly] = useState(true);
   const [activeVoidRequestId, setActiveVoidRequestId] = useState<string | null>(null);
+  const [wasteModalOpen, setWasteModalOpen] = useState(false);
+  const [wasteReason, setWasteReason] = useState("");
+  const [wasteBaristaIds, setWasteBaristaIds] = useState<string[]>([]);
   const [printOrderId, setPrintOrderId] = useState<string | null>(null);
   const [lastTicket, setLastTicket] = useState<ReceiptTicket | null>(null);
   const [lastOrderId, setLastOrderId] = useState<string | null>(null);
   const [lastOrder, setLastOrder] = useState<Order | null>(null);
   const [localPrintJobs, setLocalPrintJobs] = useState<PrintJob[]>([]);
+  const canRecordWaste = session.permissions?.wasteManagement !== false;
   const [message, setMessage] = useState<string | null>(null);
   const [baristaModalOpen, setBaristaModalOpen] = useState(false);
   const [baristaUsername, setBaristaUsername] = useState("");
@@ -1584,6 +1589,148 @@ export function PosClient({
           </div>
         ) : null}
 
+        {/* Waste Modal */}
+        {canRecordWaste && wasteModalOpen ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+            <div className="relative flex w-full max-w-md flex-col rounded-3xl bg-white p-6 shadow-2xl transition-all">
+              <button
+                type="button"
+                aria-label="Close modal"
+                onClick={() => { setWasteModalOpen(false); setWasteReason(""); }}
+                className="absolute top-5 right-5 flex h-9 w-9 items-center justify-center rounded-full text-neutral-400 hover:bg-neutral-100 hover:text-black transition"
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor">
+                  <path d="M6 6l12 12M18 6L6 18" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </button>
+
+              <div className="mb-4">
+                <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-100 text-amber-800">
+                  <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor">
+                    <path
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
+                <h3 className="text-base font-bold text-neutral-900">Record Wasted Items</h3>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Records {cart.reduce((sum, item) => sum + item.qty, 0)} item(s) as waste and deducts stock from inventory with no sale or payment.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-semibold text-neutral-700">Select or enter reason / note:</label>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {["Spilled", "Expired", "Wrong Preparation", "Damaged"].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setWasteReason(preset)}
+                        className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                          wasteReason.trim() === preset
+                            ? "bg-amber-200 text-amber-950 font-bold ring-1 ring-amber-400"
+                            : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-neutral-700">
+                    Reason / Note <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    placeholder="e.g. Spilled, Expired, Wrong Preparation, Damaged"
+                    value={wasteReason}
+                    onChange={(e) => setWasteReason(e.target.value)}
+                    className="mt-1.5 w-full rounded-xl border border-neutral-300 bg-neutral-50 px-3.5 py-2.5 text-xs text-neutral-900 outline-none transition focus:border-black focus:bg-white focus:ring-1 focus:ring-black"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-neutral-700">
+                    Barista in Charge
+                    <span className="ml-1 font-normal text-neutral-400">(on-shift baristas are selected automatically)</span>
+                  </label>
+                  {clockedInBaristas.length > 0 ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {clockedInBaristas.map((barista) => {
+                        const selected = wasteBaristaIds.includes(barista.id);
+                        return (
+                          <button
+                            key={barista.id}
+                            type="button"
+                            onClick={() =>
+                              setWasteBaristaIds((current) =>
+                                current.includes(barista.id)
+                                  ? current.filter((id) => id !== barista.id)
+                                  : [...current, barista.id],
+                              )
+                            }
+                            className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                              selected
+                                ? "bg-neutral-900 text-white font-semibold ring-1 ring-neutral-900"
+                                : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
+                            }`}
+                          >
+                            {barista.name || barista.username}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-[11px] italic text-neutral-400">No baristas clocked in — baristas in charge will show as “—”.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-6 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setWasteModalOpen(false); setWasteReason(""); setWasteBaristaIds([]); }}
+                  className="w-1/3 rounded-xl border border-neutral-200 py-2.5 text-xs font-medium text-neutral-600 transition hover:bg-neutral-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={pending || !wasteReason.trim()}
+                  onClick={() =>
+                    startTransition(async () => {
+                      const reason = wasteReason.trim();
+                      if (!reason) return;
+                      const result = await recordWaste(cart, reason, wasteBaristaIds);
+                      if (!result.ok) {
+                        setMessage(result.error);
+                        return;
+                      }
+                      setCart([]);
+                      setWasteReason("");
+                      setWasteBaristaIds([]);
+                      setWasteModalOpen(false);
+                      setMobileCheckoutOpen(false);
+                      setMessage(`Waste recorded (${reason}) and inventory deducted.`);
+                    })
+                  }
+                  className="w-2/3 rounded-xl bg-[#b42332] py-2.5 text-xs font-semibold text-white transition hover:bg-[#970909] active:scale-[0.99] disabled:opacity-40"
+                >
+                  {pending ? "Recording..." : "Record Waste"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         {selectedPrintTicket && selectedPrintOrder ? (
           <ReceiptPreview
             ticket={selectedPrintTicket}
@@ -1958,6 +2105,20 @@ export function PosClient({
                   Print
                 </button>
               </div>
+
+              {canRecordWaste ? (
+                <button
+                  type="button"
+                  disabled={pending || cart.length === 0}
+                  onClick={() => {
+                    setWasteBaristaIds(clockedInBaristas.map((barista) => barista.id));
+                    setWasteModalOpen(true);
+                  }}
+                  className="w-full rounded-xl border border-amber-300 bg-amber-50 py-2.5 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 active:scale-[0.99] disabled:opacity-40"
+                >
+                  Record Waste
+                </button>
+              ) : null}
 
               <button
                 type="button"

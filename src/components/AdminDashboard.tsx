@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect, useMemo, useTransition } from "react";
 import { approveVoidRequest } from "@/actions/pos";
 import {
   createAdminLedgerEntry,
@@ -13,6 +13,7 @@ import { paymentLabel } from "@/lib/payments";
 import { ingredientsForOrderLine } from "@/lib/inventory";
 import { inferMenuCategoryType, menuCategoryTypeForName, menuCategoryTypeLabel, normalizeMenuCategoryType } from "@/lib/menu";
 import { parseRole } from "@/lib/users";
+import { pairLoginSessions } from "@/lib/staff-sessions";
 import {
   bestSellers,
   busiestDay,
@@ -20,6 +21,7 @@ import {
   categorySales,
   lastNDays,
   liveOrders,
+  isWasteOrder,
   lowSellers,
   ordersOnDay,
   paymentStats,
@@ -147,7 +149,11 @@ function voidStatusLabel(order: Order, users: StoreData["users"]) {
 }
 
 function orderIdLabel(order: Order) {
-  return order.ticketNo != null ? `#${order.ticketNo}` : order.id;
+  if (order.ticketNo != null && String(order.ticketNo).trim() !== "") {
+    const ticket = String(order.ticketNo).trim();
+    return ticket.startsWith("#") ? ticket : `#${ticket}`;
+  }
+  return order.id;
 }
 
 function orderServiceMode(order: Order) {
@@ -488,7 +494,7 @@ export function AdminDashboard({
 
   const latest = [...ordersForDashboard]
     .filter((order) => {
-      if (order.deletedAt) return false;
+      if (order.deletedAt || isWasteOrder(order)) return false;
       const orderTime = phTimestamp(order.createdAt);
       return orderTime >= startOfPeriod.getTime() && orderTime <= now.getTime();
     })
@@ -498,6 +504,46 @@ export function AdminDashboard({
       (user) => user.id === order.ownerId && user.role === "cashier",
     );
     return owner?.name || owner?.username || "—";
+  };
+  const pairedShifts = useMemo(
+    () => pairLoginSessions(store.loginActivity ?? []).filter((s) => s.role === "barista" || s.role === "pos_cashier"),
+    [store.loginActivity],
+  );
+  const orderCashierInCharge = (order: Order) => {
+    if (order.baristaUserId) {
+      const staff = store.users.find((u) => u.id === order.baristaUserId);
+      if (staff && staff.role !== "barista") {
+        return staff.name || staff.username || order.baristaName || "—";
+      }
+    }
+    return order.baristaName?.trim() || "—";
+  };
+  const orderBaristaInCharge = (order: Order) => {
+    if (order.baristaUserId) {
+      const staff = store.users.find((u) => u.id === order.baristaUserId);
+      if (staff && staff.role === "barista") {
+        return staff.name || staff.username || order.baristaName || "—";
+      }
+    }
+    const activeAtOrder = pairedShifts.filter((session) => {
+      if (session.role !== "barista") return false;
+      const started = session.loginAt ? session.loginAt <= order.createdAt : false;
+      const ended = session.logoutAt ? session.logoutAt >= order.createdAt : true;
+      return started && ended;
+    });
+    if (activeAtOrder.length > 0) {
+      const names = Array.from(new Set(activeAtOrder.map((s) => s.name.trim()).filter(Boolean)));
+      if (names.length > 0) return names.join(", ");
+    }
+    const orderDay = phDateString(order.createdAt);
+    const sameDayBaristas = pairedShifts.filter(
+      (s) => s.role === "barista" && s.loginAt && phDateString(s.loginAt) === orderDay,
+    );
+    if (sameDayBaristas.length > 0) {
+      const names = Array.from(new Set(sameDayBaristas.map((s) => s.name.trim()).filter(Boolean)));
+      if (names.length > 0) return names.join(", ");
+    }
+    return "—";
   };
   const recentOrderTotal = (order: Order) =>
     typeof order.subtotal === "number" && Number.isFinite(order.subtotal)
@@ -1170,97 +1216,102 @@ export function AdminDashboard({
               No recent orders found for the selected range.
             </p>
           ) : (
-          <div className="mt-4">
-            <div className={`hidden gap-x-4 border-b border-neutral-200 pb-2 text-xs text-neutral-500 lg:grid ${showPromoVoucher ? "lg:grid-cols-10" : "lg:grid-cols-9"}`}>
-              <p className="min-w-0">Time</p>
-              <p className="min-w-0">Owner</p>
-              <p className="min-w-0">Order ID</p>
-              <p className="min-w-0">Items</p>
-              <p className="min-w-0">Status</p>
-              <p className="min-w-0">Cashier in Charge</p>
-              {showPromoVoucher ? <p className="min-w-0">Promo voucher</p> : null}
-              <p className="min-w-0">Payment</p>
-              <p className="min-w-0">Service</p>
-              <p className="min-w-0 text-right">Total</p>
-            </div>
-            <div className="grid gap-3 lg:block lg:divide-y lg:divide-neutral-200">
-              {latest.map((order: Order, ordIdx: number) => (
-                <div
-                  key={`${order.id}-${ordIdx}`}
-                  className={`grid grid-cols-1 gap-2 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 shadow-sm lg:items-start lg:gap-x-4 lg:rounded-none lg:border-0 lg:bg-transparent lg:px-0 lg:py-3 lg:shadow-none ${showPromoVoucher ? "lg:grid-cols-10" : "lg:grid-cols-9"}`}
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm leading-5 text-neutral-700">
-                      {phDateTimeLabel(order.createdAt)}
-                    </p>
-                    <p className="mt-0.5 text-xs text-neutral-500 lg:hidden">
-                      Owner: {orderOwnerName(order)}
-                    </p>
-                    {isVoided(order) ? (
-                      <p className="mt-0.5 text-sm font-medium text-neutral-400 line-through lg:hidden">
-                        {orderIdLabel(order)}
+          <div className="mt-4 overflow-x-auto">
+            <div className="min-w-[980px]">
+              <div className="hidden grid-cols-11 gap-x-3 border-b border-neutral-200 pb-2 text-xs text-neutral-500 lg:grid">
+                <p className="min-w-0">Time</p>
+                <p className="min-w-0">Owner</p>
+                <p className="min-w-0">Order ID</p>
+                <p className="min-w-0">Items</p>
+                <p className="min-w-0">Status</p>
+                <p className="min-w-0">Cashier in Charge</p>
+                <p className="min-w-0">Barista in Charge</p>
+                <p className="min-w-0">Promo voucher</p>
+                <p className="min-w-0">Payment</p>
+                <p className="min-w-0">Service</p>
+                <p className="min-w-0 text-right">Total</p>
+              </div>
+              <div className="grid gap-3 lg:block lg:divide-y lg:divide-neutral-200">
+                {latest.map((order: Order, ordIdx: number) => (
+                  <div
+                    key={`${order.id}-${ordIdx}`}
+                    className="grid grid-cols-1 gap-2 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 shadow-sm lg:grid-cols-11 lg:items-start lg:gap-x-3 lg:rounded-none lg:border-0 lg:bg-transparent lg:px-0 lg:py-3 lg:shadow-none"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm leading-5 text-neutral-700">
+                        {phDateTimeLabel(order.createdAt)}
                       </p>
-                    ) : (
-                      <p className="mt-0.5 text-sm font-medium lg:hidden">{orderIdLabel(order)}</p>
-                    )}
-                  </div>
-                  <p className="hidden min-w-0 break-words text-sm text-neutral-700 lg:block">
-                    {orderOwnerName(order)}
-                  </p>
-                  <p className="hidden min-w-0 text-sm font-medium lg:block">
-                    {isVoided(order) ? (
-                      <span className="text-neutral-400 line-through">{orderIdLabel(order)}</span>
-                    ) : (
-                      orderIdLabel(order)
-                    )}
-                  </p>
-                  <ul className="min-w-0 list-disc space-y-1 pl-4 text-xs leading-relaxed text-neutral-600 lg:text-sm">
-                    {order.items.map((item, itemIdx) => (
-                      <li key={`${order.id}-${item.productId}-${itemIdx}`} className="break-words">
-                        <p>
-                          {item.qty}× {drinkDisplayName(item)}
+                      <p className="mt-0.5 text-xs text-neutral-500 lg:hidden">
+                        Owner: {orderOwnerName(order)}
+                      </p>
+                      {isVoided(order) ? (
+                        <p className="mt-0.5 text-sm font-medium text-neutral-400 line-through lg:hidden">
+                          {orderIdLabel(order)}
                         </p>
-                        {orderLineOptionsLabel(item) ? (
-                          <p className="text-[11px] text-neutral-500">{orderLineOptionsLabel(item)}</p>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="min-w-0">
-                    <span
-                      className={`inline-flex rounded px-2 py-0.5 text-[10px] font-medium lg:text-xs ${
-                        isVoided(order)
-                          ? "bg-red-100 text-red-700"
-                          : "bg-black text-white"
-                      }`}
-                    >
-                      {isVoided(order) ? voidStatusLabel(order, store.users) : "Completed"}
-                    </span>
-                  </div>
-                  <p className="min-w-0 break-words text-xs text-neutral-500 lg:text-sm">
-                    <span className="lg:hidden">Cashier in Charge: </span>
-                    {order.baristaName || "—"}
-                  </p>
-                  {showPromoVoucher ? (
+                      ) : (
+                        <p className="mt-0.5 text-sm font-medium lg:hidden">{orderIdLabel(order)}</p>
+                      )}
+                    </div>
+                    <p className="hidden min-w-0 break-words text-sm text-neutral-700 lg:block">
+                      {orderOwnerName(order)}
+                    </p>
+                    <p className="hidden min-w-0 text-sm font-medium lg:block">
+                      {isVoided(order) ? (
+                        <span className="text-neutral-400 line-through">{orderIdLabel(order)}</span>
+                      ) : (
+                        orderIdLabel(order)
+                      )}
+                    </p>
+                    <ul className="min-w-0 list-disc space-y-1 pl-4 text-xs leading-relaxed text-neutral-600 lg:text-sm">
+                      {order.items.map((item, itemIdx) => (
+                        <li key={`${order.id}-${item.productId}-${itemIdx}`} className="break-words">
+                          <p>
+                            {item.qty}× {drinkDisplayName(item)}
+                          </p>
+                          {orderLineOptionsLabel(item) ? (
+                            <p className="text-[11px] text-neutral-500">{orderLineOptionsLabel(item)}</p>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="min-w-0">
+                      <span
+                        className={`inline-flex rounded px-2 py-0.5 text-[10px] font-medium lg:text-xs ${
+                          isVoided(order)
+                            ? "bg-red-100 text-red-700"
+                            : "bg-black text-white"
+                        }`}
+                      >
+                        {isVoided(order) ? voidStatusLabel(order, store.users) : "Completed"}
+                      </span>
+                    </div>
+                    <p className="min-w-0 break-words text-xs text-neutral-500 lg:text-sm">
+                      <span className="lg:hidden">Cashier in Charge: </span>
+                      {orderCashierInCharge(order)}
+                    </p>
+                    <p className="min-w-0 break-words text-xs text-neutral-500 lg:text-sm">
+                      <span className="lg:hidden">Barista in Charge: </span>
+                      {orderBaristaInCharge(order)}
+                    </p>
                     <p className="min-w-0 break-words text-xs text-neutral-500 lg:text-sm">
                       <span className="lg:hidden">Promo voucher: </span>
                       {order.promoLabel?.trim() || "—"}
                     </p>
-                  ) : null}
-                  <p className="min-w-0 text-xs text-neutral-500 lg:text-sm">
-                    <span className="lg:hidden">Payment: </span>
-                    {paymentLabel(order.paymentMethod)}
-                  </p>
-                  <p className="min-w-0 text-xs text-neutral-500 lg:text-sm">
-                    <span className="lg:hidden">Service: </span>
-                    {orderServiceMode(order)}
-                  </p>
-                  <p className="min-w-0 text-sm font-semibold lg:text-right">
-                    <span className="font-normal text-neutral-500 lg:hidden">Total: </span>
-                    {formatMoney(recentOrderTotal(order))}
-                  </p>
-                </div>
-              ))}
+                    <p className="min-w-0 text-xs text-neutral-500 lg:text-sm">
+                      <span className="lg:hidden">Payment: </span>
+                      {paymentLabel(order.paymentMethod)}
+                    </p>
+                    <p className="min-w-0 text-xs text-neutral-500 lg:text-sm">
+                      <span className="lg:hidden">Service: </span>
+                      {orderServiceMode(order)}
+                    </p>
+                    <p className="min-w-0 text-sm font-semibold lg:text-right">
+                      <span className="font-normal text-neutral-500 lg:hidden">Total: </span>
+                      {formatMoney(recentOrderTotal(order))}
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
           )

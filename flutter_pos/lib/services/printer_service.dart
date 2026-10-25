@@ -7,7 +7,6 @@ class PrinterService {
   static const String cafeName = 'Synorra';
   static const String cafeStreet = 'Veterans Ave, Tetuan';
   static const String cafeCity = 'Zamboanga City';
-  static const String cafeTagline = 'have a seat, take a sip';
 
   // Most 58mm thermal printers use around 32 characters per line.
   static const int receiptWidth = 32;
@@ -157,28 +156,21 @@ class PrinterService {
   static void _writeHeader(
     StringBuffer buffer,
     Order order,
-    bool includePrinterCommands,
-  ) {
-    _writeLine(
-      buffer,
-      _center(cafeName.toUpperCase()),
-      bold: true,
-      includePrinterCommands: includePrinterCommands,
-    );
-    buffer.writeln(_center(cafeStreet));
-    buffer.writeln(_center(cafeCity));
-    buffer.writeln(_center(cafeTagline));
-
-    buffer.writeln();
+    bool includePrinterCommands, {
+    bool includeBusinessInfo = true,
+  }) {
+    if (includeBusinessInfo) {
+      _writeLine(
+        buffer,
+        _center(cafeName.toUpperCase()),
+        bold: true,
+        includePrinterCommands: includePrinterCommands,
+      );
+      buffer.writeln(_center(cafeStreet));
+      buffer.writeln(_center(cafeCity));
+      buffer.writeln();
+    }
     buffer.writeln(_doubleLine());
-
-    _writeLine(
-      buffer,
-      _center(''),
-      bold: true,
-      includePrinterCommands: includePrinterCommands,
-    );
-    buffer.writeln();
 
     final ticket =
         order.ticketNo.trim().isNotEmpty ? order.ticketNo.trim() : 'N/A';
@@ -203,6 +195,194 @@ class PrinterService {
     buffer.writeln(_center(order.serviceMode == 'take-out' ? 'TAKE OUT' : 'DINE IN'));
 
     buffer.writeln(_doubleLine());
+  }
+
+  // ---------------------------------------------------------------------------
+  // BIR SALES INVOICE
+  // ---------------------------------------------------------------------------
+
+  /// Invoice amounts are printed without currency symbol, e.g. `150.00`.
+  static String _birAmount(num amount) => amount.toStringAsFixed(2);
+
+  /// Writes wrapped left-aligned lines, matching the admin template layout.
+  static void _writeBirLines(StringBuffer buffer, String text) {
+    for (final line in _wrap(text)) {
+      buffer.writeln(line);
+    }
+  }
+
+  /// True when the registered tax status is VAT-registered (not NON-VAT).
+  static bool _birIsVatRegistered(Map<String, String> details) {
+    final taxStatus = (details['taxStatus'] ?? '').toUpperCase();
+    if (taxStatus.contains('NON-VAT')) return false;
+    return taxStatus.contains('VAT');
+  }
+
+  static void _writeBirHeader(
+    StringBuffer buffer,
+    Order order,
+    Map<String, String> details,
+    bool includePrinterCommands,
+  ) {
+    final registeredName = details['registeredBusinessName']?.trim() ?? '';
+    final storeName = details['tradeStoreName']?.trim() ?? '';
+    final address = details['registeredAddress']?.trim() ?? '';
+    final taxStatus = details['taxStatus']?.trim() ?? '';
+    final tin = details['tinBranchCode']?.trim() ?? '';
+
+    void writeBold(String text) {
+      if (includePrinterCommands) buffer.write(_boldOn);
+      _writeBirLines(buffer, text);
+      if (includePrinterCommands) buffer.write(_boldOff);
+    }
+
+    if (registeredName.isNotEmpty) writeBold(registeredName);
+    if (storeName.isNotEmpty && storeName != registeredName) {
+      _writeBirLines(buffer, storeName);
+    }
+    if (address.isNotEmpty) {
+      _writeBirLines(buffer, address);
+    }
+    if (tin.isNotEmpty) {
+      _writeBirLines(buffer, 'TIN / BRANCH: $tin');
+    }
+    if (taxStatus.isNotEmpty) {
+      _writeBirLines(buffer, taxStatus);
+    }
+
+    buffer.writeln(_doubleLine());
+    _writeLine(
+      buffer,
+      _center('SALES INVOICE'),
+      bold: true,
+      includePrinterCommands: includePrinterCommands,
+    );
+
+    final ticket =
+        order.ticketNo.trim().isNotEmpty ? order.ticketNo.trim() : order.id;
+    _writeBirLines(buffer, 'Invoice No.: $ticket');
+    final createdAt = ManilaTime.parse(order.createdAt) ?? ManilaTime.now();
+    _writeBirLines(
+      buffer,
+      'Date: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(createdAt)}',
+    );
+  }
+
+  // Column widths for the QTY/ITEM/PRICE/TOTAL invoice table (32 chars total).
+  static const int _birPriceWidth = 7;
+  static const int _birTotalWidth = 8;
+  static const int _birNameWidth =
+      receiptWidth - 4 - _birPriceWidth - _birTotalWidth - 2;
+
+  /// One `QTY  ITEM  PRICE  TOTAL` table row using fixed column widths.
+  static String _birTableRow(String qty, String name, String price, String total) {
+    return '${qty.padRight(4)}${name.padRight(_birNameWidth)} '
+        '${price.padLeft(_birPriceWidth)} ${total.padLeft(_birTotalWidth)}';
+  }
+
+  static void _writeBirItems(
+    StringBuffer buffer,
+    Order order,
+    bool includePrinterCommands,
+  ) {
+    buffer.writeln(_line());
+
+    _writeLine(
+      buffer,
+      _birTableRow('QTY', 'ITEM', 'PRICE', 'TOTAL'),
+      bold: true,
+      includePrinterCommands: includePrinterCommands,
+    );
+
+    buffer.writeln(_line());
+
+    for (final item in order.items) {
+      final nameLines = _wrap(item.name.trim(), width: _birNameWidth);
+      final unitPrice = _birAmount(item.unitPrice);
+      final lineTotal = _birAmount(item.lineTotal);
+
+      for (var i = 0; i < nameLines.length; i++) {
+        final chunk = nameLines[i];
+
+        if (i == 0) {
+          buffer.writeln(
+            _birTableRow('${item.qty}', chunk, unitPrice, lineTotal),
+          );
+        } else {
+          buffer.writeln(_birTableRow('', chunk, '', ''));
+        }
+      }
+    }
+
+    buffer.writeln();
+  }
+
+  static void _writeBirTotals(
+    StringBuffer buffer,
+    Order order,
+    Map<String, String> details,
+    bool includePrinterCommands,
+  ) {
+    buffer.writeln(_line());
+
+    // Prices already include VAT, so the 12% VAT is backed out of the total.
+    final vatRegistered = _birIsVatRegistered(details);
+    final totalDue = order.total;
+    final vatable = vatRegistered ? totalDue / 1.12 : 0.0;
+    final vat = vatRegistered ? totalDue - vatable : 0.0;
+    final vatExempt = vatRegistered ? 0.0 : totalDue;
+
+    buffer.writeln(_row('Vatable Sales', _birAmount(vatable)));
+    buffer.writeln(_row('12% VAT', _birAmount(vat)));
+    buffer.writeln(_row('VAT-Exempt Sales', _birAmount(vatExempt)));
+    buffer.writeln(_row('Zero-Rated Sales', _birAmount(0)));
+
+    buffer.writeln(_line());
+
+    _writeLine(
+      buffer,
+      _row('TOTAL AMOUNT DUE', _birAmount(totalDue)),
+      bold: true,
+      includePrinterCommands: includePrinterCommands,
+    );
+
+    buffer.writeln();
+
+    final paymentMethod = order.paymentMethod.trim().toUpperCase();
+    buffer.writeln(
+      _row('Payment', paymentMethod.isEmpty ? 'N/A' : paymentMethod),
+    );
+
+    if (order.paymentMethod.toLowerCase() == 'cash') {
+      buffer.writeln(_row('Cash Tendered', _birAmount(order.paid)));
+      buffer.writeln(_row('Change', _birAmount(order.change)));
+    }
+  }
+
+  static void _writeBirFooter(
+    StringBuffer buffer,
+    Map<String, String> details,
+  ) {
+    buffer.writeln(_doubleLine());
+
+    final footerDetails = <String, String>{
+      'MIN': 'min',
+      'PTU': 'ptuNumberDate',
+      'POS SERIAL': 'posSerialNumber',
+      'VENDOR': 'softwareVendorNameTinAddress',
+      'BIR ACCREDITATION': 'birAccreditationValidity',
+    };
+
+    for (final entry in footerDetails.entries) {
+      final value = details[entry.value]?.trim() ?? '';
+      if (value.isNotEmpty) {
+        _writeBirLines(buffer, '${entry.key}: $value');
+      }
+    }
+
+    if ((details['taxStatus'] ?? '').toUpperCase().contains('NON-VAT')) {
+      _writeBirLines(buffer, 'THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX');
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -388,11 +568,6 @@ class PrinterService {
     StringBuffer buffer,
   ) {
     buffer.writeln();
-    buffer.writeln(_center(cafeTagline));
-    buffer.writeln();
-    buffer.writeln(_center('Thank you!'));
-    buffer.writeln(_center('Please come again.'));
-    buffer.writeln();
 
     buffer.writeln(_center('***'));
   }
@@ -405,10 +580,26 @@ class PrinterService {
   static String formatReceipt(
     Order order, {
     bool includePrinterCommands = false,
+    bool birCopy = false,
+    Map<String, String> birDetails = const {},
   }) {
     final buffer = StringBuffer();
 
-    _writeHeader(buffer, order, includePrinterCommands);
+    if (birCopy) {
+      _writeBirHeader(buffer, order, birDetails, includePrinterCommands);
+      _writeBirItems(buffer, order, includePrinterCommands);
+      _writeBirTotals(buffer, order, birDetails, includePrinterCommands);
+      _writeBirFooter(buffer, birDetails);
+
+      return buffer.toString().trimRight();
+    }
+
+    _writeHeader(
+      buffer,
+      order,
+      includePrinterCommands,
+      includeBusinessInfo: false,
+    );
 
     // ITEMS HEADER
     _writeLine(
@@ -436,6 +627,19 @@ class PrinterService {
 
     return buffer.toString().trimRight();
   }
+
+  /// Returns the BIR version of the customer receipt with merchant details
+  /// that must be filled in for the registered establishment.
+  static String formatBirReceipt(
+    Order order, {
+    bool includePrinterCommands = false,
+    Map<String, String> birDetails = const {},
+  }) => formatReceipt(
+        order,
+        includePrinterCommands: includePrinterCommands,
+        birCopy: true,
+        birDetails: birDetails,
+      );
 
   // ---------------------------------------------------------------------------
   // DRINK CATEGORY
@@ -551,11 +755,6 @@ class PrinterService {
 
     final ticket =
         order.ticketNo.trim().isNotEmpty ? order.ticketNo.trim() : 'N/A';
-
-    // HEADER
-    buffer.writeln(
-      _cupCenter(cafeName.toUpperCase()),
-    );
 
     buffer.writeln(_cupLine());
 

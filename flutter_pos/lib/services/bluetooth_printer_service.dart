@@ -156,7 +156,12 @@ class BluetoothPrinterService extends ChangeNotifier {
     if (notify) notifyListeners();
   }
 
-  Future<void> printReceipt(Order order) async {
+  Future<void> printReceipt(
+    Order order, {
+    bool includeCustomerCopy = true,
+    bool includeBirCopy = false,
+    Map<String, String> birDetails = const {},
+  }) async {
     final connection = _connections[PrinterRole.receipt];
     if (connection == null || !connection.isConnected) {
       throw StateError('Connect a receipt printer from the POS menu first.');
@@ -164,10 +169,20 @@ class BluetoothPrinterService extends ChangeNotifier {
     final bytes = <int>[
       0x1B,
       0x40,
-      ...utf8.encode(
-        PrinterService.formatReceipt(order, includePrinterCommands: true),
-      ),
-      0x0A,
+      if (includeCustomerCopy) ...[
+        ...utf8.encode(
+          PrinterService.formatReceipt(order, includePrinterCommands: true),
+        ),
+        0x0A,
+      ],
+      if (includeBirCopy) ...[
+        ...utf8.encode(PrinterService.formatBirReceipt(
+          order,
+          includePrinterCommands: true,
+          birDetails: birDetails,
+        )),
+        0x0A,
+      ],
       0x1D,
       0x56,
       0x41,
