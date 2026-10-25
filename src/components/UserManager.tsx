@@ -23,7 +23,7 @@ import {
   updateStaffPassword,
   updateLoginGates,
 } from "@/actions/users";
-import { saveAttendanceSettings } from "@/actions/attendance";
+import { getAttendancePhotoUrl, saveAttendanceSettings } from "@/actions/attendance";
 import { createWorkShift, deleteWorkShift } from "@/actions/shifts";
 import type { PublicStaffUser } from "@/lib/users";
 import { DEFAULT_STAFF_PERMISSIONS } from "@/lib/users";
@@ -137,6 +137,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
   const [payRate, setPayRate] = useState("");
   const [overtimeRate, setOvertimeRate] = useState("1.5");
   const [attendanceAuthMode, setAttendanceAuthMode] = useState<AttendanceAuthMode>(attendanceSettings?.attendanceAuthMode ?? "username_password");
+  const [attendancePhoto, setAttendancePhoto] = useState<{ url: string; name: string; type: "Clock-in" | "Clock-out" } | null>(null);
   const [shiftName, setShiftName] = useState("");
   const [shiftDate, setShiftDate] = useState(phDateString());
   const [shiftStartTime, setShiftStartTime] = useState("09:00");
@@ -261,6 +262,16 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
   const selectedStaffIsOnShift = allSessions.some(
     (shift) => shift.userId === punchUserId && !shift.logoutAt,
   );
+
+  async function openAttendancePhoto(activityId: string, name: string, type: "Clock-in" | "Clock-out") {
+    try {
+      const url = await getAttendancePhotoUrl(activityId);
+      setAttendancePhoto({ url, name, type });
+      setNotice(null);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not open attendance photo.");
+    }
+  }
 
   // Filter sessions based on selectedDate
   const sessions = useMemo(() => {
@@ -991,6 +1002,9 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                 </div>
               </div>
             </div>
+            <p className="text-xs text-neutral-500">
+              Attendance photos are captured only when the Owner selects a photo-based attendance method. Use “View photo” beside a punch time to open its private image.
+            </p>
 
             <form
               className="flex flex-col gap-2 rounded-2xl border border-neutral-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
@@ -1082,7 +1096,20 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                                 className={`${field} min-w-48`}
                                 required
                               />
-                            ) : row.loginAt ? phDateTimeLabel(row.loginAt) : "—"}
+                            ) : (
+                              <>
+                                {row.loginAt ? phDateTimeLabel(row.loginAt) : "—"}
+                                {row.loginId && loginActivity.find((entry) => entry.id === row.loginId)?.photoPath ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => void openAttendancePhoto(row.loginId!, row.name, "Clock-in")}
+                                    className="ml-2 text-xs font-medium text-[#4353ff] hover:underline"
+                                  >
+                                    View photo
+                                  </button>
+                                ) : null}
+                              </>
+                            )}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             {isEditing && row.logoutId ? (
@@ -1093,7 +1120,20 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                                 className={`${field} min-w-48`}
                                 required
                               />
-                            ) : row.logoutAt ? phDateTimeLabel(row.logoutAt) : "Still in"}
+                            ) : (
+                              <>
+                                {row.logoutAt ? phDateTimeLabel(row.logoutAt) : "Still in"}
+                                {row.logoutId && loginActivity.find((entry) => entry.id === row.logoutId)?.photoPath ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => void openAttendancePhoto(row.logoutId!, row.name, "Clock-out")}
+                                    className="ml-2 text-xs font-medium text-[#4353ff] hover:underline"
+                                  >
+                                    View photo
+                                  </button>
+                                ) : null}
+                              </>
+                            )}
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex justify-end gap-2 text-xs font-medium">
@@ -1177,6 +1217,26 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                 </tbody>
               </table>
             </div>
+            {attendancePhoto ? (
+              <div
+                className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/70 p-4"
+                role="dialog"
+                aria-modal="true"
+                aria-label={`${attendancePhoto.type} photo for ${attendancePhoto.name}`}
+                onClick={() => setAttendancePhoto(null)}
+              >
+                <div className="w-full max-w-xl rounded-2xl bg-white p-4 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-slate-900">{attendancePhoto.name} · {attendancePhoto.type}</p>
+                      <p className="text-xs text-slate-500">Attendance photo</p>
+                    </div>
+                    <button type="button" onClick={() => setAttendancePhoto(null)} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm">Close</button>
+                  </div>
+                  <img src={attendancePhoto.url} alt={`${attendancePhoto.type} photo for ${attendancePhoto.name}`} loading="lazy" decoding="async" className="max-h-[70vh] w-full rounded-xl bg-slate-100 object-contain" />
+                </div>
+              </div>
+            ) : null}
           </>
         ) : null}
 
