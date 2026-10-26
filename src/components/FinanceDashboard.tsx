@@ -641,7 +641,21 @@ export function FinanceDashboard({
             <tbody>{attendanceByStaff.map(({ staff: user, todayStatus, present, absent, late }) => (
               <tr key={user.id} className="border-b border-neutral-50">
                 <td className="py-2"><span className="font-medium">{user.name}</span><span className="ml-2 text-xs text-neutral-500">{user.role === "barista" ? "Barista" : "Cashier"}</span></td>
-                <td className="py-2">{todayStatus}</td>
+                <td className="py-2">
+                  <span className="inline-flex items-center gap-2">
+                    <span
+                      aria-hidden="true"
+                      className={`size-2.5 rounded-full ${
+                        todayStatus === "Present" || todayStatus === "Late"
+                          ? "bg-emerald-500"
+                          : todayStatus === "Absent"
+                            ? "bg-red-500"
+                            : "bg-neutral-400"
+                      }`}
+                    />
+                    {todayStatus}
+                  </span>
+                </td>
                 <td className="py-2 text-right">{present}</td>
                 <td className="py-2 text-right">{absent}</td>
                 <td className="py-2 text-right">{late}</td>
@@ -703,42 +717,6 @@ export function FinanceDashboard({
         </div>
       </section>
 
-      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <div><h2 className="text-xs tracking-[0.2em] text-neutral-500 uppercase">Payroll & Cash Advance (Vale)</h2><p className="mt-1 text-xs text-neutral-500">Hours are based on shift login/logout records; overtime after 8 hours is paid at the configured multiplier.</p></div>
-        {staff.length === 0 ? <p className="text-sm text-neutral-500">No Barista or Cashier staff profiles found.</p> : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1000px] text-left text-sm">
-              <thead className="border-b border-neutral-100 text-xs text-neutral-500"><tr><th className="py-2">Staff</th><th className="py-2 text-right">Hours</th><th className="py-2 text-right">Gross Pay</th><th className="py-2">Vale</th><th className="py-2">Tardiness</th><th className="py-2 text-right">Net Pay</th><th className="py-2">Action</th></tr></thead>
-              <tbody>{staff.map((user) => {
-                const hours = calculatePayrollHours(user.id, sessions, period.from, period.to);
-                const gross = calculateGrossPay(user, hours);
-                const record = payrollForStaff(user.id);
-                const advance = record?.cashAdvance ?? 0;
-                const tardy = record?.tardinessDeduction ?? 0;
-                const net = Math.max(0, gross - advance - tardy);
-                return (
-                  <tr key={user.id} className="border-b border-neutral-50">
-                    <td className="py-2"><p className="font-medium">{user.name}</p><p className="text-xs text-neutral-500">{user.role === "barista" ? "Barista" : "Cashier"}</p></td>
-                    <td className="py-2 text-right">{hours.hours.toFixed(2)}</td>
-                    <td className="py-2 text-right">{formatMoney(record?.grossPay ?? gross)}</td>
-                    <td className="py-2"><input key={`${user.id}-${period.from}-${period.to}-${advance}`} name="advance" form={`payroll-${user.id}`} aria-label={`${user.name} cash advance`} type="number" min="0" step="0.01" defaultValue={advance} className="w-28 rounded border border-neutral-300 px-2 py-1.5" /></td>
-                    <td className="py-2"><input key={`${user.id}-${period.from}-${period.to}-${tardy}`} name="tardy" form={`payroll-${user.id}`} aria-label={`${user.name} tardiness deduction`} type="number" min="0" step="0.01" defaultValue={tardy} className="w-28 rounded border border-neutral-300 px-2 py-1.5" /></td>
-                    <td className="py-2 text-right font-semibold">{formatMoney(record?.netPay ?? net)}</td>
-                    <td className="py-2">
-                      {record?.status === "paid" ? <span className="text-emerald-700">Paid / Released</span> : (
-                        <div className="flex gap-2">
-                          <form id={`payroll-${user.id}`} data-payroll-user={user.id} onSubmit={(event) => { event.preventDefault(); updatePayrollDraft(user.id); }}><button type="submit" disabled={pending || Boolean(payrollError)} className="rounded border border-slate-300 px-2 py-1.5 text-xs">Save</button></form>
-                          {record ? <button type="button" disabled={pending} onClick={() => void perform(() => releasePayroll(record.id), "Payroll paid and recorded as an expense.")} className="rounded bg-[#101d37] px-2 py-1.5 text-xs text-white">Mark Paid</button> : null}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}</tbody>
-            </table>
-          </div>
-        )}
-      </section>
 
       <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xs tracking-[0.2em] text-neutral-500 uppercase">Inventory Value & Cost of Goods Sold</h2><p className="mt-1 text-xs text-neutral-500">Inventory value uses remaining purchase units × configured unit cost.</p></div><div className="flex gap-5 text-sm"><span>Inventory value <b>{formatMoney(totalInventoryValue)}</b></span><span>Period COGS <b>{formatMoney(totalCogs)}</b></span></div></div>

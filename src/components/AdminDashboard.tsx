@@ -698,7 +698,7 @@ export function AdminDashboard({
         <div className={`min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 ${isTodaySelected ? "xl:col-span-2" : ""}`}>
           <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-[10px] tracking-[0.2em] text-neutral-500 uppercase sm:text-xs sm:tracking-[0.25em]">
-              Peak hours <span className="hidden sm:inline">(by item volume) · 10:00 AM – 12:00 AM</span>
+              Peak hours <span className="hidden sm:inline">(by item volume) · 8:00 AM – 11:00 PM</span>
             </h2>
           </div>
           <div className="overflow-x-auto">
