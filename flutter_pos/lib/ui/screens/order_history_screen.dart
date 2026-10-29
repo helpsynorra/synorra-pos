@@ -505,7 +505,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
               children: [
                 const Row(
                   children: [
-                    const Icon(Icons.delete_outline_rounded,
+                    Icon(Icons.delete_outline_rounded,
                         color: Color(0xFFB45309), size: 24),
                     SizedBox(width: 8),
                     Text('Waste Record',

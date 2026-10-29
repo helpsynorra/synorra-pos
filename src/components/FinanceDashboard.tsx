@@ -4,20 +4,17 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   createAdminLedgerEntry,
   deleteAdminLedgerEntry,
-  releasePayroll,
   savePayrollDraft,
   setAdminLedgerEntryStatus,
-  setCashDrawerOpeningFloat,
 } from "@/actions/admin-ledger";
 import { getAttendancePhotoUrl } from "@/actions/attendance";
-import { closeWorkShift } from "@/actions/shifts";
 import { formatMoney } from "@/lib/menu";
 import { calculateGrossPay, calculatePayrollHours, calculatePayrollHoursBetween } from "@/lib/payroll";
 import { pairLoginSessions } from "@/lib/staff-sessions";
-import { ingredientsForOrderLine } from "@/lib/inventory";
 import { shiftAttendanceStatus, workShiftInterval } from "@/lib/shift-reports";
-import { liveOrders, sumSales } from "@/lib/analytics";
-import { phDateString, phDateTimeLabel, phPeriodBounds, phTimestamp, type PeriodRange } from "@/lib/datetime";
+import { liveOrders, paymentStats, sumSales } from "@/lib/analytics";
+import { paymentLabel } from "@/lib/payments";
+import { phDateString, phDateTimeLabel, phDateRangeUtcBounds, phPeriodBounds, phTimestamp, type PeriodRange } from "@/lib/datetime";
 import type {
   AdminLedgerCategory,
   AdminLedgerEntry,
@@ -49,9 +46,9 @@ function Card({ label, value, hint }: { label: string; value: number; hint?: str
   );
 }
 
-function inPeriod(date: string, start: number, end: number) {
+function inPeriod(date: string, start: number, endExclusive: number) {
   const time = phTimestamp(date);
-  return time >= start && time <= end;
+  return time >= start && time < endExclusive;
 }
 
 async function loadAdminHistoryPages<T>(
@@ -76,6 +73,28 @@ async function loadAdminHistoryPages<T>(
     if (!result.hasMore) return rows;
   }
   throw new Error("Finance history exceeds the supported page limit.");
+}
+
+type PaymentSummaryRow = { method: string; count: number; sales: number };
+
+function isPaymentSummary(value: unknown): value is { payments: PaymentSummaryRow[]; totals: { sales: number } } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const summary = value as Record<string, unknown>;
+  if (!summary.totals || typeof summary.totals !== "object" || Array.isArray(summary.totals)) return false;
+  const totals = summary.totals as Record<string, unknown>;
+  return typeof totals.sales === "number" &&
+    Number.isFinite(totals.sales) &&
+    Array.isArray(summary.payments) &&
+    summary.payments.every((entry) =>
+      Boolean(entry) &&
+      typeof entry === "object" &&
+      !Array.isArray(entry) &&
+      typeof (entry as Record<string, unknown>).method === "string" &&
+      typeof (entry as Record<string, unknown>).count === "number" &&
+      Number.isFinite((entry as Record<string, unknown>).count) &&
+      typeof (entry as Record<string, unknown>).sales === "number" &&
+      Number.isFinite((entry as Record<string, unknown>).sales),
+    );
 }
 
 function LedgerCard({
@@ -157,8 +176,8 @@ function LedgerCard({
           </button>
         </form>
       ) : null}
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-left text-sm">
+      <div className={entries.length > 0 ? "overflow-x-auto" : "overflow-hidden"}>
+        <table className={`w-full text-left text-sm ${entries.length > 0 ? "min-w-[640px]" : ""}`}>
           <thead className="border-b border-neutral-100 text-xs text-neutral-400">
             <tr>
               <th className="py-2">Title / Party</th>
@@ -229,7 +248,6 @@ export function FinanceDashboard({
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [selectedShiftId, setSelectedShiftId] = useState("all");
-  const [closingCashDrafts, setClosingCashDrafts] = useState<Record<string, string>>({});
   const [attendancePhotoPage, setAttendancePhotoPage] = useState(0);
   const [viewingAttendancePhoto, setViewingAttendancePhoto] = useState<{
     url: string;
@@ -237,9 +255,9 @@ export function FinanceDashboard({
     type: "login" | "logout";
     at: string;
   } | null>(null);
-  const [openingFloat, setOpeningFloat] = useState(String(store.pos.cashDrawerOpeningFloat ?? 0));
   const [remoteOrders, setRemoteOrders] = useState<Order[]>(store.orders);
   const [remoteLoginActivity, setRemoteLoginActivity] = useState<LoginActivity[]>(store.loginActivity ?? []);
+  const [remotePayments, setRemotePayments] = useState<{ rangeKey: string; payments: PaymentSummaryRow[]; totalSales: number } | null>(null);
   const [historyLoading, setHistoryLoading] = useState(remoteHistory);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const activity = remoteHistory ? remoteLoginActivity : store.loginActivity ?? [];
@@ -254,35 +272,27 @@ export function FinanceDashboard({
   const period = rangeType === "custom"
     ? { from: customStart, to: customEnd }
     : phPeriodBounds(rangeType as PeriodRange);
-  const start = phTimestamp(`${period.from}T00:00:00+08:00`);
-  const end = phTimestamp(`${period.to}T23:59:59.999+08:00`);
+  const periodBounds = useMemo(
+    () => phDateRangeUtcBounds(period.from, period.to),
+    [period.from, period.to],
+  );
+  const start = periodBounds ? phTimestamp(periodBounds.start) : 0;
+  const endExclusive = periodBounds ? phTimestamp(periodBounds.endExclusive) : 0;
+  const periodKey = `${period.from}:${period.to}`;
   const allLiveOrders = liveOrders(financeOrders);
-  const periodOrders = allLiveOrders.filter((order) => inPeriod(order.createdAt, start, end));
-  const expenses = initialExpenses.filter((entry) => inPeriod(entry.date, start, end));
-  const credits = initialCredits.filter((entry) => inPeriod(entry.date, start, end));
+  const periodOrders = allLiveOrders.filter((order) => inPeriod(order.createdAt, start, endExclusive));
+  const expenses = initialExpenses.filter((entry) => inPeriod(entry.date, start, endExclusive));
+  const credits = initialCredits.filter((entry) => inPeriod(entry.date, start, endExclusive));
   const totalRevenue = sumSales(periodOrders);
   const totalExpenses = expenses.reduce((sum, entry) => sum + entry.amount, 0);
   const outstandingCredits = credits.filter((entry) => entry.status !== "settled").reduce((sum, entry) => sum + entry.amount, 0);
-  const cashSales = periodOrders.reduce((sum, order) => {
-    const method = order.paymentMethod ?? "cash";
-    if (method === "cash") return sum + order.total;
-    if (method.startsWith("split:")) {
-      const cash = /(?:^|,)cash=([\d.]+)/.exec(method);
-      return sum + (cash ? Number(cash[1]) || 0 : 0);
-    }
-    return sum;
-  }, 0);
-  const cashExpenses = expenses.filter((entry) => entry.kind === "expense" && entry.paymentSource === "cash")
-    .reduce((sum, entry) => sum + entry.amount, 0);
-  const drawerBalance = Number(openingFloat) + cashSales - cashExpenses;
-
   useEffect(() => {
-    if (!remoteHistory || period.from > period.to) return;
+    if (!remoteHistory || !periodBounds) return;
     let active = true;
     const query = new URLSearchParams({ from: period.from, to: period.to });
     const load = async () => {
       try {
-        const [orders, activity] = await Promise.all([
+        const [orders, activity, paymentResponse] = await Promise.all([
           loadAdminHistoryPages<Order>(
             (page) => `/api/admin/history?${new URLSearchParams({ ...Object.fromEntries(query), kind: "transactions", page: String(page), includeActivity: "false" })}`,
             "orders",
@@ -291,10 +301,24 @@ export function FinanceDashboard({
             (page) => `/api/admin/login-activity?${new URLSearchParams({ ...Object.fromEntries(query), page: String(page) })}`,
             "activity",
           ),
+          fetch(`/api/admin/sales-summary?${query}`, { cache: "no-store" }),
         ]);
+        const paymentSummary: unknown = await paymentResponse.json();
+        if (!paymentResponse.ok) {
+          const errorMessage = paymentSummary && typeof paymentSummary === "object" && "error" in paymentSummary
+            ? String(paymentSummary.error)
+            : "Unable to load payment breakdown.";
+          throw new Error(errorMessage);
+        }
+        if (!isPaymentSummary(paymentSummary)) throw new Error("Payment breakdown response was invalid.");
         if (!active) return;
         setRemoteOrders(orders);
         setRemoteLoginActivity(activity);
+        setRemotePayments({
+          rangeKey: periodKey,
+          payments: paymentSummary.payments,
+          totalSales: paymentSummary.totals.sales,
+        });
       } catch (error) {
         if (active) setHistoryError(error instanceof Error ? error.message : "Unable to load Finance history.");
       } finally {
@@ -303,7 +327,7 @@ export function FinanceDashboard({
     };
     void load();
     return () => { active = false; };
-  }, [period.from, period.to, remoteHistory]);
+  }, [period.from, period.to, periodBounds, periodKey, remoteHistory]);
 
   function prepareHistoryReload() {
     if (!remoteHistory) return;
@@ -314,66 +338,60 @@ export function FinanceDashboard({
     setAttendancePhotoPage(0);
   }
 
-  const paymentBreakdown = (() => {
-    const totals = new Map<string, number>([["Cash", 0], ["GCash / E-Wallets", 0], ["Card", 0]]);
-    for (const order of periodOrders) {
-      const method = order.paymentMethod ?? "cash";
-      if (method === "cash") totals.set("Cash", (totals.get("Cash") ?? 0) + order.total);
-      else if (method === "gcash" || method === "maya") totals.set("GCash / E-Wallets", (totals.get("GCash / E-Wallets") ?? 0) + order.total);
-      else if (method.startsWith("split:")) {
-        for (const [key, label] of [["cash", "Cash"], ["gcash", "GCash / E-Wallets"], ["maya", "GCash / E-Wallets"], ["card", "Card"]] as const) {
-          const amount = new RegExp("(?:^|,)" + key + "=([0-9.]+)").exec(method)?.[1];
-          if (amount) totals.set(label, (totals.get(label) ?? 0) + Number(amount));
-        }
-      }
-    }
-    return Array.from(totals, ([label, amount]) => ({ label, amount }));
-  })();
+  const localPaymentStats = paymentStats(periodOrders);
+  const paymentSummary = remoteHistory && remotePayments?.rangeKey === periodKey
+    ? remotePayments
+    : null;
+  const paymentBreakdown = remoteHistory
+    ? (paymentSummary?.payments ?? []).map((payment) => ({
+        label: paymentLabel(payment.method),
+        count: payment.count,
+        amount: payment.sales,
+      }))
+    : localPaymentStats.map((payment) => ({
+        label: payment.label,
+        count: payment.count,
+        amount: payment.sales,
+      }));
+  const paymentTotal = paymentSummary?.totalSales ?? paymentBreakdown.reduce((sum, payment) => sum + payment.amount, 0);
 
-  const cogsRows = (() => {
-    const totals = new Map<string, { quantity: number; sales: number; cogs: number }>();
+  const itemSoldRows = (() => {
+    const totals = new Map<string, { quantity: number; sales: number }>();
     for (const order of periodOrders) {
       const orderGross = order.items.reduce((sum, line) => sum + line.price * line.qty, 0);
       for (const line of order.items) {
         const name = line.name.trim() || line.productId;
-        const current = totals.get(name) ?? { quantity: 0, sales: 0, cogs: 0 };
-        const ingredients = ingredientsForOrderLine(store, { ...line, qty: 1 });
-        const lineCost = ingredients.reduce((sum, ingredient) => {
-          const item = store.inventory.find((inventoryItem) =>
-            inventoryItem.id === ingredient.inventoryItemId ||
-            inventoryItem.name.trim().toLowerCase() === ingredient.name.trim().toLowerCase(),
-          );
-          const packageSize = item?.purchaseUnitSize && item.purchaseUnitSize > 0 ? item.purchaseUnitSize : 1;
-          return sum + (item ? ingredient.amount / packageSize * item.cost * line.qty : 0);
-        }, 0);
+        const current = totals.get(name) ?? { quantity: 0, sales: 0 };
         current.quantity += line.qty;
         current.sales += orderGross > 0 ? order.total * line.price * line.qty / orderGross : 0;
-        current.cogs += lineCost;
         totals.set(name, current);
       }
     }
-    return Array.from(totals, ([name, values]) => ({
-      name,
-      ...values,
-      grossProfit: values.sales - values.cogs,
-      margin: values.sales > 0 ? (values.sales - values.cogs) / values.sales * 100 : 0,
-    })).sort((a, b) => b.grossProfit - a.grossProfit);
+    return Array.from(totals, ([name, values]) => ({ name, ...values }))
+      .sort((a, b) => b.sales - a.sales);
   })();
-  const totalCogs = cogsRows.reduce((sum, row) => sum + row.cogs, 0);
-  const totalInventoryValue = store.inventory.reduce((sum, item) => {
-    const purchaseSize = item.purchaseUnitSize && item.purchaseUnitSize > 0 ? item.purchaseUnitSize : 1;
-    return sum + item.stock / purchaseSize * item.cost;
-  }, 0);
   const canEdit = !initialLedgerError;
   const staff = store.users.filter((user) => user.role === "barista" || user.role === "pos_cashier");
   const periodShifts = (store.workShifts ?? []).filter((shift) => shift.date >= period.from && shift.date <= period.to);
   const activeShiftFilter = periodShifts.some((shift) => shift.id === selectedShiftId) ? selectedShiftId : "all";
+  const shiftIntervals = periodShifts.map((shift) => ({
+    shift,
+    interval: workShiftInterval(shift),
+  }));
+  const orderShiftAssignments = new Map<string, string>();
+  for (const order of allLiveOrders) {
+    const createdAt = phTimestamp(order.createdAt);
+    const matchingShifts = shiftIntervals
+      .filter(({ interval }) => createdAt >= interval.start && createdAt < interval.end)
+      .sort((left, right) =>
+        right.interval.start - left.interval.start ||
+        left.shift.id.localeCompare(right.shift.id),
+      );
+    if (matchingShifts[0]) orderShiftAssignments.set(order.id, matchingShifts[0].shift.id);
+  }
   const allShiftReports = periodShifts.map((shift) => {
     const interval = workShiftInterval(shift);
-    const shiftOrders = allLiveOrders.filter((order) => {
-      const createdAt = phTimestamp(order.createdAt);
-      return createdAt >= interval.start && createdAt < interval.end;
-    });
+    const shiftOrders = allLiveOrders.filter((order) => orderShiftAssignments.get(order.id) === shift.id);
     const sales = shiftOrders.reduce((sum, order) => sum + order.total, 0);
     const byPayment = { cash: 0, eWallet: 0, card: 0 };
     for (const order of shiftOrders) {
@@ -387,9 +405,6 @@ export function FinanceDashboard({
         }
       }
     }
-    const cashExpenses = initialExpenses
-      .filter((entry) => entry.kind === "expense" && entry.paymentSource === "cash" && entry.workShiftId === shift.id)
-      .reduce((sum, entry) => sum + entry.amount, 0);
     const attendanceRows = shift.staffUserIds.flatMap((userId) => {
       const user = staff.find((entry) => entry.id === userId);
       if (!user) return [];
@@ -406,8 +421,6 @@ export function FinanceDashboard({
       interval,
       sales,
       byPayment,
-      cashExpenses,
-      expectedCash: shift.openingFloat + byPayment.cash - cashExpenses,
       attendanceRows,
       attendanceCounts: attendanceRows.reduce(
         (counts, row) => {
@@ -423,10 +436,6 @@ export function FinanceDashboard({
     };
   });
   const shiftReports = allShiftReports.filter(({ shift }) => activeShiftFilter === "all" || shift.id === activeShiftFilter);
-  const unassignedSales = periodOrders.filter((order) => {
-    const createdAt = phTimestamp(order.createdAt);
-    return !allShiftReports.some(({ interval }) => createdAt >= interval.start && createdAt < interval.end);
-  }).reduce((sum, order) => sum + order.total, 0);
   const todayShiftAttendance = (store.workShifts ?? [])
     .filter((shift) => shift.date === today && (activeShiftFilter === "all" || shift.id === activeShiftFilter))
     .flatMap((shift) => shift.staffUserIds.flatMap((userId) =>
@@ -583,21 +592,21 @@ export function FinanceDashboard({
               <label className="text-xs text-neutral-600">From <input type="date" value={customStart} onChange={(event) => {
                 const next = event.target.value;
                 setCustomStart(next);
-                if (remoteHistory && next > customEnd) {
+                if (!next || next > customEnd) {
                   setRemoteOrders([]);
                   setRemoteLoginActivity([]);
                   setHistoryLoading(false);
-                  setHistoryError("The start date must be on or before the end date.");
+                  setHistoryError(next ? "The start date must be on or before the end date." : "Select a valid start date.");
                 } else prepareHistoryReload();
               }} className="rounded border border-neutral-300 bg-white p-2" /></label>
               <label className="text-xs text-neutral-600">To <input type="date" value={customEnd} onChange={(event) => {
                 const next = event.target.value;
                 setCustomEnd(next);
-                if (remoteHistory && customStart > next) {
+                if (!next || customStart > next) {
                   setRemoteOrders([]);
                   setRemoteLoginActivity([]);
                   setHistoryLoading(false);
-                  setHistoryError("The end date must be on or after the start date.");
+                  setHistoryError(next ? "The end date must be on or after the start date." : "Select a valid end date.");
                 } else prepareHistoryReload();
               }} className="rounded border border-neutral-300 bg-white p-2" /></label>
             </>
@@ -607,28 +616,35 @@ export function FinanceDashboard({
 
       {message || initialLedgerError || payrollError || store.workShiftError ? <p role="alert" className={`border p-3 text-sm ${initialLedgerError || payrollError || store.workShiftError || message?.toLowerCase().includes("could not") || message?.toLowerCase().includes("unable") ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{message ?? initialLedgerError ?? payrollError ?? store.workShiftError}</p> : null}
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Card label="Gross Sales / Revenue" value={totalRevenue} />
         <Card label="Total Expenses" value={totalExpenses} hint="Includes restocks and released payroll" />
         <Card label="Outstanding Receivables" value={outstandingCredits} />
         <Card label="Net Profit" value={totalRevenue - totalExpenses} hint="Revenue minus expenses" />
-        <Card label="Cash-in-Drawer / Till" value={drawerBalance} hint="Opening float + cash sales − cash-paid expenses" />
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-2">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div><h2 className="text-xs tracking-[0.2em] text-neutral-500 uppercase">Cash-in-drawer opening float</h2><p className="mt-1 text-xs text-neutral-500">Used as the starting cash balance for the selected period.</p></div>
-            <div className="flex gap-2">
-              <input aria-label="Opening cash float" type="number" min="0" step="0.01" value={openingFloat} onChange={(event) => setOpeningFloat(event.target.value)} className="w-36 rounded border border-neutral-300 px-3 py-2 text-sm" />
-              <button type="button" disabled={pending || !Number.isFinite(Number(openingFloat)) || Number(openingFloat) < 0} onClick={() => void perform(() => setCashDrawerOpeningFloat(Number(openingFloat)), "Opening float saved.")} className="rounded bg-[#101d37] px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Save float</button>
-            </div>
-          </div>
-        </div>
+      <section>
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <h2 className="text-xs tracking-[0.2em] text-neutral-500 uppercase">Revenue by payment method</h2>
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
-            {paymentBreakdown.map((item) => <div key={item.label} className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-neutral-500">{item.label}</p><p className="mt-1 font-semibold">{formatMoney(item.amount)}</p></div>)}
+          <div className="mt-3 divide-y divide-slate-100">
+            {paymentBreakdown.map((item) => (
+              <div key={item.label} className="flex items-center justify-between gap-4 py-2.5 text-sm">
+                <div>
+                  <p className="font-medium text-slate-800">{item.label}</p>
+                  <p className="text-xs text-neutral-500">{item.count} transactions</p>
+                </div>
+                <p className="shrink-0 font-semibold">{formatMoney(item.amount)}</p>
+              </div>
+            ))}
+            {remoteHistory && !paymentSummary ? (
+              <p role={historyLoading ? "status" : "alert"} className="py-3 text-sm text-neutral-500">
+                {historyLoading ? "Loading payment breakdown…" : historyError ?? "Payment breakdown unavailable."}
+              </p>
+            ) : null}
+            <div className="flex items-center justify-between gap-4 border-t border-slate-200 pt-3 text-sm font-bold">
+              <span>Total Revenue</span>
+              <span>{formatMoney(paymentTotal)}</span>
+            </div>
           </div>
         </div>
       </section>
@@ -640,76 +656,39 @@ export function FinanceDashboard({
 
       <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div>
-          <h2 className="text-xs tracking-[0.2em] text-neutral-500 uppercase">Shift sales, attendance & handover</h2>
-          <p className="mt-1 text-xs text-neutral-500">Sales are assigned to the scheduled time window. Payroll hours are actual clocked hours within that shift; shifts are not blocked by an unclosed report.</p>
+          <h2 className="text-xs tracking-[0.2em] text-neutral-500 uppercase">Shift sales & attendance</h2>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1120px] text-left text-sm">
+          <table className="w-full min-w-[850px] table-fixed text-left text-sm">
             <thead className="border-b border-neutral-100 text-xs text-neutral-500">
-              <tr><th className="py-2">Shift</th><th className="py-2">Assigned staff / attendance</th><th className="py-2 text-right">Sales</th><th className="py-2 text-right">Cash sales</th><th className="py-2 text-right">Worked hours / gross payroll</th><th className="py-2">Cash handover</th></tr>
+              <tr><th className="w-[150px] px-3 py-2">Shift</th><th className="w-[230px] px-3 py-2">Assigned staff / attendance</th><th className="w-[160px] px-3 py-2 text-right">Sales</th><th className="w-[150px] px-3 py-2 text-right">Cash sales</th><th className="w-[190px] px-3 py-2 text-right">Worked hours / gross payroll</th></tr>
             </thead>
             <tbody>
               {shiftReports.map((report) => {
-                const variance = report.shift.closingCash == null ? null : report.shift.closingCash - report.expectedCash;
-                const cashDraft = closingCashDrafts[report.shift.id] ?? "";
-                const closingCash = Number(cashDraft);
                 return (
                   <tr key={report.shift.id} className="border-b border-neutral-50 align-top">
-                    <td className="py-3"><p className="font-semibold">{report.shift.name}</p><p className="text-xs text-neutral-500">{report.shift.date} · {report.shift.startTime}–{report.shift.endTime}</p></td>
-                    <td className="py-3">
+                    <td className="px-3 py-3"><p className="font-semibold">{report.shift.name}</p><p className="text-xs text-neutral-500">{report.shift.date} · {report.shift.startTime}–{report.shift.endTime}</p></td>
+                    <td className="px-3 py-3">
                       {report.attendanceRows.length === 0 ? <span className="text-xs text-neutral-400">No active staff assigned</span> : report.attendanceRows.map((row) => (
                         <p key={row.user.id} className="text-xs"><span className="font-medium">{row.user.name}</span><span className="ml-2 text-slate-500">{row.status}</span></p>
                       ))}
                     </td>
-                    <td className="py-3 text-right font-medium">{formatMoney(report.sales)}<span className="block text-[11px] text-neutral-400">e-wallet/card {formatMoney(report.byPayment.eWallet + report.byPayment.card)}</span></td>
-                    <td className="py-3 text-right">{formatMoney(report.byPayment.cash)}</td>
-                    <td className="py-3 text-right">{report.workedHours.toFixed(2)} hrs<span className="block text-xs text-neutral-500">{formatMoney(report.grossPayroll)}</span></td>
-                    <td className="py-3">
-                      <p className="text-xs text-neutral-500">Opening {formatMoney(report.shift.openingFloat)} + cash sales {formatMoney(report.byPayment.cash)} − expenses {formatMoney(report.cashExpenses)}</p>
-                      {report.shift.closingCash == null ? (
-                        <div className="mt-2 flex items-center gap-2">
-                          <input
-                            aria-label={`${report.shift.name} actual closing cash`}
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={cashDraft}
-                            onChange={(event) => setClosingCashDrafts((current) => ({ ...current, [report.shift.id]: event.target.value }))}
-                            placeholder="Actual cash count"
-                            className="w-36 rounded border border-neutral-300 px-2 py-1.5 text-xs"
-                          />
-                          <button
-                            type="button"
-                            disabled={pending || cashDraft.trim() === "" || !Number.isFinite(closingCash) || closingCash < 0}
-                            onClick={() => void perform(() => closeWorkShift(report.shift.id, closingCash), "Shift closing report saved.")}
-                            className="rounded bg-[#101d37] px-2 py-1.5 text-xs font-medium text-white disabled:opacity-40"
-                          >
-                            Record close
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <p className="mt-1 text-xs"><span>Actual {formatMoney(report.shift.closingCash)} · Expected {formatMoney(report.expectedCash)}</span><span className={`ml-2 font-semibold ${variance === 0 ? "text-emerald-700" : "text-red-700"}`}>Variance {formatMoney(variance ?? 0)}</span></p>
-                          {report.shift.closedAt ? <p className="mt-1 text-[11px] text-neutral-400">Closed {phDateTimeLabel(report.shift.closedAt)}{report.shift.closedByUserId ? ` by ${store.users.find((user) => user.id === report.shift.closedByUserId)?.name ?? "Owner"}` : ""}</p> : null}
-                        </>
-                      )}
-                    </td>
+                    <td className="px-3 py-3 text-right font-medium">{formatMoney(report.sales)}<span className="block text-[11px] text-neutral-400">e-wallet/card {formatMoney(report.byPayment.eWallet + report.byPayment.card)}</span></td>
+                    <td className="px-3 py-3 text-right">{formatMoney(report.byPayment.cash)}</td>
+                    <td className="whitespace-nowrap px-3 py-3 text-right">{report.workedHours.toFixed(2)} hrs<span className="block text-xs text-neutral-500">{formatMoney(report.grossPayroll)}</span></td>
                   </tr>
                 );
               })}
-              {shiftReports.length === 0 ? <tr><td colSpan={6} className="py-6 text-center text-xs text-neutral-400">No assigned shifts in this date range.</td></tr> : null}
+              {shiftReports.length === 0 ? <tr><td colSpan={5} className="py-6 text-center text-xs text-neutral-400">No assigned shifts in this date range.</td></tr> : null}
             </tbody>
           </table>
         </div>
-        <p className="text-xs text-neutral-500">Expected cash is opening float plus cash sales minus cash expenses assigned to that shift. Cash expenses logged without a shift remain outside shift reconciliation.</p>
-        <p className="text-xs text-amber-700">Sales not covered by a scheduled shift: {formatMoney(unassignedSales)}</p>
       </section>
 
       <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-xs tracking-[0.2em] text-neutral-500 uppercase">Live staff attendance</h2>
-            <p className="mt-1 text-xs text-neutral-500">Attendance is evaluated against each staff member’s assigned daily shift. Counts cover the selected date range and shift filter.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <label className="flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-xs">
@@ -755,11 +734,9 @@ export function FinanceDashboard({
             ))}{attendanceByStaff.length === 0 ? <tr><td colSpan={5} className="py-5 text-center text-xs text-neutral-400">No attendance staff profiles found.</td></tr> : null}</tbody>
           </table>
         </div>
-        <p className="text-xs text-neutral-500">An absent count is recorded after an assigned shift starts without an overlapping clock-in. Future shifts are not counted.</p>
         <div className="border-t border-slate-100 pt-4">
           <div className="mb-3">
-            <h3 className="text-xs font-semibold tracking-[0.15em] text-neutral-600 uppercase">Attendance photo log · Owner / Finance</h3>
-            <p className="mt-1 text-xs text-neutral-500">Clock-in and clock-out photos captured by the POS appear here. Photos stay private and are opened with a short-lived secure link.</p>
+            <h3 className="text-xs font-semibold tracking-[0.15em] text-neutral-600 uppercase">Attendance photo log</h3>
           </div>
           {attendancePhotos.length === 0 ? (
             <p className="rounded-lg bg-slate-50 px-3 py-4 text-center text-xs text-neutral-500">No attendance photos recorded yet.</p>
@@ -811,8 +788,7 @@ export function FinanceDashboard({
 
 
       <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xs tracking-[0.2em] text-neutral-500 uppercase">Inventory Value & Cost of Goods Sold</h2><p className="mt-1 text-xs text-neutral-500">Inventory value uses remaining purchase units × configured unit cost.</p></div><div className="flex gap-5 text-sm"><span>Inventory value <b>{formatMoney(totalInventoryValue)}</b></span><span>Period COGS <b>{formatMoney(totalCogs)}</b></span></div></div>
-        <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-sm"><thead className="border-b border-neutral-100 text-xs text-neutral-500"><tr><th className="py-2">Item sold</th><th className="py-2 text-right">Qty</th><th className="py-2 text-right">Sales</th><th className="py-2 text-right">COGS</th><th className="py-2 text-right">Gross Profit</th><th className="py-2 text-right">Margin</th></tr></thead><tbody>{cogsRows.length === 0 ? <tr><td colSpan={6} className="py-5 text-center text-xs text-neutral-400">No sales in this range.</td></tr> : cogsRows.map((row) => <tr key={row.name} className="border-b border-neutral-50 text-xs"><td className="py-2 font-medium">{row.name}</td><td className="py-2 text-right">{row.quantity}</td><td className="py-2 text-right">{formatMoney(row.sales)}</td><td className="py-2 text-right">{formatMoney(row.cogs)}</td><td className="py-2 text-right">{formatMoney(row.grossProfit)}</td><td className="py-2 text-right">{row.margin.toFixed(1)}%</td></tr>)}</tbody></table></div>
+        <div className="overflow-x-auto"><table className="w-full min-w-[420px] text-left text-sm"><thead className="border-b border-neutral-100 text-xs text-neutral-500"><tr><th className="py-2">Item sold</th><th className="py-2 text-right">Qty</th><th className="py-2 text-right">Sales</th></tr></thead><tbody>{itemSoldRows.length === 0 ? <tr><td colSpan={3} className="py-5 text-center text-xs text-neutral-400">No sales in this range.</td></tr> : itemSoldRows.map((row) => <tr key={row.name} className="border-b border-neutral-50 text-xs"><td className="py-2 font-medium">{row.name}</td><td className="py-2 text-right">{row.quantity}</td><td className="py-2 text-right">{formatMoney(row.sales)}</td></tr>)}</tbody></table></div>
       </section>
       {viewingAttendancePhoto ? (
         <div

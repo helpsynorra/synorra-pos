@@ -1502,14 +1502,22 @@ export async function createWorkShiftRecord(
   shift: WorkShift,
   createdByUserId: string,
 ): Promise<void> {
+  await createWorkShiftRecords([shift], createdByUserId);
+}
+
+export async function createWorkShiftRecords(
+  shifts: WorkShift[],
+  createdByUserId: string,
+): Promise<void> {
+  if (shifts.length === 0) return;
   await enqueue(async () => {
     const ownerId = await activeOwnerId();
     if (!isRealSupabaseConfigured()) {
       if (!memoryStore) memoryStore = normalizeStore(emptyStore());
-      memoryStore.workShifts.push({ ...shift, ownerId: ownerId ?? undefined });
+      memoryStore.workShifts.push(...shifts.map((shift) => ({ ...shift, ownerId: ownerId ?? undefined })));
       return;
     }
-    const { error } = await supabaseAdmin().from("work_shifts").insert({
+    const { error } = await supabaseAdmin().from("work_shifts").insert(shifts.map((shift) => ({
       id: shift.id,
       owner_id: ownerId,
       shift_name: shift.name,
@@ -1519,8 +1527,8 @@ export async function createWorkShiftRecord(
       opening_float: shift.openingFloat,
       staff_user_ids: shift.staffUserIds,
       created_by_user_id: createdByUserId,
-    });
-    if (error) throw new Error(`Unable to create shift: ${error.message}`);
+    })));
+    if (error) throw new Error(`Unable to create shifts: ${error.message}`);
     invalidateStoreCache();
   });
 }
@@ -1537,6 +1545,33 @@ export async function deleteWorkShiftRecord(shiftId: string): Promise<void> {
     if (ownerId) query = query.eq("owner_id", ownerId);
     const { error } = await query;
     if (error) throw new Error(`Unable to delete shift: ${error.message}`);
+    invalidateStoreCache();
+  });
+}
+
+export async function updateWorkShiftRecord(shift: WorkShift): Promise<void> {
+  await enqueue(async () => {
+    const ownerId = await activeOwnerId();
+    if (!isRealSupabaseConfigured()) {
+      if (!memoryStore) memoryStore = normalizeStore(emptyStore());
+      const index = memoryStore.workShifts.findIndex((entry) => entry.id === shift.id);
+      if (index < 0) throw new Error("Shift was not found.");
+      memoryStore.workShifts[index] = { ...memoryStore.workShifts[index], ...shift };
+      return;
+    }
+    let query = supabaseAdmin()
+      .from("work_shifts")
+      .update({
+        shift_name: shift.name,
+        shift_date: shift.date,
+        start_time: shift.startTime,
+        end_time: shift.endTime,
+        staff_user_ids: shift.staffUserIds,
+      })
+      .eq("id", shift.id);
+    if (ownerId) query = query.eq("owner_id", ownerId);
+    const { error } = await query;
+    if (error) throw new Error(`Unable to update shift: ${error.message}`);
     invalidateStoreCache();
   });
 }

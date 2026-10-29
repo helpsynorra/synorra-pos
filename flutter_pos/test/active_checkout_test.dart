@@ -16,25 +16,6 @@ import 'package:synorra_pos/services/sync_service.dart';
 import 'package:synorra_pos/state/pos_controller.dart';
 import 'package:synorra_pos/ui/widgets/cart_panel.dart';
 
-class _RetryableFailureSupabaseService extends SupabaseService {
-  @override
-  bool get isPosApiTokenExpired => false;
-
-  @override
-  Future<Map<String, dynamic>> pushOrderAtomic(
-    Order order,
-    List<Map<String, dynamic>> deductions, {
-    String? managerUsername,
-    String? managerPassword,
-  }) async {
-    return {
-      'ok': false,
-      'error': 'Connection timed out',
-      'retryable': true,
-    };
-  }
-}
-
 class _TimestampCaptureSupabaseService extends SupabaseService {
   final pushedCreatedAt = <String>[];
   final pushedOrders = <Order>[];
@@ -52,6 +33,28 @@ class _TimestampCaptureSupabaseService extends SupabaseService {
     pushedCreatedAt.add(order.createdAt);
     pushedOrders.add(order);
     return {'ok': true, 'ticketNo': order.ticketNo};
+  }
+
+  @override
+  Future<Map<String, dynamic>> pushSyncBatch(
+    List<Map<String, dynamic>> operations,
+  ) async {
+    final results = <Map<String, dynamic>>[];
+    for (final operation in operations) {
+      if (operation['action'] != 'create_order') {
+        results.add({'ok': true});
+        continue;
+      }
+      final order = Order.fromJson(
+        Map<String, dynamic>.from(operation['order'] as Map),
+      );
+      final deductions = (operation['deductions'] as List? ?? const [])
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList();
+      results.add(await pushOrderAtomic(order, deductions));
+    }
+    return {'ok': true, 'results': results};
   }
 
   @override
@@ -237,13 +240,11 @@ void main() {
     sync.dispose();
   });
 
-  test('queues an order when network fails before connectivity updates',
-      () async {
+  test('checkout saves locally without making a cloud request', () async {
     SharedPreferences.setMockInitialValues({});
     final storage = LocalStorageService();
     await storage.init();
-    final api = _RetryableFailureSupabaseService()
-      ..setPosApiToken('cached-pos-token');
+    final api = _TimestampCaptureSupabaseService();
     final sync = SyncService(localStorage: storage, supabaseService: api);
     final controller = PosController(
       localStorage: storage,
@@ -261,7 +262,8 @@ void main() {
 
     expect(result['ok'], true);
     expect(result['synced'], false);
-    expect(result['networkFailure'], true);
+    expect(result['queued'], true);
+    expect(api.pushedOrders, isEmpty);
     expect(storage.getPendingOrders(), hasLength(1));
     expect(storage.getPendingOrders().single.items.single.name, 'Latte');
 
@@ -283,6 +285,7 @@ void main() {
       supabaseService: api,
       syncService: sync,
     );
+    api.setPosApiToken('cached-pos-token');
     const rayhan = StaffUser(
       id: 'cashier-rayhan',
       username: 'rayhan',
@@ -371,10 +374,12 @@ void main() {
     await backgroundRefresh;
 
     expect(api.authCalls, 1);
-    expect(result['synced'], true);
-    expect(storage.getPendingOrders(), isEmpty);
+    expect(result['synced'], false);
+    expect(result['queued'], true);
+    expect(storage.getPendingOrders(), hasLength(1));
 
     await sync.syncAll();
+    expect(storage.getPendingOrders(), isEmpty);
     controller.dispose();
     sync.dispose();
   });

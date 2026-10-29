@@ -164,7 +164,8 @@ export function phPeriodBounds(range: PeriodRange, now: Date = new Date()): { fr
 
   if (range === "today") return { from: today, to: today };
   if (range === "week") {
-    const start = new Date(Date.UTC(year, month - 1, day - 6));
+    const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    const start = new Date(Date.UTC(year, month - 1, day - weekday));
     return { from: ymd(start.getUTCFullYear(), start.getUTCMonth() + 1, start.getUTCDate()), to: today };
   }
   if (range === "lastWeek") {
@@ -187,4 +188,21 @@ export function phPeriodBounds(range: PeriodRange, now: Date = new Date()): { fr
   }
   if (range === "thisYear") return { from: ymd(year, 1, 1), to: today };
   return { from: ymd(year - 1, 1, 1), to: ymd(year - 1, 12, 31) };
+}
+
+export function phDateRangeUtcBounds(from: string, to: string): { start: string; endExclusive: string } | null {
+  const isValidDate = (value: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const date = new Date(`${value}T00:00:00+08:00`);
+    return !Number.isNaN(date.getTime()) && phDateString(date) === value;
+  };
+  if (!isValidDate(from) || !isValidDate(to) || from > to) return null;
+
+  const [year, month, day] = to.split("-").map(Number);
+  const nextDay = new Date(Date.UTC(year, month - 1, day + 1));
+  const nextDate = ymd(nextDay.getUTCFullYear(), nextDay.getUTCMonth() + 1, nextDay.getUTCDate());
+  return {
+    start: new Date(`${from}T00:00:00+08:00`).toISOString(),
+    endExclusive: new Date(`${nextDate}T00:00:00+08:00`).toISOString(),
+  };
 }

@@ -25,7 +25,7 @@ import {
   updateLoginGates,
 } from "@/actions/users";
 import { getAttendancePhotoUrl, getStaffAvatarUrl, saveAttendanceSettings } from "@/actions/attendance";
-import { createWorkShift, deleteWorkShift } from "@/actions/shifts";
+import { createWorkShift, deleteWorkShift, updateWorkShift } from "@/actions/shifts";
 import type { PublicStaffUser } from "@/lib/users";
 import { DEFAULT_STAFF_PERMISSIONS } from "@/lib/users";
 import { phDateString, phDateTimeInputValue, phDateTimeLabel } from "@/lib/datetime";
@@ -39,6 +39,37 @@ const staffField =
   "w-full rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#58789d] focus:bg-white focus:ring-4 focus:ring-[#e8f0fa]";
 const adminField =
   "h-12 w-full min-w-0 rounded-xl border border-[#dce6f4] bg-white px-3.5 text-sm text-[#243a5e] outline-none transition focus:border-[#58789d] focus:ring-2 focus:ring-[#e8f0fa]";
+
+const scheduleWeekdays = [
+  { value: 1, label: "Monday", shortLabel: "M" },
+  { value: 2, label: "Tuesday", shortLabel: "T" },
+  { value: 3, label: "Wednesday", shortLabel: "W" },
+  { value: 4, label: "Thursday", shortLabel: "Th" },
+  { value: 5, label: "Friday", shortLabel: "F" },
+  { value: 6, label: "Saturday", shortLabel: "Sa" },
+  { value: 0, label: "Sunday", shortLabel: "Su" },
+];
+
+const weekdayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function includeSelectedWeekdays(startDate: string, endDate: string, weekdays: number[]): string {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  if (Number.isNaN(start.getTime())) return endDate;
+
+  const end = new Date(`${endDate}T00:00:00Z`);
+  const maxDate = new Date(start);
+  maxDate.setUTCDate(maxDate.getUTCDate() + 365);
+  const latestDate = !Number.isNaN(end.getTime()) && end >= start
+    ? new Date(Math.min(end.getTime(), maxDate.getTime()))
+    : new Date(start);
+  for (const weekday of weekdays) {
+    const occurrence = new Date(start);
+    const daysUntil = (weekday - occurrence.getUTCDay() + 7) % 7;
+    occurrence.setUTCDate(occurrence.getUTCDate() + daysUntil);
+    if (occurrence <= maxDate && occurrence > latestDate) latestDate.setTime(occurrence.getTime());
+  }
+  return latestDate.toISOString().slice(0, 10);
+}
 
 const staffAvatarUrlCache = new Map<string, { url: string | null; expiresAt: number }>();
 const staffAvatarUrlRequests = new Map<string, Promise<string | null>>();
@@ -246,10 +277,21 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
   const [attendancePhoto, setAttendancePhoto] = useState<{ url: string; name: string; type: "Clock-in" | "Clock-out" } | null>(null);
   const [shiftName, setShiftName] = useState("");
   const [shiftDate, setShiftDate] = useState(phDateString());
+  const [shiftEndDate, setShiftEndDate] = useState(phDateString());
+  const [shiftDaysOfWeek, setShiftDaysOfWeek] = useState<number[]>([]);
   const [shiftStartTime, setShiftStartTime] = useState("09:00");
   const [shiftEndTime, setShiftEndTime] = useState("17:00");
-  const [shiftOpeningFloat, setShiftOpeningFloat] = useState("0");
   const [shiftStaffIds, setShiftStaffIds] = useState<string[]>([]);
+  const [viewingShiftId, setViewingShiftId] = useState<string | null>(null);
+  const [viewingShiftGroupKey, setViewingShiftGroupKey] = useState<string | null>(null);
+  const [editingShift, setEditingShift] = useState(false);
+  const [shiftEditDraft, setShiftEditDraft] = useState<{
+    name: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    staffUserIds: string[];
+  } | null>(null);
   const [changingPasswordId, setChangingPasswordId] = useState<string | null>(null);
   const [staffPasswordDraft, setStaffPasswordDraft] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
@@ -456,6 +498,27 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
     setEditLogoutAt(row.logoutAt ? phDateTimeInputValue(row.logoutAt) : "");
     setNotice(null);
   }
+
+  const shiftGroupsByKey = new Map<string, WorkShift[]>();
+  for (const shift of workShifts) {
+    const key = JSON.stringify([
+      shift.name.trim().toLowerCase(),
+      shift.startTime,
+      shift.endTime,
+      [...shift.staffUserIds].sort(),
+    ]);
+    shiftGroupsByKey.set(key, [...(shiftGroupsByKey.get(key) ?? []), shift]);
+  }
+  const shiftGroups = [...shiftGroupsByKey.entries()]
+    .map(([key, shifts]) => {
+      const sorted = shifts.sort((left, right) => left.date.localeCompare(right.date));
+      const weekdays = [...new Set(sorted.map((shift) => new Date(`${shift.date}T00:00:00Z`).getUTCDay()))]
+        .sort((left, right) => left - right);
+      return { key, shifts: sorted, weekdays };
+    })
+    .sort((left, right) => right.shifts[right.shifts.length - 1].date.localeCompare(left.shifts[left.shifts.length - 1].date));
+  const viewingShiftGroup = shiftGroups.find((group) => group.key === viewingShiftGroupKey) ?? null;
+  const viewingShift = viewingShiftGroup?.shifts.find((shift) => shift.id === viewingShiftId) ?? null;
 
   return (
     <div className="min-h-[calc(100svh-65px)] min-w-0 space-y-5 bg-slate-50/70 p-3 sm:space-y-6 sm:p-5 xl:p-7 2xl:p-9">
@@ -1922,32 +1985,31 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
             <div>
               <p className="text-[11px] font-bold tracking-[0.2em] text-[#58789d] uppercase">Daily assignments</p>
               <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">Staff schedule</h1>
-              <p className="mt-1 text-sm text-slate-500">Create custom shifts for a specific date, assign multiple staff, and set the opening cash float. An end time earlier than the start means the shift ends the next day. Shift hours cannot overlap so sales are attributed once.</p>
+              <p className="mt-1 text-sm text-slate-500">Create a one-time shift or repeat it on selected weekdays within a date range. Shift hours may overlap. An end time earlier than the start means the shift ends the next day.</p>
             </div>
             <form
               className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 sm:p-6"
               onSubmit={(event) => {
                 event.preventDefault();
-                const openingFloat = Number(shiftOpeningFloat);
-                if (!Number.isFinite(openingFloat) || openingFloat < 0) {
-                  setNotice("Enter a valid non-negative opening float.");
-                  return;
-                }
                 setNotice(null);
                 startTransition(async () => {
                   try {
-                    await createWorkShift({
+                    const createdCount = await createWorkShift({
                       name: shiftName,
                       date: shiftDate,
+                      endDate: shiftEndDate,
+                      daysOfWeek: shiftDaysOfWeek,
                       startTime: shiftStartTime,
                       endTime: shiftEndTime,
-                      openingFloat,
                       staffUserIds: shiftStaffIds,
                     });
                     setShiftName("");
                     setShiftStaffIds([]);
-                    setShiftOpeningFloat("0");
-                    setNotice("Shift scheduled.");
+                    setShiftDaysOfWeek([]);
+                    setShiftEndDate(shiftDate);
+                    setNotice(shiftDaysOfWeek.length
+                      ? `Recurring schedule created for ${createdCount} shift${createdCount === 1 ? "" : "s"}.`
+                      : "Shift scheduled.");
                   } catch (error) {
                     setNotice(error instanceof Error ? error.message : "Could not schedule shift.");
                   }
@@ -1959,9 +2021,84 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                 <input value={shiftName} onChange={(event) => setShiftName(event.target.value)} maxLength={50} required placeholder="Morning Shift" className={staffField} />
               </label>
               <label className="space-y-1.5 text-sm font-medium text-slate-700">
-                <span>Date</span>
-                <input type="date" value={shiftDate} onChange={(event) => setShiftDate(event.target.value)} required className={staffField} />
+                <span>Start date</span>
+                <input
+                  type="date"
+                  value={shiftDate}
+                  onChange={(event) => {
+                    const nextDate = event.target.value;
+                    setShiftDate(nextDate);
+                    if (nextDate) {
+                      setShiftEndDate(includeSelectedWeekdays(nextDate, shiftEndDate, shiftDaysOfWeek));
+                    }
+                  }}
+                  required
+                  className={staffField}
+                />
               </label>
+              <div className="space-y-2 sm:col-span-2">
+                <div className="flex flex-wrap gap-2">
+                  {scheduleWeekdays.map((day) => {
+                    const selected = shiftDaysOfWeek.includes(day.value);
+                    return (
+                      <button
+                        key={day.value}
+                        type="button"
+                        aria-label={day.label}
+                        aria-pressed={selected}
+                        onClick={() => {
+                          const nextDays = selected
+                            ? shiftDaysOfWeek.filter((value) => value !== day.value)
+                            : [...shiftDaysOfWeek, day.value];
+                          setShiftDaysOfWeek(nextDays);
+                          if (nextDays.length > 0) {
+                            setShiftEndDate(includeSelectedWeekdays(shiftDate, shiftEndDate, nextDays));
+                          }
+                        }}
+                        className={`flex size-10 items-center justify-center rounded-full border text-sm font-semibold transition ${
+                          selected
+                            ? "border-[#101d37] bg-[#101d37] text-white"
+                            : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"
+                        }`}
+                      >
+                        {day.shortLabel}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-slate-500">Leave all days unselected to schedule only the start date.</p>
+              </div>
+              {shiftDaysOfWeek.length > 0 ? (
+                <label className="space-y-1.5 text-sm font-medium text-slate-700">
+                  <span>Repeat through</span>
+                  <input
+                    type="date"
+                    value={shiftEndDate}
+                    min={shiftDate}
+                    max={(() => {
+                      const date = new Date(`${shiftDate}T00:00:00Z`);
+                      if (Number.isNaN(date.getTime())) return undefined;
+                      date.setUTCDate(date.getUTCDate() + 365);
+                      return date.toISOString().slice(0, 10);
+                    })()}
+                    onChange={(event) => setShiftEndDate(event.target.value)}
+                    required
+                    className={staffField}
+                  />
+                  <span className="block text-xs font-normal text-slate-500">Recurring schedules can cover up to one year at a time.</span>
+                </label>
+              ) : null}
+              <fieldset className="space-y-2 sm:col-span-2">
+                <legend className="text-sm font-medium text-slate-700">Shift presets</legend>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => { setShiftName("Morning Shift"); setShiftStartTime("08:00"); setShiftEndTime("16:00"); }} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-400">
+                    Morning · 08:00 AM–04:00 PM
+                  </button>
+                  <button type="button" onClick={() => { setShiftName("Afternoon Shift"); setShiftStartTime("16:00"); setShiftEndTime("00:00"); }} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-400">
+                    Afternoon · 04:00 PM–12:00 AM
+                  </button>
+                </div>
+              </fieldset>
               <label className="space-y-1.5 text-sm font-medium text-slate-700">
                 <span>Start time</span>
                 <input type="time" value={shiftStartTime} onChange={(event) => setShiftStartTime(event.target.value)} required className={staffField} />
@@ -1969,10 +2106,6 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
               <label className="space-y-1.5 text-sm font-medium text-slate-700">
                 <span>End time</span>
                 <input type="time" value={shiftEndTime} onChange={(event) => setShiftEndTime(event.target.value)} required className={staffField} />
-              </label>
-              <label className="space-y-1.5 text-sm font-medium text-slate-700">
-                <span>Opening cash float (₱)</span>
-                <input type="number" min="0" step="0.01" value={shiftOpeningFloat} onChange={(event) => setShiftOpeningFloat(event.target.value)} required className={staffField} />
               </label>
               <fieldset className="space-y-2 sm:col-span-2">
                 <legend className="text-sm font-medium text-slate-700">Assign staff</legend>
@@ -1997,36 +2130,206 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
             <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
               <table className="w-full min-w-[760px] text-left text-sm">
                 <thead className="border-b border-slate-100 bg-slate-50 text-xs text-slate-500">
-                  <tr><th className="px-4 py-3">Date / Shift</th><th className="px-4 py-3">Hours</th><th className="px-4 py-3">Assigned staff</th><th className="px-4 py-3 text-right">Opening float</th><th className="px-4 py-3">Closing report</th><th className="px-4 py-3 text-right">Action</th></tr>
+                  <tr><th className="px-4 py-3">Shift summary</th><th className="px-4 py-3">Hours</th><th className="px-4 py-3">Assigned staff</th><th className="px-4 py-3">Dates / weekdays</th><th className="px-4 py-3 text-right">Details</th></tr>
                 </thead>
                 <tbody>
-                  {[...workShifts].sort((a, b) => b.date.localeCompare(a.date) || b.startTime.localeCompare(a.startTime)).map((shift) => (
-                    <tr key={shift.id} className="border-b border-slate-50 align-top">
-                      <td className="px-4 py-3"><strong>{shift.name}</strong><span className="block text-xs text-slate-500">{shift.date}</span></td>
-                      <td className="px-4 py-3">{shift.startTime}–{shift.endTime}</td>
-                      <td className="px-4 py-3">{shift.staffUserIds.map((id) => users.find((user) => user.id === id)?.name ?? "Former staff").join(", ") || "—"}</td>
-                      <td className="px-4 py-3 text-right">{formatMoney(shift.openingFloat)}</td>
-                      <td className="px-4 py-3">{shift.closedAt ? `Closed ${phDateTimeLabel(shift.closedAt)}` : "Not closed"}</td>
+                  {shiftGroups.map((group) => {
+                    const first = group.shifts[0];
+                    const last = group.shifts[group.shifts.length - 1];
+                    const staffNames = first.staffUserIds.map((id) => users.find((user) => user.id === id)?.name ?? "Former staff");
+                    return (
+                    <tr key={group.key} className="border-b border-slate-50 align-top">
+                      <td className="px-4 py-3">
+                        <strong>{first.name}</strong>
+                        <span className="block text-xs text-slate-500">{group.shifts.length} shift{group.shifts.length === 1 ? "" : "s"}</span>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3">{first.startTime}–{first.endTime}</td>
+                      <td className="px-4 py-3">{staffNames.join(", ") || "—"}</td>
+                      <td className="px-4 py-3">
+                        <span>{first.date === last.date ? first.date : `${first.date} – ${last.date}`}</span>
+                        {group.shifts.length > 1 ? (
+                          <span className="mt-1 flex flex-wrap gap-1">
+                            {group.weekdays.map((weekday) => (
+                              <span key={weekday} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                                {weekdayNames[weekday]}
+                              </span>
+                            ))}
+                          </span>
+                        ) : null}
+                      </td>
                       <td className="px-4 py-3 text-right">
-                        {!shift.closedAt ? <button type="button" disabled={pending} onClick={() => {
-                          if (!window.confirm(`Delete ${shift.name} on ${shift.date}?`)) return;
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setViewingShiftGroupKey(group.key);
+                            setViewingShiftId(last.id);
+                            setEditingShift(false);
+                            setShiftEditDraft(null);
+                          }}
+                          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                        >
+                          View
+                        </button>
+                      </td>
+                    </tr>
+                    );
+                  })}
+                  {workShifts.length === 0 ? <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-400">No shifts scheduled yet.</td></tr> : null}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ) : null}
+
+        {viewingShift && viewingShiftGroup ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="shift-detail-title"
+            onClick={() => {
+              setViewingShiftId(null);
+              setViewingShiftGroupKey(null);
+              setEditingShift(false);
+            }}
+          >
+            <section
+              className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl sm:p-6"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <header className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[11px] font-bold tracking-[0.2em] text-[#58789d] uppercase">Shift details</p>
+                  <h2 id="shift-detail-title" className="mt-1 text-xl font-bold text-slate-900">{viewingShift.name}</h2>
+                </div>
+                <button type="button" onClick={() => {
+                  setViewingShiftId(null);
+                  setViewingShiftGroupKey(null);
+                  setEditingShift(false);
+                }} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600">Close</button>
+              </header>
+
+              {viewingShiftGroup.shifts.length > 1 ? (
+                <div className="mt-4">
+                  <p className="mb-2 text-xs font-semibold text-slate-500">Dates in this schedule</p>
+                  <div className="flex max-h-28 flex-wrap gap-2 overflow-y-auto">
+                    {viewingShiftGroup.shifts.map((shift) => (
+                      <button
+                        key={shift.id}
+                        type="button"
+                        onClick={() => {
+                          setViewingShiftId(shift.id);
+                          setEditingShift(false);
+                          setShiftEditDraft(null);
+                        }}
+                        className={`rounded-lg border px-2.5 py-1.5 text-xs ${shift.id === viewingShift.id ? "border-[#101d37] bg-[#101d37] text-white" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}
+                      >
+                        {shift.date}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {editingShift ? (
+                <form className="mt-5 space-y-4" onSubmit={(event) => {
+                  event.preventDefault();
+                  if (!shiftEditDraft) return;
+                  startTransition(async () => {
+                    try {
+                      await updateWorkShift({ id: viewingShift.id, ...shiftEditDraft });
+                      setEditingShift(false);
+                      setShiftEditDraft(null);
+                      setNotice("Shift updated.");
+                    } catch (error) {
+                      setNotice(error instanceof Error ? error.message : "Could not update shift.");
+                    }
+                  });
+                }}>
+                  <label className="block space-y-1.5 text-sm font-medium text-slate-700">
+                    <span>Shift name</span>
+                    <input required maxLength={50} value={shiftEditDraft?.name ?? ""} onChange={(event) => setShiftEditDraft((current) => current ? { ...current, name: event.target.value } : current)} className={staffField} />
+                  </label>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <label className="space-y-1.5 text-sm font-medium text-slate-700">
+                      <span>Date</span>
+                      <input type="date" required value={shiftEditDraft?.date ?? ""} onChange={(event) => setShiftEditDraft((current) => current ? { ...current, date: event.target.value } : current)} className={staffField} />
+                    </label>
+                    <label className="space-y-1.5 text-sm font-medium text-slate-700">
+                      <span>Start time</span>
+                      <input type="time" required value={shiftEditDraft?.startTime ?? ""} onChange={(event) => setShiftEditDraft((current) => current ? { ...current, startTime: event.target.value } : current)} className={staffField} />
+                    </label>
+                    <label className="space-y-1.5 text-sm font-medium text-slate-700">
+                      <span>End time</span>
+                      <input type="time" required value={shiftEditDraft?.endTime ?? ""} onChange={(event) => setShiftEditDraft((current) => current ? { ...current, endTime: event.target.value } : current)} className={staffField} />
+                    </label>
+                  </div>
+                  <fieldset className="space-y-2">
+                    <legend className="text-sm font-medium text-slate-700">Assigned staff</legend>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {floorStaff.map((user) => (
+                        <label key={user.id} className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={shiftEditDraft?.staffUserIds.includes(user.id) ?? false}
+                            onChange={() => setShiftEditDraft((current) => current ? {
+                              ...current,
+                              staffUserIds: current.staffUserIds.includes(user.id)
+                                ? current.staffUserIds.filter((id) => id !== user.id)
+                                : [...current.staffUserIds, user.id],
+                            } : current)}
+                          />
+                          {user.name}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <button type="button" onClick={() => { setEditingShift(false); setShiftEditDraft(null); }} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600">Cancel</button>
+                    <button type="submit" disabled={pending} className="rounded-lg bg-[#101d37] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{pending ? "Saving..." : "Save changes"}</button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  <dl className="mt-5 grid gap-4 rounded-xl bg-slate-50 p-4 text-sm sm:grid-cols-2">
+                    <div><dt className="text-xs text-slate-500">Date</dt><dd className="mt-1 font-medium text-slate-900">{viewingShift.date}</dd></div>
+                    <div><dt className="text-xs text-slate-500">Hours</dt><dd className="mt-1 font-medium text-slate-900">{viewingShift.startTime}–{viewingShift.endTime}</dd></div>
+                    <div><dt className="text-xs text-slate-500">Assigned staff</dt><dd className="mt-1 font-medium text-slate-900">{viewingShift.staffUserIds.map((id) => users.find((user) => user.id === id)?.name ?? "Former staff").join(", ") || "—"}</dd></div>
+                    <div><dt className="text-xs text-slate-500">Closing report</dt><dd className="mt-1 font-medium text-slate-900">{viewingShift.closedAt ? `Closed ${phDateTimeLabel(viewingShift.closedAt)}` : "Not closed"}</dd></div>
+                  </dl>
+                  <div className="mt-5 flex flex-wrap justify-end gap-2">
+                    {!viewingShift.closedAt ? (
+                      <>
+                        <button type="button" disabled={pending} onClick={() => {
+                          setShiftEditDraft({
+                            name: viewingShift.name,
+                            date: viewingShift.date,
+                            startTime: viewingShift.startTime,
+                            endTime: viewingShift.endTime,
+                            staffUserIds: [...viewingShift.staffUserIds],
+                          });
+                          setEditingShift(true);
+                        }} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-50">Edit shift</button>
+                        <button type="button" disabled={pending} onClick={() => {
+                          if (!window.confirm(`Delete ${viewingShift.name} on ${viewingShift.date}?`)) return;
                           startTransition(async () => {
                             try {
-                              await deleteWorkShift(shift.id);
+                              await deleteWorkShift(viewingShift.id);
+                              setViewingShiftId(null);
+                              setViewingShiftGroupKey(null);
                               setNotice("Shift deleted.");
                             } catch (error) {
                               setNotice(error instanceof Error ? error.message : "Could not delete shift.");
                             }
                           });
-                        }} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50">Delete</button> : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                  {workShifts.length === 0 ? <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-400">No shifts scheduled yet.</td></tr> : null}
-                </tbody>
-              </table>
-            </div>
-          </section>
+                        }} className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-700 disabled:opacity-50">Delete shift</button>
+                      </>
+                    ) : null}
+                  </div>
+                </>
+              )}
+            </section>
+          </div>
         ) : null}
 
         {tab === "gates" ? (

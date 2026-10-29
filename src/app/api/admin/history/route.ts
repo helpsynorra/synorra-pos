@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { parseDrinkStyle, parseStoredOrderAddons } from "@/lib/menu";
 import { parsePayment } from "@/lib/payments";
 import { supabaseAdmin } from "@/lib/store";
+import { phDateRangeUtcBounds } from "@/lib/datetime";
 import type { LoginActivity, Order, OrderItem, RestockRecord, UsageLog } from "@/lib/types";
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -12,10 +13,6 @@ function isValidDate(value: string) {
   if (!DATE_PATTERN.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00.000Z`);
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
-}
-
-function dateBound(value: string, endOfDay = false) {
-  return `${value}T${endOfDay ? "23:59:59.999" : "00:00:00"}+08:00`;
 }
 
 type HistoryOrderRow = {
@@ -133,8 +130,11 @@ export async function GET(request: NextRequest) {
   }
 
   const startRow = (page - 1) * PAGE_SIZE;
-  const startDate = dateBound(from);
-  const endDate = dateBound(to, true);
+  const dateBounds = phDateRangeUtcBounds(from, to);
+  if (!dateBounds) {
+    return NextResponse.json({ error: "Provide a valid history kind, date range, and page." }, { status: 400 });
+  }
+  const { start: startDate, endExclusive: endDate } = dateBounds;
 
   try {
     const supabase = supabaseAdmin();
@@ -144,7 +144,7 @@ export async function GET(request: NextRequest) {
         .select("id, owner_id, inventory_item_id, item_name_snapshot, quantity_added, purchase_qty, purchase_unit, unit_cost, created_at", { count: "exact" })
         .eq("owner_id", session.userId)
         .gte("created_at", startDate)
-        .lte("created_at", endDate)
+        .lt("created_at", endDate)
         .order("created_at", { ascending: true })
         .range(startRow, startRow + PAGE_SIZE - 1);
       if (error) throw new Error(`Unable to load restock history: ${error.message}`);
@@ -172,7 +172,7 @@ export async function GET(request: NextRequest) {
         .eq("owner_id", session.userId)
         .is("deleted_at", null)
         .gte("created_at", startDate)
-        .lte("created_at", endDate)
+        .lt("created_at", endDate)
         .order("created_at", { ascending: false })
         .range(startRow, startRow + PAGE_SIZE - 1);
       if (orderError) throw new Error(`Unable to load usage logbook orders: ${orderError.message}`);
@@ -183,8 +183,6 @@ export async function GET(request: NextRequest) {
             .select("id, owner_id, order_id, order_item_id, inventory_item_id, item_name_snapshot, used_amount, unit, created_at", { count: "exact" })
             .eq("owner_id", session.userId)
             .in("order_id", orderIds)
-            .gte("created_at", startDate)
-            .lte("created_at", endDate)
             .order("created_at", { ascending: false })
             .range(0, PAGE_SIZE * 10 - 1)
         : { data: [], error: null, count: 0 };
@@ -229,7 +227,7 @@ export async function GET(request: NextRequest) {
       .eq("owner_id", session.userId)
       .is("deleted_at", null)
       .gte("created_at", startDate)
-      .lte("created_at", endDate)
+      .lt("created_at", endDate)
       .order("created_at", { ascending: false })
       .range(startRow, startRow + PAGE_SIZE - 1);
     if (error) throw new Error(`Unable to load transaction history: ${error.message}`);
@@ -249,7 +247,7 @@ export async function GET(request: NextRequest) {
           .select("id, owner_id, user_id, username, name, role, type, at, photo_path")
           .eq("owner_id", session.userId)
           .gte("at", startDate)
-          .lte("at", endDate)
+          .lt("at", endDate)
           .order("at", { ascending: false })
           .range(0, PAGE_SIZE - 1)
       : { data: [], error: null };

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
+import { phDateRangeUtcBounds } from "@/lib/datetime";
 import { supabaseAdmin } from "@/lib/store";
 import type { LoginActivity } from "@/lib/types";
 
@@ -35,9 +36,13 @@ export async function GET(request: NextRequest) {
       .select("id, owner_id, user_id, username, name, role, type, at, photo_path", { count: "exact" })
       .eq("owner_id", session.userId);
     if (from && to) {
+      const bounds = phDateRangeUtcBounds(from, to);
+      if (!bounds) {
+        return NextResponse.json({ error: "Provide a valid inclusive from/to date range." }, { status: 400 });
+      }
       query = query
-        .gte("at", `${from}T00:00:00+08:00`)
-        .lte("at", `${to}T23:59:59.999+08:00`);
+        .gte("at", bounds.start)
+        .lt("at", bounds.endExclusive);
     }
     const { data, error, count } = await query
       .order("at", { ascending: false })

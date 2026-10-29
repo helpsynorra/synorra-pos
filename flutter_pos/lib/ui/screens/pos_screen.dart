@@ -186,7 +186,8 @@ class _PosScreenState extends State<PosScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-              'Waste and voided records cannot be printed as sales slips.'),
+            'Waste and voided records cannot be printed as sales slips.',
+          ),
         ),
       );
       return;
@@ -247,9 +248,11 @@ class _PosScreenState extends State<PosScreen> {
           );
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text(
-                    '${staff.name} clocked ${type == "login" ? "in" : "out"}')),
+            SnackBar(
+              content: Text(
+                '${staff.name} clocked ${type == "login" ? "in" : "out"}',
+              ),
+            ),
           );
         },
       ),
@@ -318,7 +321,7 @@ class _PosScreenState extends State<PosScreen> {
       final order = res['order'] as Order;
       if (res['queued'] == true) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text(
               'Order saved locally and queued for the next scheduled sync. Use Sync Now to send it sooner.',
             ),

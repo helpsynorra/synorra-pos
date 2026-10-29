@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 import '../models/menu_item.dart';
 import '../models/order_item.dart';
 import '../models/order.dart';
@@ -831,7 +832,7 @@ class PosController extends ChangeNotifier {
     try {
       final now = ManilaTime.now();
       final createdAt = ManilaTime.utcIsoFromManilaWallTime(now);
-      final orderId = 'ord-${now.millisecondsSinceEpoch}';
+      final orderId = 'ord-${const Uuid().v4()}';
 
       final localTicketNo = nextTicketNoForOrders(orders, now);
 
@@ -931,7 +932,7 @@ class PosController extends ChangeNotifier {
               .where((staff) => staff.id == cashierShift.userId)
               .firstOrNull;
       final order = Order(
-        id: 'waste-${now.millisecondsSinceEpoch}',
+        id: 'waste-${const Uuid().v4()}',
         createdAt: createdAt,
         baristaName: cashier?.name ?? cashierShift?.name ?? '—',
         baristaUserId: cashier?.id ?? cashierShift?.userId,
@@ -1043,7 +1044,7 @@ class PosController extends ChangeNotifier {
     final now = ManilaTime.now();
     final createdAt = ManilaTime.utcIsoFromManilaWallTime(now);
     final order = Order(
-      id: 'ord-${now.millisecondsSinceEpoch}',
+      id: 'ord-${const Uuid().v4()}',
       createdAt: createdAt,
       baristaName: currentUser?.name ?? 'Owner',
       baristaUserId: currentUser?.id,

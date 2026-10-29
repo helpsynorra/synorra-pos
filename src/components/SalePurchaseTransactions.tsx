@@ -2494,7 +2494,7 @@ export function SalePurchaseTransactions({
                                   {group.items.length === 0 ? (
                                     <tr>
                                       <td colSpan={4} className="px-3 py-3 pl-10 text-neutral-500">
-                                        No recipe assigned for these items, so no stock was deducted.
+                                        No usage entries were recorded for this order.
                                       </td>
                                     </tr>
                                   ) : (

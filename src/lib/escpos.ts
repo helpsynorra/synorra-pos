@@ -269,7 +269,7 @@ export function internalLines(
   );
   const lines: PrintLine[] = [
     ...shopHeader(logo),
-    ...wrapText("CUSTOMER COPY (FOR INTERNAL USE ONLY)", width).map((text) => ({
+    ...wrapText("", width).map((text) => ({
       kind: "text" as const,
       text,
       align: 1 as const,
