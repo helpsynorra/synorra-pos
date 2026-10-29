@@ -16,18 +16,14 @@ const sizes = {
 };
 
 export function BrandLogo({
-  href = "/",
+  href,
   size = "md",
   showTagline = false,
   align = "center",
 }: BrandLogoProps) {
   const scale = sizes[size];
-
-  return (
-    <Link
-      href={href}
-      className={`inline-flex flex-col ${align === "center" ? "items-center" : "items-start"}`}
-    >
+  const content = (
+    <>
       <Image
         src="/images/logo.png"
         alt={CAFE.name}
@@ -41,6 +37,19 @@ export function BrandLogo({
           {CAFE.tagline}
         </span>
       ) : null}
+    </>
+  );
+
+  if (!href) {
+    return <div className={`inline-flex flex-col ${align === "center" ? "items-center" : "items-start"}`}>{content}</div>;
+  }
+
+  return (
+    <Link
+      href={href}
+      className={`inline-flex flex-col ${align === "center" ? "items-center" : "items-start"}`}
+    >
+      {content}
     </Link>
   );
 }

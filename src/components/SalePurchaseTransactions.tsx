@@ -3,23 +3,13 @@ import { createRestock, deleteAdminRecord, deleteRestock, saveAdminData } from "
 import { isWasteOrder } from "@/lib/analytics";
 import { formatQty, ingredientsForOrderLine, itemNameEquals, looksLikeCupItem, matchesInventoryRow, remainingForUsages, roundQty, stockLedgerForRange } from "@/lib/inventory";
 import { phDateString, phDateTimeLabel, phIsoFromDate, phPeriodBounds, type PeriodRange } from "@/lib/datetime";
-import { cartLineUnitPrice, drinkDisplayName, formatMoney, normalizeMenuAddons, normalizeMenuStyles, orderLineOptionsLabel, orderSoldAsLabel, orderSoldAsLines, orderSoldAsParts } from "@/lib/menu";
+import { cartLineUnitPrice, drinkDisplayName, normalizeMenuAddons, normalizeMenuStyles, orderLineOptionsLabel, orderSoldAsLabel, orderSoldAsLines, orderSoldAsParts } from "@/lib/menu";
 import { pairLoginSessions } from "@/lib/staff-sessions";
 import type { Order, RecipeIngredient, StoreData } from "@/lib/types";
 
 function inventoryUsagePerPiece(item: StockItem, used: number) {
   const unitSize = Number(item.purchaseUnitSize);
   return unitSize > 0 ? `${(used / unitSize).toFixed(3)} pc` : "—";
-}
-
-function configuredUsagePerUnit(item: StockItem) {
-  const usage = Number(item.cupUsageAmount);
-  return usage > 0 ? usage : 0;
-}
-
-function configuredCupsLeft(item: StockItem, remaining: number) {
-  const usage = configuredUsagePerUnit(item);
-  return usage > 0 ? remaining / usage : null;
 }
 
 function pieceSize(item: Pick<StockItem, "purchaseUnitSize">) {
@@ -432,7 +422,6 @@ export function SalePurchaseTransactions({
   const [stocks, setStocks] = useState<StockItem[]>(persistedStocks);
   const stocksRef = useRef(stocks);
   const [stockItemFilter, setStockItemFilter] = useState("all");
-  const [cupsLeftFilter, setCupsLeftFilter] = useState("all");
   const [unitSetupDrafts, setUnitSetupDrafts] = useState<Record<string, { purchaseUnitSize: string; unit?: string; cupUsageAmount: string }>>({});
 
   const [restocks, setRestocks] = useState<RestockRecord[]>(persistedRestocks);
@@ -1817,31 +1806,10 @@ export function SalePurchaseTransactions({
 
       {activeTab === "stock" && (
         <div className="space-y-6">
-          <div className="rounded-lg border border-neutral-300 bg-white px-4 py-3">
-            <div className="text-xs font-medium text-neutral-500">Total Inventory Value</div>
-            <div className="mt-1 text-xl font-semibold text-neutral-900">
-              {formatMoney(stocks.reduce((total, item) => {
-                const size = pieceSize(item);
-                return total + item.stock / size * Number(item.cost ?? 0);
-              }, 0))}
-            </div>
-          </div>
-          <div className="rounded-lg border border-neutral-300 bg-neutral-50 px-4 py-3">
-            <div className="text-xs font-medium text-neutral-500">Total Cups Used</div>
-            <div className="mt-1 text-xl font-semibold text-neutral-900">
-              {stocks
-                .filter((item) => looksLikeCupItem(item, recipeCostings))
-                .reduce((total, cupItem) => {
-                  const ledger = stockLedgerForRange({ itemName: cupItem.name, inventoryItemId: cupItem.id, liveStock: cupItem.stock, from: rangeStart, to: rangeEnd, restocks, usages });
-                  return total + Number(ledger.used || 0);
-                }, 0)
-                .toFixed(2)} cups
-            </div>
-          </div>
           {stockNotice ? <p className="text-sm text-red-600">{stockNotice}</p> : null}
           <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-400 space-y-4">
             <h3 className="text-xs font-bold text-neutral-700 uppercase">{editStockId ? "Edit Stock Item" : "Add Stock Item"}</h3>
-            <form onSubmit={handleSaveStock} className={`grid grid-cols-1 sm:grid-cols-2 ${stockInventoryType === "cup" ? "md:grid-cols-7" : "md:grid-cols-6"} gap-4 items-end`}>
+            <form onSubmit={handleSaveStock} className={`grid grid-cols-1 sm:grid-cols-2 ${stockInventoryType === "cup" ? "md:grid-cols-5" : "md:grid-cols-4"} gap-4 items-end`}>
               <div>
                 <label className="block text-xs font-medium text-neutral-600 mb-1">Item Name</label>
                 <input
@@ -1953,14 +1921,6 @@ export function SalePurchaseTransactions({
                 <label className="block text-xs font-medium text-neutral-600 mb-1">Unit</label>
                 <input type="text" placeholder="grams, ml, pcs" value={stockInventoryType === "cup" ? "pcs" : stockUnit} onChange={(e) => setStockUnit(e.target.value)} readOnly={stockInventoryType === "cup"} aria-label="Unit" className={`w-full bg-white border border-neutral-400 rounded px-3 py-1.5 text-sm ${stockInventoryType === "cup" ? "cursor-not-allowed bg-neutral-100 text-neutral-500" : ""}`} />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-neutral-600 mb-1">Unit cost (₱ per purchase unit)</label>
-                <input type="number" min="0" step="0.01" placeholder="0.00" value={stockCost} onChange={(event) => setStockCost(event.target.value)} className="w-full bg-white border border-neutral-400 rounded px-3 py-1.5 text-sm" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-neutral-600 mb-1">Reorder threshold (purchase units)</label>
-                <input type="number" min="0" step="any" placeholder="0 = no alert" value={stockReorderThreshold} onChange={(event) => setStockReorderThreshold(event.target.value)} className="w-full bg-white border border-neutral-400 rounded px-3 py-1.5 text-sm" />
-              </div>
               <div className="flex gap-2">
                 <button type="submit" className="flex-1 bg-black text-white px-4 py-1.5 rounded text-sm font-medium">{editStockId ? "Update" : "Add"}</button>
                 <button type="button" onClick={resetStockForm} className="border border-neutral-300 bg-white text-black hover:bg-neutral-100 px-4 py-1.5 rounded text-sm font-medium">Clear</button>
@@ -1979,33 +1939,18 @@ export function SalePurchaseTransactions({
               <option value="all">All items</option>
               {stocks.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
-            <label htmlFor="cups-left-filter" className="ml-2 text-sm font-medium text-neutral-700">Cups left</label>
-            <select
-              id="cups-left-filter"
-              value={cupsLeftFilter}
-              onChange={(event) => setCupsLeftFilter(event.target.value)}
-              className="min-w-44 rounded border border-neutral-300 bg-white px-3 py-2 text-sm"
-            >
-              <option value="all">All levels</option>
-              <option value="low">Low (5 cups or less)</option>
-              <option value="available">More than 5 cups</option>
-              <option value="unconfigured">No recipe amount</option>
-            </select>
           </div>
           <div className="overflow-x-auto rounded-lg border border-neutral-400 bg-white">
-            <table className="w-full min-w-[1300px] text-left text-sm">
+            <table className="w-full min-w-[1000px] text-left text-sm">
               <thead>
                 <tr className="bg-white border-b border-neutral-300 text-black text-xs font-semibold">
                   <th className="p-2 border-r border-neutral-300">Item</th>
-                  <th className="p-2 border-r border-neutral-300 text-right">Unit Cost</th>
-                  <th className="p-2 border-r border-neutral-300 text-right">Reorder At</th>
                   <th className="p-2 border-r border-neutral-300 text-right">Opening</th>
                   <th className="p-2 border-r border-neutral-300 text-right">Restock</th>
                   <th className="p-2 border-r border-neutral-300 text-right">Used per Unit</th>
                   <th className="p-2 border-r border-neutral-300">Unit</th>
                   <th className="p-2 border-r border-neutral-300 text-right">Used per Pcs</th>
                   <th className="p-2 border-r border-neutral-300 text-right">Remaining</th>
-                  <th className="p-2 border-r border-neutral-300 text-right">Cups Left</th>
                   <th className="p-2 border-r border-neutral-300 text-center">Restock</th>
                   <th className="p-2 text-center">Actions</th>
                 </tr>
@@ -2013,10 +1958,6 @@ export function SalePurchaseTransactions({
               <tbody>
                 {stocks.filter((item) => {
                   if (stockItemFilter !== "all" && item.id !== stockItemFilter) return false;
-                  const currentCupsLeft = configuredCupsLeft(item, item.stock);
-                  if (cupsLeftFilter === "low") return currentCupsLeft != null && currentCupsLeft <= 5;
-                  if (cupsLeftFilter === "available") return currentCupsLeft != null && currentCupsLeft > 5;
-                  if (cupsLeftFilter === "unconfigured") return currentCupsLeft == null;
                   return true;
                 }).map((s) => {
                   const { opening, restocked, used, remaining } = stockLedgerForRange({
@@ -2029,17 +1970,12 @@ export function SalePurchaseTransactions({
                     usages,
                   });
                   const isLiveDate = isLiveRange;
-                  const cupsLeft = configuredCupsLeft(s, remaining);
-                  const availableAtStart = Math.max(0, opening + restocked);
                   const threshold = Number(s.reorderThreshold ?? 0);
                   const isLowStock = threshold > 0 && remaining <= threshold;
                   const isNearLowStock = threshold > 0 && !isLowStock && remaining <= threshold * 1.25;
-                  const isLowCups = cupsLeft != null && cupsLeft <= 5;
                   return (
                     <tr key={s.id} className={`border-b border-neutral-200 text-xs ${isLowStock ? "bg-red-50" : isNearLowStock ? "bg-amber-50" : ""}`}>
                       <td className="p-2 border-r border-neutral-200 font-medium">{isLowStock ? "🔴 " : isNearLowStock ? "🟡 " : ""}{s.name}</td>
-                      <td className="p-2 border-r border-neutral-200 text-right">{formatMoney(s.cost ?? 0)}</td>
-                      <td className="p-2 border-r border-neutral-200 text-right">{threshold > 0 ? `${toPieceQuantity(s, threshold).toFixed(2)} ${s.purchaseUnitSize ? "purchase units" : s.unit}` : "—"}</td>
                       <td className="p-2 border-r border-neutral-200 text-right">{toPieceQuantity(s, opening).toFixed(2)} pcs</td>
                       <td className="p-2 border-r border-neutral-200 text-right font-semibold text-black">
                         {restocked > 0 ? `+${toPieceQuantity(s, restocked).toFixed(2)}` : "0.00"} pcs
@@ -2082,9 +2018,6 @@ export function SalePurchaseTransactions({
                           }}
                           className={`w-24 bg-white border border-neutral-400 rounded px-2 py-1 text-right font-bold ${isLowStock ? "text-red-600" : "text-neutral-900"}`}
                         /><span className="font-normal">pcs</span></div>
-                      </td>
-                      <td className={`p-3 border-r border-neutral-200 text-right ${isLowCups ? "font-semibold text-red-600" : "text-neutral-600"}`}>
-                        {s.unit.trim().toLowerCase() === "pcs" || cupsLeft == null ? "—" : `${cupsLeft.toFixed(1)} cups`}
                       </td>
                       <td className="p-3 border-r border-neutral-200 text-center">
                         <form

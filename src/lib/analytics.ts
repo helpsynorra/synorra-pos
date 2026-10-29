@@ -1,4 +1,4 @@
-import { PAYMENT_METHODS, parsePayment, paymentLabel } from "@/lib/payments";
+import { parsePayment, paymentLabel } from "@/lib/payments";
 import { addonExtra, menuCategoryTypeForName } from "@/lib/menu";
 import type { Order, PaymentMethod } from "@/lib/types";
 
@@ -268,7 +268,7 @@ export function salesByHour(orders: Order[], now = new Date(), days = 7) {
 }
 
 export function cafeHours(buckets: ReturnType<typeof salesByHour>) {
-  const open = buckets.filter((slot) => slot.hour >= 10 && slot.hour <= 23);
+  const open = buckets.filter((slot) => slot.hour >= 8 && slot.hour <= 23);
   const midnight = buckets.find((slot) => slot.hour === 0);
   return midnight ? [...open, midnight] : open;
 }
@@ -285,12 +285,15 @@ export function totalDiscount(orders: Order[]): number {
 
 export function paymentStats(orders: Order[]) {
   const buckets: Record<
-    Exclude<PaymentMethod, `split:${string}` | "waste">,
+    Exclude<PaymentMethod, `split:${string}` | "split" | "waste">,
     { method: PaymentMethod; label: string; count: number; sales: number }
   > = {
     cash: { method: "cash", label: paymentLabel("cash"), count: 0, sales: 0 },
     gcash: { method: "gcash", label: paymentLabel("gcash"), count: 0, sales: 0 },
     maya: { method: "maya", label: paymentLabel("maya"), count: 0, sales: 0 },
+    cards: { method: "cards", label: paymentLabel("cards"), count: 0, sales: 0 },
+    grab: { method: "grab", label: paymentLabel("grab"), count: 0, sales: 0 },
+    foodpanda: { method: "foodpanda", label: paymentLabel("foodpanda"), count: 0, sales: 0 },
   };
   const splitBucket = {
     method: "split" as PaymentMethod,
@@ -300,7 +303,14 @@ export function paymentStats(orders: Order[]) {
   };
   for (const order of liveOrders(orders)) {
     const method = parsePayment(order.paymentMethod);
-    if (method === "cash" || method === "gcash" || method === "maya") {
+    if (
+      method === "cash" ||
+      method === "gcash" ||
+      method === "maya" ||
+      method === "cards" ||
+      method === "grab" ||
+      method === "foodpanda"
+    ) {
       buckets[method].count += 1;
       buckets[method].sales += order.total;
     } else {
@@ -309,7 +319,7 @@ export function paymentStats(orders: Order[]) {
     }
   }
   return [
-    ...PAYMENT_METHODS.map((item) => buckets[item.id]),
+    ...Object.values(buckets),
     ...(splitBucket.count ? [splitBucket] : []),
   ];
 }

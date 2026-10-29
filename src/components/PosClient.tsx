@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { logout } from "@/actions/auth";
@@ -23,6 +23,7 @@ import {
   SalePurchaseTransactions,
   type InventoryTab,
 } from "@/components/SalePurchaseTransactions";
+import { MenuCatalog } from "@/components/MenuCatalog";
 import {
   addonIdFromName,
   addonAllowsQty,
@@ -39,7 +40,7 @@ import {
   orderLineOptionsLabel,
   resolveOrderAddons,
 } from "@/lib/menu";
-import { phDateString, phDateTimeLabel } from "@/lib/datetime";
+import { phDateTimeLabel } from "@/lib/datetime";
 import { PAYMENT_METHODS, parsePayment, paymentLabel } from "@/lib/payments";
 import {
   slipFromOrder,
@@ -84,7 +85,7 @@ type PosClientProps = {
   >;
 };
 
-type PosPanel = "pos" | Extract<InventoryTab, "stock" | "restock">;
+type PosPanel = "pos" | "menu" | Extract<InventoryTab, "stock" | "restock">;
 
 const CASH_PRESETS = [500, 1000, 2000];
 const CHECKOUT_KEY = "synorra_pos_checkout";
@@ -152,7 +153,7 @@ function writeCheckout(value: SavedCheckout) {
 export function PosClient({
   session,
   pos,
-  inventoryFeaturesEnabled = true,
+  inventoryFeaturesEnabled = false,
   menu,
   categories,
   orders,
@@ -178,8 +179,6 @@ export function PosClient({
   const [voidPassword, setVoidPassword] = useState("");
   const [voidReason, setVoidReason] = useState("");
   const [voidTargetId, setVoidTargetId] = useState<string | null>(null);
-  const [voidSearch, setVoidSearch] = useState("");
-  const [voidTodayOnly, setVoidTodayOnly] = useState(true);
   const [activeVoidRequestId, setActiveVoidRequestId] = useState<string | null>(null);
   const [wasteModalOpen, setWasteModalOpen] = useState(false);
   const [wasteReason, setWasteReason] = useState("");
@@ -197,7 +196,7 @@ export function PosClient({
   const [baristaAction, setBaristaAction] = useState<"login" | "logout">("login");
   const [baristaTargetId, setBaristaTargetId] = useState<string | null>(null);
   const [baristaNotice, setBaristaNotice] = useState<string | null>(null);
-  const [onShift, setOnShift] = useState(clockedInBaristas);
+  const [onShift, setOnShift] = useState(() => clockedInBaristas);
   const [drinkPick, setDrinkPick] = useState<{
     item: MenuItem;
     style?: DrinkStyle;
@@ -210,11 +209,15 @@ export function PosClient({
   const [checkoutReady, setCheckoutReady] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [activePanel, setActivePanel] = useState<PosPanel>("pos");
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (!inventoryFeaturesEnabled && (activePanel === "stock" || activePanel === "restock")) {
-      setActivePanel("pos");
-    }
-  }, [activePanel, inventoryFeaturesEnabled]);
+    const timer = window.setInterval(() => setNow(Date.now()), 60000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const visiblePanel =
+    inventoryFeaturesEnabled || (activePanel !== "stock" && activePanel !== "restock")
+      ? activePanel
+      : "pos";
   const availableOrders = useMemo(() => {
     const byId = new Map(
       orders.filter((order) => !order.voided && !order.deletedAt).map((order) => [order.id, order]),
@@ -274,13 +277,6 @@ export function PosClient({
       return matchesCategory && matchesSearch;
     });
   }, [menu, category, itemSearch]);
-
-  useEffect(() => {
-    setOnShift((current) => {
-      const ids = new Set(clockedInBaristas.map((entry) => entry.id));
-      return [...clockedInBaristas, ...current.filter((entry) => !ids.has(entry.id))];
-    });
-  }, [clockedInBaristas]);
 
   useEffect(() => {
     let cancelled = false;
@@ -348,7 +344,7 @@ export function PosClient({
   const total = Math.max(0, subtotal - promoDiscount);
   const promoReady = !promoCode || Boolean(
     selectedPromo &&
-    (!selectedPromo.expiresAt || Date.parse(selectedPromo.expiresAt) > Date.now()) &&
+    (!selectedPromo.expiresAt || Date.parse(selectedPromo.expiresAt) > now) &&
     session.permissions?.promotionsEnabled &&
     session.permissions?.promotionDiscount &&
     (selectedPromo.discountType !== "item" || (promoItemIndex != null && Boolean(cart[promoItemIndex]) && promoItemQty != null && promoItemQty === Math.max(1, Math.floor(selectedPromo.discountValue || 1)) && promoItemQty <= (cart[promoItemIndex]?.qty ?? 0))),
@@ -357,28 +353,15 @@ export function PosClient({
   const paid = isCash ? Number(tendered) || 0 : total;
   const change = isCash && paid >= total ? paid - total : 0;
   const isManager = false;
-  const voidTickets = useMemo(() => {
-    const needle = voidSearch.trim().toLowerCase();
-    const today = phDateString();
-    return [...orders]
-      .filter((order) => !order.voided)
-      .filter((order) => !voidTodayOnly || phDateString(order.createdAt) === today)
-      .filter((order) => {
-        if (!needle) return true;
-        const haystack = [
-          String(order.ticketNo ?? ""),
-          order.baristaName,
-          formatMoney(order.total),
-          ...order.items.map((item) => `${item.qty} ${orderLineListLabel(item)}`),
-        ]
-          .join(" ")
-          .toLowerCase();
-        return haystack.includes(needle);
-      })
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  }, [orders, voidSearch, voidTodayOnly]);
   const selectedVoidOrder = orders.find((order) => order.id === voidTargetId);
-  const cashierPaidVoid = cart.length === 0 ? (voidTargetId || lastOrderId) : null;
+  const voidedLastOrderIds = new Set(
+    orders.filter((order) => order.voided).map((order) => order.id),
+  );
+  const effectiveLastOrderId =
+    lastOrderId && !voidedLastOrderIds.has(lastOrderId) ? lastOrderId : null;
+  const effectiveLastOrder =
+    lastOrder && !voidedLastOrderIds.has(lastOrder.id) ? lastOrder : null;
+  const cashierPaidVoid = cart.length === 0 ? (voidTargetId || effectiveLastOrderId) : null;
   const activeVoidRequest = voidRequests.find(
     (request) => request.id === activeVoidRequestId,
   );
@@ -390,58 +373,46 @@ export function PosClient({
     cart.length > 0 &&
     promoReady &&
     (!isCash || paid >= total);
-  const appliedVoidRequestId = useRef<string | null>(null);
-  const lastOrderIdRef = useRef(lastOrderId);
-  lastOrderIdRef.current = lastOrderId;
-  const lastOrderRef = useRef(lastOrder);
-  lastOrderRef.current = lastOrder;
 
-  function applyApprovedVoid(
-    requestId: string,
-    request: {
-      orderId?: string | null;
-      processedOrderId?: string | null;
+  const applyApprovedVoid = useCallback(
+    (
+      requestId: string,
+      request: {
+        orderId?: string | null;
+        processedOrderId?: string | null;
+      },
+    ) => {
+      const voidedId = request.orderId ?? request.processedOrderId ?? null;
+      if (
+        voidedId &&
+        (effectiveLastOrderId === voidedId || effectiveLastOrder?.id === voidedId)
+      ) {
+        setLastOrderId(null);
+        setLastTicket(null);
+        setLastOrder(null);
+      }
+      if (!request.orderId) {
+        setCart([]);
+        setTendered("");
+        setPaymentMethod("cash");
+      }
+      setActiveVoidRequestId(null);
+      setVoidTargetId(null);
+      setVoidReason("");
+      setMessage("Admin approved the void. The checkout has been voided.");
+      router.refresh();
     },
-  ) {
-    if (appliedVoidRequestId.current === requestId) return;
-    appliedVoidRequestId.current = requestId;
-    const voidedId = request.orderId ?? request.processedOrderId ?? null;
-    if (
-      voidedId &&
-      (lastOrderIdRef.current === voidedId || lastOrderRef.current?.id === voidedId)
-    ) {
-      setLastOrderId(null);
-      setLastTicket(null);
-      setLastOrder(null);
-    }
-    if (!request.orderId) {
-      setCart([]);
-      setTendered("");
-      setPaymentMethod("cash");
-    }
-    setActiveVoidRequestId(null);
-    setVoidTargetId(null);
-    setVoidReason("");
-    setMessage("Admin approved the void. The checkout has been voided.");
-    router.refresh();
-  }
-
-  useEffect(() => {
-    if (!lastOrderId) return;
-    const serverOrder = orders.find((order) => order.id === lastOrderId);
-    if (!serverOrder?.voided) return;
-    setLastOrderId(null);
-    setLastTicket(null);
-    setLastOrder(null);
-    if (printOrderId === lastOrderId) setPrintOrderId(null);
-  }, [lastOrderId, orders, printOrderId]);
+    [effectiveLastOrder, effectiveLastOrderId, router],
+  );
 
   useEffect(() => {
     if (!activeVoidRequestId) return;
     const requestId: string = activeVoidRequestId;
     if (activeVoidRequest?.status === "approved") {
-      applyApprovedVoid(requestId, activeVoidRequest);
-      return;
+      const approvedRequest = activeVoidRequest;
+      const handleApproved = () => applyApprovedVoid(requestId, approvedRequest);
+      const timeout = window.setTimeout(handleApproved, 0);
+      return () => window.clearTimeout(timeout);
     }
 
     let cancelled = false;
@@ -459,7 +430,7 @@ export function PosClient({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [activeVoidRequest, activeVoidRequestId, router]);
+  }, [activeVoidRequest, activeVoidRequestId, applyApprovedVoid]);
 
   function selectedAddonsFor(item: MenuItem, selected: Record<string, number>): OrderAddon[] {
     return resolveOrderAddons(
@@ -540,18 +511,7 @@ export function PosClient({
     }));
   }
 
-  function confirmDrinkPick(pick: { item: MenuItem; style?: DrinkStyle; addons: Record<string, number> }) {
-    addItem(
-      pick.item.id,
-      pick.item.name,
-      pick.item.price,
-      pick.style,
-      selectedAddonsFor(pick.item, pick.addons),
-    );
-    setDrinkPick(null);
-  }
-
- function handleMenuTap(item: MenuItem) {
+  function handleMenuTap(item: MenuItem) {
     const styles = normalizeMenuStyles(item);
     const addons = normalizeMenuAddons(item);
     if (styles.length > 1 || addons.length > 0 || normalizeMenuTypes(item).length > 0) {
@@ -584,7 +544,7 @@ export function PosClient({
           setMessage("Checkout voided.");
           return;
         }
-        const targetId = voidTargetId || lastOrderId;
+        const targetId = voidTargetId || effectiveLastOrderId;
         if (!targetId) {
           setMessage("Select a ticket to void.");
           return;
@@ -634,7 +594,7 @@ export function PosClient({
         return;
       }
 
-      const targetId = voidTargetId || lastOrderId;
+      const targetId = voidTargetId || effectiveLastOrderId;
       if (!targetId) {
         setMessage("No ticket to void.");
         return;
@@ -664,7 +624,7 @@ export function PosClient({
       setMessage("Enter a reason for voiding.");
       return;
     }
-    const targetId = voidTargetId || (cart.length === 0 ? lastOrderId : null);
+    const targetId = voidTargetId || (cart.length === 0 ? effectiveLastOrderId : null);
     if (cart.length === 0 && !targetId) {
       setMessage("No items to void.");
       return;
@@ -689,14 +649,14 @@ export function PosClient({
     });
   }
 
-  const canPrint = Boolean(lastOrderId) && cart.length === 0 && !voidRequestPending;
+  const canPrint = Boolean(effectiveLastOrderId) && cart.length === 0 && !voidRequestPending;
 
   function printTicket() {
-    if (!canPrint || !lastOrderId) {
+    if (!canPrint || !effectiveLastOrderId) {
       setMessage("Charge the order before printing.");
       return;
     }
-    const order = availableOrders.find((entry) => entry.id === lastOrderId);
+    const order = availableOrders.find((entry) => entry.id === effectiveLastOrderId);
     if (!order) {
       setMessage("Charge the order before printing.");
       return;
@@ -853,9 +813,13 @@ export function PosClient({
           >
             <span className="text-rose-600">syn</span>orra
           </button>
-          {activePanel !== "pos" ? (
+          {visiblePanel !== "pos" ? (
             <p className="truncate text-sm font-medium text-slate-500">
-              {activePanel === "stock" ? "Stock inventory" : "Restock"}
+              {visiblePanel === "menu"
+                ? "Menu"
+                : visiblePanel === "stock"
+                  ? "Stock inventory"
+                  : "Restock"}
             </p>
           ) : null}
         </header>
@@ -904,13 +868,13 @@ export function PosClient({
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
             <button
               type="button"
-              aria-current={activePanel === "pos" ? "page" : undefined}
+              aria-current={visiblePanel === "pos" ? "page" : undefined}
               onClick={() => {
                 setActivePanel("pos");
                 setMenuOpen(false);
               }}
               className={`mb-3 w-full rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
-                activePanel === "pos"
+                visiblePanel === "pos"
                   ? "bg-[#101d37] text-white"
                   : "text-neutral-600 hover:bg-neutral-100 hover:text-black"
               }`}
@@ -918,6 +882,22 @@ export function PosClient({
               POS
             </button>
 
+
+            <button
+              type="button"
+              aria-current={visiblePanel === "menu" ? "page" : undefined}
+              onClick={() => {
+                setActivePanel("menu");
+                setMenuOpen(false);
+              }}
+              className={`mb-3 w-full rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
+                visiblePanel === "menu"
+                  ? "bg-[#101d37] text-white"
+                  : "text-neutral-600 hover:bg-neutral-100 hover:text-black"
+              }`}
+            >
+              Menu
+            </button>
 
             {inventoryFeaturesEnabled ? <div>
               <p className="px-4 pb-1 text-[11px] font-medium tracking-wide text-neutral-400 uppercase">
@@ -932,13 +912,13 @@ export function PosClient({
                 <button
                   key={id}
                   type="button"
-                  aria-current={activePanel === id ? "page" : undefined}
+                  aria-current={visiblePanel === id ? "page" : undefined}
                   onClick={() => {
                     setActivePanel(id);
                     setMenuOpen(false);
                   }}
                   className={`mb-1 w-full rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
-                    activePanel === id
+                    visiblePanel === id
                       ? "bg-[#101d37] text-white"
                       : "text-neutral-600 hover:bg-neutral-100 hover:text-black"
                   }`}
@@ -1790,12 +1770,20 @@ export function PosClient({
           />
         ) : null}
 
-        {inventoryFeaturesEnabled && (activePanel === "stock" || activePanel === "restock") ? (
+        {visiblePanel === "menu" ? (
+          <div className="min-h-0 flex-1 overflow-y-auto bg-neutral-100 p-2 sm:p-4">
+            <MenuCatalog
+              menu={menu}
+              categories={categories}
+              inventory={inventoryStore.inventory ?? []}
+            />
+          </div>
+        ) : inventoryFeaturesEnabled && (visiblePanel === "stock" || visiblePanel === "restock") ? (
           <div className="min-h-0 flex-1 overflow-y-auto bg-neutral-100 p-2 sm:p-4">
             <SalePurchaseTransactions
               store={inventoryStore}
               tabs={["stock", "restock"]}
-              activeTab={activePanel}
+              activeTab={visiblePanel}
               onTabChange={(tab) => {
                 if (tab === "stock" || tab === "restock") {
                   setActivePanel(tab);

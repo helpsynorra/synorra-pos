@@ -137,6 +137,52 @@ class _SplitPaymentScreenState extends State<_SplitPaymentScreen> {
   }
 }
 
+class _OtherPaymentMethodsScreen extends StatelessWidget {
+  const _OtherPaymentMethodsScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    const methods = [
+      ('cards', 'Cards', Icons.credit_card_outlined),
+      ('grab', 'Grab', Icons.delivery_dining_outlined),
+      ('foodpanda', 'Foodpanda', Icons.restaurant_outlined),
+      ('split', 'Split', Icons.call_split_rounded),
+    ];
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Other payment methods')),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: ListView.separated(
+            padding: const EdgeInsets.all(24),
+            itemCount: methods.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              final (value, label, icon) = methods[index];
+              return OutlinedButton.icon(
+                onPressed: () => Navigator.of(context).pop(value),
+                icon: Icon(icon),
+                label: Text(label),
+                style: OutlinedButton.styleFrom(
+                  alignment: Alignment.centerLeft,
+                  foregroundColor: const Color(0xFF202D43),
+                  minimumSize: const Size.fromHeight(56),
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  side: const BorderSide(color: Color(0xFFD4DEEC)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _PromotionCodeDialog extends StatefulWidget {
   const _PromotionCodeDialog();
 
@@ -194,6 +240,43 @@ class _CartPanelState extends State<CartPanel> {
   bool _hasSelectedCashAmount = false;
   String? _selectedPreset;
   String _splitDigitalMethod = 'gcash';
+
+  Future<void> _showOtherPaymentMethods() async {
+    final controller = widget.controller;
+    final method = await Navigator.of(context).push<String>(
+      MaterialPageRoute<String>(
+        builder: (_) => const _OtherPaymentMethodsScreen(),
+      ),
+    );
+    if (!mounted || method == null) return;
+
+    _amountFocusNode.unfocus();
+    controller.setPaymentMethod(method);
+    if (method == 'split') {
+      final cashPart = (controller.total / 2).ceilToDouble();
+      controller.setTenderedAmount(cashPart);
+      setState(() {
+        _hasSelectedCashAmount = true;
+        _selectedPreset = null;
+        _amountController.text = cashPart.toInt().toString();
+      });
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => _SplitPaymentScreen(
+            controller: controller,
+            initialDigitalMethod: _splitDigitalMethod,
+            onDigitalMethodChanged: (value) => _splitDigitalMethod = value,
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _selectedPreset = null;
+      _amountController.text = controller.total.toInt().toString();
+    });
+  }
 
   Future<void> _showPromotionError(String message) async {
     if (!mounted) return;
@@ -853,32 +936,13 @@ class _CartPanelState extends State<CartPanel> {
                       },
                     ),
                     const SizedBox(width: 8),
-                    _buildPaymentButton(
-                      label: 'Split',
-                      isSelected: isSplitPayment,
+                    _buildOthersPaymentButton(
+                      isSelected: isSplitPayment ||
+                          controller.paymentMethod == 'cards' ||
+                          controller.paymentMethod == 'grab' ||
+                          controller.paymentMethod == 'foodpanda',
                       isCompact: keyboardOpen,
                       isEnabled: !promoApplied,
-                      onTap: () {
-                        _amountFocusNode.unfocus();
-                        controller.setPaymentMethod('split');
-                        final cashPart = (controller.total / 2).ceilToDouble();
-                        controller.setTenderedAmount(cashPart);
-                        setState(() {
-                          _hasSelectedCashAmount = true;
-                          _selectedPreset = null;
-                          _amountController.text = cashPart.toInt().toString();
-                        });
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => _SplitPaymentScreen(
-                              controller: controller,
-                              initialDigitalMethod: _splitDigitalMethod,
-                              onDigitalMethodChanged: (method) =>
-                                  _splitDigitalMethod = method,
-                            ),
-                          ),
-                        );
-                      },
                     ),
                   ],
                 ),
@@ -1215,6 +1279,20 @@ class _CartPanelState extends State<CartPanel> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildOthersPaymentButton({
+    required bool isSelected,
+    required bool isCompact,
+    required bool isEnabled,
+  }) {
+    return _buildPaymentButton(
+      label: 'Others',
+      isSelected: isSelected,
+      isCompact: isCompact,
+      isEnabled: isEnabled,
+      onTap: _showOtherPaymentMethods,
     );
   }
 

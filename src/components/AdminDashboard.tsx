@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useTransition } from "react";
 import { approveVoidRequest } from "@/actions/pos";
-import { drinkDisplayName, formatMoney, orderLineListLabel, orderLineOptionsLabel } from "@/lib/menu";
+import { drinkDisplayName, formatMoney, orderItemCategories, orderLineListLabel, orderLineOptionsLabel } from "@/lib/menu";
 import { phDateString, phDateTimeLabel, phPeriodBounds, phTimestamp, type PeriodRange } from "@/lib/datetime";
 import { paymentLabel } from "@/lib/payments";
 import { ingredientsForOrderLine } from "@/lib/inventory";
@@ -698,7 +698,7 @@ export function AdminDashboard({
         <div className={`min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 ${isTodaySelected ? "xl:col-span-2" : ""}`}>
           <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-[10px] tracking-[0.2em] text-neutral-500 uppercase sm:text-xs sm:tracking-[0.25em]">
-              Peak hours <span className="hidden sm:inline">(by item volume) · 8:00 AM – 11:00 PM</span>
+              Peak hours <span className="hidden sm:inline">(by item volume) · 8:00 AM – 12:00 AM</span>
             </h2>
           </div>
           <div className="overflow-x-auto">
@@ -755,7 +755,7 @@ export function AdminDashboard({
       <section className="grid gap-4 xl:grid-cols-2 2xl:gap-6">
         <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <h2 className="text-[10px] tracking-[0.2em] text-neutral-500 uppercase sm:text-xs sm:tracking-[0.25em]">
-            Sales by category (by item quantity)
+            Sales by Drinks category
           </h2>
           <HorizontalBars
             empty="No category sales in this period."
@@ -773,9 +773,8 @@ export function AdminDashboard({
 
         <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <h2 className="text-[10px] tracking-[0.2em] text-neutral-500 uppercase sm:text-xs sm:tracking-[0.25em]">
-            Payment Mix (Total Breakdown)
+            Payment Types (Total Breakdown)
           </h2>
-          <p className="mt-1 text-[11px] text-neutral-400">Total Collections Breakdown</p>
           <div className="mt-4 space-y-3">
             {payments.map((p, pIdx) => (
               <div key={`${p.method}-${pIdx}`} className="flex justify-between items-center text-sm border-b border-neutral-100 pb-2">
@@ -870,12 +869,13 @@ export function AdminDashboard({
             </p>
           ) : (
           <div className="mt-4 overflow-x-auto">
-            <div className={showPromoVoucher ? "min-w-[980px]" : "min-w-[900px]"}>
-              <div className={`hidden gap-x-3 border-b border-neutral-200 pb-2 text-xs text-neutral-500 lg:grid ${showPromoVoucher ? "grid-cols-11" : "grid-cols-10"}`}>
+            <div className={showPromoVoucher ? "min-w-[1060px]" : "min-w-[970px]"}>
+              <div className={`hidden gap-x-3 border-b border-neutral-200 pb-2 text-xs text-neutral-500 lg:grid ${showPromoVoucher ? "grid-cols-12" : "grid-cols-11"}`}>
                 <p className="min-w-0">Time</p>
                 <p className="min-w-0">Owner</p>
                 <p className="min-w-0">Order #</p>
                 <p className="min-w-0">Items</p>
+                <p className="min-w-0">Type</p>
                 <p className="min-w-0">Status</p>
                 <p className="min-w-0">Cashier in Charge</p>
                 <p className="min-w-0">Barista in Charge</p>
@@ -888,7 +888,7 @@ export function AdminDashboard({
                 {latest.map((order: Order, ordIdx: number) => (
                   <div
                     key={`${order.id}-${ordIdx}`}
-                    className={`grid grid-cols-1 gap-2 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 shadow-sm lg:items-start lg:gap-x-3 lg:rounded-none lg:border-0 lg:bg-transparent lg:px-0 lg:py-3 lg:shadow-none ${showPromoVoucher ? "lg:grid-cols-11" : "lg:grid-cols-10"}`}
+                    className={`grid grid-cols-1 gap-2 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 shadow-sm lg:items-start lg:gap-x-3 lg:rounded-none lg:border-0 lg:bg-transparent lg:px-0 lg:py-3 lg:shadow-none ${showPromoVoucher ? "lg:grid-cols-12" : "lg:grid-cols-11"}`}
                   >
                     <div className="min-w-0">
                       <p className="text-sm leading-5 text-neutral-700">
@@ -927,6 +927,10 @@ export function AdminDashboard({
                         </li>
                       ))}
                     </ul>
+                    <p className="min-w-0 break-words text-xs text-neutral-500 lg:text-sm">
+                      <span className="lg:hidden">Type: </span>
+                      {orderItemCategories(order.items, store.menu).join(", ") || "—"}
+                    </p>
                     <div className="min-w-0">
                       <span
                         className={`inline-flex rounded px-2 py-0.5 text-[10px] font-medium lg:text-xs ${

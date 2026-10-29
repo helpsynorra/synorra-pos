@@ -430,6 +430,74 @@ void main() {
     sync.dispose();
   });
 
+  testWidgets('offers other payment methods and keeps split checkout',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final storage = LocalStorageService();
+    await storage.init();
+    final api = SupabaseService();
+    final sync = SyncService(localStorage: storage, supabaseService: api);
+    final controller = PosController(
+      localStorage: storage,
+      supabaseService: api,
+      syncService: sync,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CartPanel(
+            controller: controller,
+            isFullWidth: true,
+            onProceedOrder: () {},
+            onRecordWaste: () {},
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Others'));
+    await tester.pumpAndSettle();
+    expect(find.text('Other payment methods'), findsOneWidget);
+    expect(find.byType(PopupMenuButton<String>), findsNothing);
+    expect(find.text('Cards'), findsOneWidget);
+    expect(find.text('Grab'), findsOneWidget);
+    expect(find.text('Foodpanda'), findsOneWidget);
+    expect(find.text('Split'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pumpAndSettle();
+    expect(find.text('Others'), findsOneWidget);
+
+    await tester.tap(find.text('Others'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cards'));
+    await tester.pumpAndSettle();
+    expect(controller.paymentMethod, 'cards');
+
+    for (final entry in {'Grab': 'grab', 'Foodpanda': 'foodpanda'}.entries) {
+      await tester.tap(find.text('Others'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(entry.key));
+      await tester.pumpAndSettle();
+      expect(controller.paymentMethod, entry.value);
+    }
+
+    await tester.tap(find.text('Others'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Split'));
+    await tester.pumpAndSettle();
+    expect(controller.paymentMethod, 'split');
+    expect(find.text('Split payment'), findsOneWidget);
+
+    sync.dispose();
+  });
+
   testWidgets('checkout fits when the keyboard reduces panel height',
       (tester) async {
     SharedPreferences.setMockInitialValues({});

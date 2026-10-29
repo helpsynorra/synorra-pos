@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { StaffHeader, type AdminPanel } from "@/components/StaffHeader";
 import { UserManager } from "@/components/UserManager";
 import { SalePurchaseTransactions } from "@/components/SalePurchaseTransactions";
-import { MenuCatalog } from "@/components/MenuCatalog";
 import type { PublicStaffUser } from "@/lib/users";
 import type { Session, StoreData } from "@/lib/types";
 
@@ -22,7 +21,7 @@ function readSavedPanel(): AdminPanel {
   const savedPanel = window.localStorage.getItem("admin_activePanel");
   const savedSection = window.localStorage.getItem("admin_section");
   if (savedPanel === "staff" || savedSection === "staff") return "sales";
-  if (savedPanel === "menu" || savedPanel === "transactions" || savedPanel === "finance") {
+  if (savedPanel === "transactions" || savedPanel === "finance") {
     return savedPanel;
   }
   return "sales";
@@ -35,7 +34,8 @@ export function AdminShell({ session, users, store, children, financeContent, at
 
   useEffect(() => {
     if (panel !== "transactions" && panel !== "sales" && panel !== "staff" && panel !== "finance") return;
-    const refreshTimer = window.setInterval(() => router.refresh(), 5000);
+    // Keep Admin lookups reasonably fresh without polling every 5 seconds.
+    const refreshTimer = window.setInterval(() => router.refresh(), 60000);
     return () => window.clearInterval(refreshTimer);
   }, [panel, router]);
 
@@ -86,14 +86,6 @@ export function AdminShell({ session, users, store, children, financeContent, at
             />
           ) : null}
           {current === "sales" ? children : null}
-          {current === "menu" ? (
-            <MenuCatalog
-              menu={store.menu}
-              categories={store.categories}
-              categoryTypes={store.categoryTypes ?? {}}
-              inventory={store.inventory}
-            />
-          ) : null}
           {current === "transactions" ? <SalePurchaseTransactions store={store} /> : null}
           {current === "finance" ? financeContent : null}
         </div>

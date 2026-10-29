@@ -6,11 +6,10 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { logout } from "@/actions/auth";
 import type { Session } from "@/lib/types";
 
-export type AdminPanel = "sales" | "menu" | "transactions" | "staff" | "finance";
+export type AdminPanel = "sales" | "transactions" | "staff" | "finance";
 
 const TABS: { id: AdminPanel; label: string }[] = [
   { id: "sales", label: "Sales" },
-  { id: "menu", label: "Menu" },
   { id: "transactions", label: "Inventory" },
   { id: "staff", label: "Staff" },
   { id: "finance", label: "Finance" },
@@ -83,6 +82,7 @@ export function StaffHeader({ session, panel, onPanelChange }: StaffHeaderProps)
         }`}
       />
       <aside
+        suppressHydrationWarning
         role="dialog"
         aria-modal="true"
         aria-label="Admin menu"
@@ -105,7 +105,7 @@ export function StaffHeader({ session, panel, onPanelChange }: StaffHeaderProps)
           </button>
         </div>
 
-        <nav className="flex flex-1 flex-col gap-1 p-3">
+        <nav suppressHydrationWarning className="flex flex-1 flex-col gap-1 p-3">
           {TABS.map((tab) => {
             const active = panel === tab.id;
             return (
@@ -143,12 +143,12 @@ export function StaffHeader({ session, panel, onPanelChange }: StaffHeaderProps)
         </div>
       </aside>
 
-      <aside className="fixed bottom-0 left-0 top-[65px] z-30 hidden w-60 flex-col border-r border-slate-200 bg-white xl:flex">
+      <aside suppressHydrationWarning className="fixed bottom-0 left-0 top-[65px] z-30 hidden w-60 flex-col border-r border-slate-200 bg-white xl:flex">
         <div className="border-b border-slate-100 px-5 py-5">
           <p className="text-[10px] font-bold tracking-[0.2em] text-[#58789d] uppercase">Workspace</p>
           <p className="mt-1 truncate text-sm font-semibold text-slate-900">{session.name}</p>
         </div>
-        <nav aria-label="Main navigation" className="flex flex-1 flex-col gap-1 p-3">
+        <nav suppressHydrationWarning aria-label="Main navigation" className="flex flex-1 flex-col gap-1 p-3">
           {TABS.map((tab) => {
             const active = panel === tab.id;
             return (

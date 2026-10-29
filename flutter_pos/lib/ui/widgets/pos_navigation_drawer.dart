@@ -2,7 +2,17 @@
 
 import 'package:flutter/material.dart';
 
-enum PosSection { terminal, stock, restock, orderHistory }
+enum PosSection {
+  sales,
+  menu,
+  inventory,
+  staff,
+  finance,
+  terminal,
+  stock,
+  restock,
+  orderHistory
+}
 
 typedef PosDrawerBuilder = Widget Function(PosSection section);
 
@@ -20,11 +30,9 @@ class PosNavigationDrawer extends StatelessWidget {
   final bool connectslipEnabled;
   final String logoutDisabledMessage;
   final VoidCallback onOpenTerminal;
-  final VoidCallback onOpenStock;
-  final VoidCallback onOpenRestock;
+  final VoidCallback onOpenMenuEditor;
   final VoidCallback onOpenOrderHistory;
   final VoidCallback onOpenBaristas;
-  final VoidCallback onOpenBackOffice;
   final VoidCallback onOpenHelpCenter;
   final VoidCallback onConnectLabels;
   final VoidCallback onConnectslip;
@@ -46,11 +54,9 @@ class PosNavigationDrawer extends StatelessWidget {
     required this.connectslipEnabled,
     required this.logoutDisabledMessage,
     required this.onOpenTerminal,
-    required this.onOpenStock,
-    required this.onOpenRestock,
+    required this.onOpenMenuEditor,
     required this.onOpenOrderHistory,
     required this.onOpenBaristas,
-    required this.onOpenBackOffice,
     required this.onOpenHelpCenter,
     required this.onConnectLabels,
     required this.onConnectslip,
@@ -90,57 +96,25 @@ class PosNavigationDrawer extends StatelessWidget {
                   _sectionLabel('MAIN'),
                   _row(
                     icon: Icons.point_of_sale_outlined,
-                    title: 'POS Terminal',
-                    selected: selectedSection == PosSection.terminal,
+                    title: 'Sales',
+                    selected: selectedSection == PosSection.terminal ||
+                        selectedSection == PosSection.sales,
                     onTap: () =>
                         _select(context, PosSection.terminal, onOpenTerminal),
                   ),
-                  if (inventoryFeaturesEnabled &&
-                      (stockInventoryEnabled || restockInventoryEnabled)) ...[
-                    const SizedBox(height: 20),
-                    _sectionLabel('INVENTORY'),
-                    if (stockInventoryEnabled)
-                      _row(
-                        icon: Icons.inventory_2_outlined,
-                        title: 'Stock inventory',
-                        selected: selectedSection == PosSection.stock,
-                        onTap: () =>
-                            _select(context, PosSection.stock, onOpenStock),
-                      ),
-                    if (restockInventoryEnabled)
-                      _row(
-                        icon: Icons.add_shopping_cart_outlined,
-                        title: 'Restock Inventory History',
-                        selected: selectedSection == PosSection.restock,
-                        onTap: () =>
-                            _select(context, PosSection.restock, onOpenRestock),
-                      ),
-                  ],
-                  if (inventoryFeaturesEnabled && stockInventoryEnabled) ...[
-                      const SizedBox(height: 20),
-                      _sectionLabel('ORDER HISTORY'),
-                      _row(
-                        icon: Icons.receipt_long_outlined,
-                        title: 'Order History',
-                      selected: selectedSection == PosSection.orderHistory,
-                      onTap: () => _select(
-                          context, PosSection.orderHistory, onOpenOrderHistory),
-                    ),
-                  ],
-                  const SizedBox(height: 20),
-                  _sectionLabel('STAFF & SHIFT'),
                   _row(
-                    icon: Icons.groups_outlined,
-                    title: 'Staff on Shift / Team',
-                    onTap: () => _closeThen(context, onOpenBaristas),
+                    icon: Icons.restaurant_menu_outlined,
+                    title: 'Menu Items',
+                    selected: selectedSection == PosSection.menu,
+                    onTap: () => _closeThen(context, onOpenMenuEditor),
                   ),
                   const SizedBox(height: 20),
-                  _sectionLabel('SALES & ADMIN'),
+                  _sectionLabel('WORKSPACE'),
                   _row(
-                    icon: Icons.apartment_outlined,
-                    title: 'Back Office',
-                    subtitle: 'Inventory, Reports, Analytics',
-                    onTap: () => _closeThen(context, onOpenBackOffice),
+                    icon: Icons.groups_outlined,
+                    title: 'Staff',
+                    selected: selectedSection == PosSection.staff,
+                    onTap: () => _closeThen(context, onOpenBaristas),
                   ),
                   const SizedBox(height: 20),
                   _sectionLabel('SUPPORT'),
@@ -375,9 +349,10 @@ class PosNavigationDrawer extends StatelessWidget {
   void _select(BuildContext context, PosSection section, VoidCallback action) {
     if (section == selectedSection) {
       Navigator.pop(context);
-    } else {
-      _closeThen(context, action);
+      action();
+      return;
     }
+    _closeThen(context, action);
   }
 
   void _closeThen(BuildContext context, VoidCallback action) {

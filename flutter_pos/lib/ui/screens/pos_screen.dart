@@ -1,9 +1,7 @@
 // ignore_for_file: deprecated_member_use
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../models/menu_item.dart';
 import '../../models/order.dart';
 import '../../services/sync_service.dart';
@@ -18,9 +16,8 @@ import '../widgets/bluetooth_printer_picker_dialog.dart';
 import '../widgets/pos_navigation_drawer.dart';
 import '../widgets/pos_app_bar.dart';
 import '../../services/bluetooth_printer_service.dart';
-import 'stock_screen.dart';
-import 'restock_screen.dart';
 import 'order_history_screen.dart';
+import 'menu_editor_screen.dart';
 import 'login_screen.dart';
 import 'support_account_screens.dart';
 
@@ -60,25 +57,16 @@ class _PosScreenState extends State<PosScreen> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _openBackOffice() async {
-    final uri = Uri.parse('https://synorra-pos.click/back-office');
-    try {
-      final launched = await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication,
-      );
-      if (!launched && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open Back office.')),
-        );
-      }
-    } on PlatformException {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open Back office.')),
-        );
-      }
-    }
+  Future<void> _openMenuEditor() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => MenuEditorScreen(
+          controller: widget.controller,
+          drawerBuilder: _buildPosDrawer,
+        ),
+      ),
+    );
   }
 
   void _openHelpCenter() {
@@ -191,61 +179,6 @@ class _PosScreenState extends State<PosScreen> {
     } else {
       widget.controller.addToCart(item);
     }
-  }
-
-  void _openVoidDialog() {
-    if (widget.controller.cart.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No items in checkout to void.')),
-      );
-      return;
-    }
-
-    showDialog(
-      context: context,
-      builder: (_) => VoidDialog(
-        cart: widget.controller.cart,
-        isManager: (widget.controller.currentUser?.isManager ?? false) &&
-            (widget.controller.currentUser?.password.isNotEmpty ?? false),
-        isRequestPending: widget.controller.isVoidRequestPending,
-        isOnline: widget.controller.syncService.isOnline,
-        onConfirmVoid: (reason, managerUser, managerPass) async {
-          final username = managerUser.isNotEmpty
-              ? managerUser
-              : widget.controller.currentUser?.username ?? '';
-          final password = managerPass.isNotEmpty
-              ? managerPass
-              : widget.controller.currentUser?.password ?? '';
-          final res =
-              await widget.controller.voidCheckout(reason, username, password);
-          if (res['ok'] == true && mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(res['queued'] == true
-                    ? 'Void saved offline and will sync when online.'
-                    : 'Checkout voided.'),
-              ),
-            );
-          }
-          return res;
-        },
-        onRequestVoid: (reason) async {
-          final result =
-              await widget.controller.requestVoidApproval(null, reason);
-          if (result['ok'] == true && mounted) {
-            final synced = result['synced'] == true;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(synced
-                    ? 'Void request sent to Admin. Waiting for approval.'
-                    : 'Void request saved and will sync when online.'),
-              ),
-            );
-          }
-          return result;
-        },
-      ),
-    );
   }
 
   void _openslipDialog([Order? targetOrder]) {
@@ -559,8 +492,9 @@ class _PosScreenState extends State<PosScreen> {
       },
     );
 
-    if (selectedReason == null || selectedReason.trim().isEmpty || !mounted)
+    if (selectedReason == null || selectedReason.trim().isEmpty || !mounted) {
       return;
+    }
 
     final stockShortfalls =
         controller.syncService.findStockShortfalls(controller.cart);
@@ -668,37 +602,6 @@ class _PosScreenState extends State<PosScreen> {
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
-  void _navigateToStock() {
-    if (!widget.controller.syncService.hasPermission('stockInventory')) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute<void>(
-        builder: (_) => StockScreen(
-          controller: widget.controller,
-          drawerBuilder: _buildPosDrawer,
-          onPrint: _openslipDialog,
-          onVoid: _openVoidDialog,
-        ),
-      ),
-      (route) => route.isFirst,
-    );
-  }
-
-  void _navigateToRestock() {
-    if (!widget.controller.syncService.hasPermission('restockInventory'))
-      return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute<void>(
-        builder: (_) => RestockScreen(
-          controller: widget.controller,
-          drawerBuilder: _buildPosDrawer,
-          onPrint: _openslipDialog,
-          onVoid: _openVoidDialog,
-        ),
-      ),
-      (route) => route.isFirst,
-    );
-  }
-
   void _navigateToOrderHistory() {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute<void>(
@@ -731,17 +634,14 @@ class _PosScreenState extends State<PosScreen> {
           controller.syncService.hasPermission('restockInventory'),
       connectLabelsEnabled:
           controller.syncService.hasPermission('connectLabels'),
-      connectslipEnabled:
-          controller.syncService.hasPermission('connectslip'),
+      connectslipEnabled: controller.syncService.hasPermission('connectslip'),
       logoutDisabledMessage: controller.isVoidRequestPending
           ? 'Wait for void approval first'
           : 'Clear checkout first',
       onOpenTerminal: _navigateToPos,
-      onOpenStock: _navigateToStock,
-      onOpenRestock: _navigateToRestock,
+      onOpenMenuEditor: _openMenuEditor,
       onOpenOrderHistory: _navigateToOrderHistory,
       onOpenBaristas: _openBaristaShiftDialog,
-      onOpenBackOffice: _openBackOffice,
       onOpenHelpCenter: _openHelpCenter,
       onConnectLabels: () => _openPrinterPicker(PrinterRole.labels),
       onConnectslip: () => _openPrinterPicker(PrinterRole.slip),

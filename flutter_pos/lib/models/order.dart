@@ -12,7 +12,7 @@ class Order {
   final int? promoItemIndex;
   final int? promoItemQty;
   final double total;
-  final String paymentMethod; // 'cash', 'gcash', 'maya'
+  final String paymentMethod; // Cash, digital, alternative, or split payment
   final String serviceMode;
   String ticketNo;
   final double paid;

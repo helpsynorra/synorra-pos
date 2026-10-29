@@ -19,6 +19,83 @@ class SyncService extends ChangeNotifier {
   final LocalStorageService localStorage;
   final SupabaseService supabaseService;
 
+  @visibleForTesting
+  static List<MenuItem> mergeMenuPreservingLocal(
+    List<MenuItem> localMenu,
+    List<MenuItem> remoteMenu,
+  ) {
+    final combined = <String, MenuItem>{};
+    for (final item in localMenu) {
+      if (item.id.trim().isNotEmpty) {
+        combined[item.id] = item;
+      }
+    }
+    for (final item in remoteMenu) {
+      if (item.id.trim().isNotEmpty && !combined.containsKey(item.id)) {
+        combined[item.id] = item;
+      }
+    }
+    return combined.values.toList();
+  }
+
+  @visibleForTesting
+  static List<String> mergeCategoriesPreservingLocal(
+    List<String> localCategories,
+    List<String> remoteCategories,
+  ) {
+    final merged = <String>[];
+    final seen = <String>{};
+
+    void addCategory(String category) {
+      final normalized = category.trim();
+      if (normalized.isEmpty || normalized.toLowerCase() == 'all') {
+        return;
+      }
+      final key = normalized.toLowerCase();
+      if (!seen.contains(key)) {
+        seen.add(key);
+        merged.add(normalized);
+      }
+    }
+
+    for (final category in localCategories) {
+      addCategory(category);
+    }
+    for (final category in remoteCategories) {
+      addCategory(category);
+    }
+    return ['All', ...merged];
+  }
+
+  @visibleForTesting
+  static List<String> mergeCategoryOrderPreservingLocal(
+    List<String> localOrder,
+    List<String> remoteCategories,
+  ) {
+    final merged = <String>[];
+    final seen = <String>{};
+
+    void addCategory(String category) {
+      final normalized = category.trim();
+      if (normalized.isEmpty || normalized.toLowerCase() == 'all') {
+        return;
+      }
+      final key = normalized.toLowerCase();
+      if (!seen.contains(key)) {
+        seen.add(key);
+        merged.add(normalized);
+      }
+    }
+
+    for (final category in localOrder) {
+      addCategory(category);
+    }
+    for (final category in remoteCategories) {
+      addCategory(category);
+    }
+    return merged;
+  }
+
   SyncStatus status = SyncStatus.idle;
   bool isOnline = true;
   bool inventoryFeaturesEnabled = true;
@@ -112,9 +189,14 @@ class SyncService extends ChangeNotifier {
       }
     });
 
-    // Keep remote data fresh without repeatedly loading the full store on the UI
-    _periodicSyncTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (isOnline && status != SyncStatus.syncing) {
+    // Keep remote data fresh without hammering the network. We only sync the
+    // full store periodically when there are pending writes or enough time has
+    // passed since the last successful sync.
+    _periodicSyncTimer = Timer.periodic(const Duration(minutes: 3), (_) {
+      final hasPending = getPendingCount() > 0;
+      final idleWindow = lastSyncTime == null ||
+          DateTime.now().difference(lastSyncTime!) >= const Duration(minutes: 3);
+      if (isOnline && status != SyncStatus.syncing && (hasPending || idleWindow)) {
         syncAll();
       }
     });
@@ -368,11 +450,15 @@ class SyncService extends ChangeNotifier {
               .whereType<Map>()
               .map((e) => MenuItem.fromJson(Map<String, dynamic>.from(e)))
               .toList();
-          await localStorage.saveMenu(freshMenu);
+          final mergedMenu = mergeMenuPreservingLocal(
+            localStorage.getMenu(),
+            freshMenu,
+          );
+          await localStorage.saveMenu(mergedMenu);
           // Warm persistent image cache while the device is online. Downloads
           // run in the background so menu synchronization is not delayed.
           unawaited(OfflineImageCache.cacheUrls(
-            freshMenu.expand((item) => [
+            mergedMenu.expand((item) => [
                   item.image,
                   ...item.addons.map((addon) => addon.image ?? ''),
                 ]),
@@ -383,7 +469,16 @@ class SyncService extends ChangeNotifier {
           final freshCategories = (fullStore['categories'] as List)
               .map((e) => e.toString())
               .toList();
-          await localStorage.saveCategories(freshCategories);
+          final mergedCategories = mergeCategoriesPreservingLocal(
+            localStorage.getCategories(),
+            freshCategories,
+          );
+          await localStorage.saveCategories(mergedCategories);
+          final mergedOrder = mergeCategoryOrderPreservingLocal(
+            localStorage.getCategoryOrder(),
+            freshCategories,
+          );
+          await localStorage.saveCategoryOrder(mergedOrder);
         }
 
         if (fullStore['inventory'] is List) {

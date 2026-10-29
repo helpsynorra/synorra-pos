@@ -352,6 +352,30 @@ export function orderSoldAsLabel(items: OrderItem[]) {
   return orderSoldAsLines(items).join(", ");
 }
 
+export function orderItemCategories(
+  items: OrderItem[],
+  menu: Pick<MenuItem, "id" | "name" | "category">[],
+): string[] {
+  const categories = new Map<string, string>();
+  for (const item of items) {
+    const category = orderItemCategory(item, menu);
+    if (!category) continue;
+    const key = category.toLowerCase();
+    if (!categories.has(key)) categories.set(key, category);
+  }
+  return [...categories.values()];
+}
+
+export function orderItemCategory(
+  item: Pick<OrderItem, "productId" | "name" | "category">,
+  menu: Pick<MenuItem, "id" | "name" | "category">[],
+): string | undefined {
+  const menuItem =
+    menu.find((entry) => entry.id === item.productId) ??
+    menu.find((entry) => entry.name.trim().toLowerCase() === item.name.trim().toLowerCase());
+  return item.category?.trim() || menuItem?.category.trim() || undefined;
+}
+
 export function cartLineKey(item: Pick<OrderItem, "productId" | "style" | "addons">) {
   const addons = (item.addons ?? [])
     .filter((addon) => addon.qty > 0)

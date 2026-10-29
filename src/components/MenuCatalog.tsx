@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useMemo, useState, useTransition } from "react";
 import {
   addMenuCategory,
@@ -28,7 +29,17 @@ const field =
 const iconBtn =
   "flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 transition-all hover:bg-neutral-100 hover:text-neutral-900 disabled:opacity-30";
 
+const MAX_MENU_PHOTO_BYTES = 25 * 1024 * 1024;
+
 const isSizeAddon = (addon: MenuAddon) => addon.id.startsWith("size:");
+
+function validateMenuPhoto(file: File | null) {
+  if (!file) return null;
+  if (file.size > MAX_MENU_PHOTO_BYTES) {
+    return "Photo must be 25MB or smaller.";
+  }
+  return null;
+}
 
 function PencilIcon() {
   return (
@@ -591,11 +602,19 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                   </label>
                 </div>
                 <div className="flex items-center gap-3">
-                  {itemImage ? <img src={itemImage} alt="Menu item preview" className="h-16 w-16 rounded-xl object-cover" /> : null}
+                  {itemImage ? <Image src={itemImage} alt="Menu item preview" width={64} height={64} unoptimized className="h-16 w-16 rounded-xl object-cover" /> : null}
                   <label className="text-xs font-medium text-neutral-600">
                     <span className="mb-1.5 block">Menu photo</span>
                     <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(event) => {
                       const file = event.target.files?.[0] ?? null;
+                      const error = validateMenuPhoto(file);
+                      if (error) {
+                        flash(error);
+                        event.target.value = "";
+                        setItemPhoto(null);
+                        setItemImage("");
+                        return;
+                      }
                       setItemPhoto(file);
                       if (file) setItemImage(URL.createObjectURL(file));
                     }} className="block max-w-full text-xs" />
@@ -665,7 +684,6 @@ export function MenuCatalog({ menu, categories, categoryTypes = {}, inventory = 
                   {itemAddons.filter(isSizeAddon).length === 0 ? (
                     <p className="rounded-lg border border-dashed border-neutral-300 bg-white px-3 py-4 text-center text-xs text-neutral-500">No sizes added. Use the base price above for a single price.</p>
                   ) : itemAddons.filter(isSizeAddon).map((size) => {
-                    const index = itemAddons.findIndex((entry) => entry.id === size.id);
                     const sizeStock = inventory.find((stock) => stock.id === size.inventoryItemId);
                     return (
                       <div key={size.id} className={`mb-2 grid grid-cols-1 gap-2 ${itemInventoryMode === "stock_only" ? "sm:grid-cols-[minmax(150px,1fr)_110px_minmax(180px,1fr)_110px_auto]" : "sm:grid-cols-[1fr_180px_auto]"}`}>

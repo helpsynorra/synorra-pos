@@ -128,7 +128,16 @@ export type OrderItem = {
   serviceMode?: "dine-in" | "take-out";
 };
 
-export type PaymentMethod = "cash" | "gcash" | "maya" | "waste" | `split:${string}`;
+export type PaymentMethod =
+  | "cash"
+  | "gcash"
+  | "maya"
+  | "cards"
+  | "grab"
+  | "foodpanda"
+  | "split"
+  | "waste"
+  | `split:${string}`;
 
 export type Order = {
   id: string;

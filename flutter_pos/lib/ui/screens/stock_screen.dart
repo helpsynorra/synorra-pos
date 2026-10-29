@@ -11,6 +11,10 @@ class StockScreen extends StatefulWidget {
   final PosDrawerBuilder drawerBuilder;
   final VoidCallback onPrint;
   final VoidCallback onVoid;
+  final VoidCallback onOpenSales;
+  final VoidCallback onOpenInventory;
+  final VoidCallback onOpenStaff;
+  final VoidCallback onOpenFinance;
 
   const StockScreen({
     super.key,
@@ -18,6 +22,10 @@ class StockScreen extends StatefulWidget {
     required this.drawerBuilder,
     required this.onPrint,
     required this.onVoid,
+    required this.onOpenSales,
+    required this.onOpenInventory,
+    required this.onOpenStaff,
+    required this.onOpenFinance,
   });
 
   @override
@@ -282,9 +290,8 @@ class _StockScreenState extends State<StockScreen> {
     final ledgerReady = _ledgerCache != null &&
         _ledgerCacheRange == _filterRange &&
         _ledgerCacheDate == selectedDate;
-    final ledgers = ledgerReady
-        ? _ledgerCache!
-        : const <String, Map<String, double>>{};
+    final ledgers =
+        ledgerReady ? _ledgerCache! : const <String, Map<String, double>>{};
     final totalCupsUsed = inventory.fold<double>(0, (total, item) {
       if (!widget.controller.isCupInventoryItem(item)) return total;
       return total + (ledgers[item.id]?['usedPerUnit'] ?? 0.0);
@@ -644,9 +651,10 @@ class _StockScreenState extends State<StockScreen> {
                   if (constraints.maxWidth < 720) {
                     return Column(
                       children: visibleInventory
-                          .map(
-                              (item) => _buildInventoryCard(
-                                item, selectedDate, ledgers[item.id] ?? const {},
+                          .map((item) => _buildInventoryCard(
+                                item,
+                                selectedDate,
+                                ledgers[item.id] ?? const {},
                               ))
                           .toList(),
                     );

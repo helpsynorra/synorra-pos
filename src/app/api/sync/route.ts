@@ -572,7 +572,11 @@ export async function POST(req: NextRequest) {
       const serviceMode: NonNullable<OrderItem["serviceMode"]> =
         rawOrder.serviceMode === "take-out" ? "take-out" : "dine-in";
       const orderItems: OrderItem[] = orderItemsFromApi(rawOrder.items).map(
-        (item): OrderItem => ({ ...item, serviceMode }),
+        (item): OrderItem => ({
+          ...item,
+          category: item.category ?? store.menu.find((menuItem) => menuItem.id === item.productId)?.category,
+          serviceMode,
+        }),
       );
       const requestedPromoCode = typeof rawOrder.promoLabel === "string"
         ? rawOrder.promoLabel.replace(/\s+/g, "").toUpperCase()

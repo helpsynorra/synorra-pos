@@ -87,7 +87,8 @@ class PosController extends ChangeNotifier {
 
   // Cart
   List<OrderItem> cart = [];
-  String paymentMethod = 'cash'; // 'cash', 'gcash', 'maya'
+  String paymentMethod =
+      'cash'; // cash, gcash, maya, cards, grab, foodpanda, or split details
   double tenderedAmount = 0.0;
   String serviceMode = 'dine-in';
   String? promoId;
@@ -519,6 +520,46 @@ class PosController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> persistMenuState({
+    List<MenuItem>? items,
+    List<String>? categoryList,
+    String? selected,
+  }) async {
+    final nextItems = items ?? List<MenuItem>.from(menu);
+    final nextCategories = (categoryList ?? categories)
+        .where((category) => category.trim().isNotEmpty)
+        .toList();
+
+    final normalizedCategories = <String>['All'];
+    for (final category in nextCategories) {
+      final trimmed = category.trim();
+      if (trimmed.isEmpty || trimmed.toLowerCase() == 'all') continue;
+      if (!normalizedCategories.any((entry) =>
+          entry.trim().toLowerCase() == trimmed.toLowerCase())) {
+        normalizedCategories.add(trimmed);
+      }
+    }
+
+    menu = List<MenuItem>.from(nextItems);
+    categories = List<String>.from(normalizedCategories);
+    if (selected != null && selected.trim().isNotEmpty) {
+      selectedCategory = selected.trim();
+    } else if (!categories.contains(selectedCategory)) {
+      selectedCategory = 'All';
+    }
+
+    await localStorage.saveMenu(menu);
+    await localStorage.saveCategories(categories);
+    await localStorage.saveCategoryOrder(
+      categories.where((category) => category != 'All').toList(),
+    );
+    _refreshFromLocalStorage();
+  }
+
+  void refreshLocalMenuState() {
+    _refreshFromLocalStorage();
+  }
+
   void reorderCategories(int oldIndex, int newIndex) {
     if (oldIndex == 0 || newIndex == 0 || oldIndex == newIndex) return;
     final reordered = List<String>.of(categories);
@@ -904,9 +945,12 @@ class PosController extends ChangeNotifier {
         'error': 'Please provide a reason or note for the waste.'
       };
     }
-    if (cart.isEmpty) return {'ok': false, 'error': 'Add wasted items first.'};
-    if (isProcessing)
+    if (cart.isEmpty) {
+      return {'ok': false, 'error': 'Add wasted items first.'};
+    }
+    if (isProcessing) {
       return {'ok': false, 'error': 'Please wait for the current order.'};
+    }
 
     isProcessing = true;
     notifyListeners();

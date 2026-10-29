@@ -685,6 +685,7 @@ class SupabaseService {
                 'price': i.price.round(),
                 'serviceMode': order.serviceMode,
                 if (i.style != null) 'style': i.style,
+                if (i.category != null) 'category': i.category,
                 'addons': i.addons.map((a) => a.toJson()).toList(),
               })
           .toList();

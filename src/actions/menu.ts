@@ -22,7 +22,7 @@ const PHOTO_TYPES: Record<string, string> = {
   "image/webp": "webp",
   "image/gif": "gif",
 };
-const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+const MAX_PHOTO_BYTES = 25 * 1024 * 1024;
 
 async function requireMenuEditor() {
   const session = await getSession();
@@ -60,7 +60,7 @@ async function saveMenuPhoto(file: File, id: string) {
     return { error: "Use a JPG, PNG, WEBP, or GIF photo." };
   }
   if (file.size > MAX_PHOTO_BYTES) {
-    return { error: "Keep photos under 5MB." };
+    return { error: "Keep photos under 25MB." };
   }
 
   const safeId = id.replace(/[^a-z0-9-]/gi, "") || "item";

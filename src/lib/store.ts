@@ -27,7 +27,7 @@ import type {
 } from "@/lib/types";
 import { isWasteOrder } from "@/lib/analytics";
 import { roundQty } from "@/lib/inventory";
-import { hydrateOrderLine, inferMenuCategoryType, normalizeMenuAddons, normalizeMenuCategoryType, normalizeMenuStyles, normalizeMenuTypes, normalizeMenuTypeOptions, parseDrinkStyle, parseMenuImageOptions, parseStoredOrderAddons, stripMenuImage } from "@/lib/menu";
+import { hydrateOrderLine, inferMenuCategoryType, normalizeMenuAddons, normalizeMenuCategoryType, normalizeMenuStyles, normalizeMenuTypes, normalizeMenuTypeOptions, orderItemCategory, parseDrinkStyle, parseMenuImageOptions, parseStoredOrderAddons, stripMenuImage } from "@/lib/menu";
 import { parsePayment } from "@/lib/payments";
 import { DEFAULT_LOGIN_GATES, normalizeLoginGates } from "@/lib/staff-gates";
 import { DEFAULT_STAFF_PERMISSIONS, DEFAULT_USERS, parseRole } from "@/lib/users";
@@ -308,7 +308,7 @@ function emptyStore(): StoreData {
       ? env("SYNORRA_LOCAL_ADMIN_GATE")
       : undefined;
   return {
-    pos: { isOpen: false, openedAt: null, openedBy: null, inventoryFeaturesEnabled: true, printButtonHidden: false, cashDrawerOpeningFloat: 0, attendanceAuthMode: "username_password" },
+    pos: { isOpen: false, openedAt: null, openedBy: null, inventoryFeaturesEnabled: false, printButtonHidden: false, cashDrawerOpeningFloat: 0, attendanceAuthMode: "username_password" },
     orders: [],
     printJobs: [],
     menu: [],
@@ -351,7 +351,7 @@ function normalizeStore(store: StoreData): StoreData {
     isOpen: store.pos?.isOpen ?? false,
     openedAt: store.pos?.openedAt ?? null,
     openedBy: store.pos?.openedBy ?? null,
-    inventoryFeaturesEnabled: store.pos?.inventoryFeaturesEnabled ?? true,
+    inventoryFeaturesEnabled: store.pos?.inventoryFeaturesEnabled ?? false,
     printButtonHidden: store.pos?.printButtonHidden === true,
     cashDrawerOpeningFloat: Number(store.pos?.cashDrawerOpeningFloat) || 0,
     attendanceAuthMode: store.pos?.attendanceAuthMode ?? "username_password",
@@ -712,6 +712,15 @@ async function readStore(options?: { fresh?: boolean; ownerId?: string | null })
     const rows = (orders.data ?? []).filter((row) => !row.deleted_at);
     const activeOrderIds = new Set(rows.map((row) => row.id));
     const items = orderItems.data ?? [];
+    const categoryNameById = new Map(
+      (categories.data ?? []).map((row) => [row.id, row.name]),
+    );
+    const menuItemsForCategory = (menu.data ?? []).flatMap((row) => {
+      const category = categoryNameById.get(row.category_id);
+      return typeof category === "string" && category.trim()
+        ? [{ id: row.id, name: row.name, category }]
+        : [];
+    });
     const store = normalizeStore({
       ...base,
       pos: pos.data ? { isOpen: Boolean(pos.data.is_open), openedAt: pos.data.opened_at, openedBy: pos.data.opened_by_name ?? pos.data.opened_by, inventoryFeaturesEnabled: pos.data.inventory_features_enabled !== false, printButtonHidden: pos.data.print_button_hidden === true, cashDrawerOpeningFloat: Number(pos.data.cash_drawer_opening_float) || 0, attendanceAuthMode: pos.data.attendance_auth_mode ?? "username_password" } : base.pos,
@@ -815,6 +824,14 @@ async function readStore(options?: { fresh?: boolean; ownerId?: string | null })
           name: item.name_snapshot,
           qty: item.qty,
           price: item.price_snapshot,
+          category: orderItemCategory(
+            {
+              productId: item.menu_item_id ?? item.product_id_snapshot,
+              name: item.name_snapshot,
+              category: item.category_snapshot,
+            },
+            menuItemsForCategory,
+          ),
           style: parseDrinkStyle(item.style),
           addons: parseStoredOrderAddons(item.addons),
           serviceMode: item.service_mode === "take-out" ? "take-out" : item.service_mode === "dine-in" ? "dine-in" : undefined,
@@ -1742,8 +1759,21 @@ export async function deleteOrderAtomic(orderId: string): Promise<void> {
         const order = memoryStore.orders.find((o) => o.id === orderId);
         if (order && !order.voided) {
           const logs = memoryStore.usageLogs.filter((entry) => entry.orderId === orderId);
-          for (const log of logs) {
-            const item = memoryStore.inventory.find((entry) => entry.id === log.inventoryItemId || entry.name === log.itemName);
+          const restorations = logs.map((log) => ({
+            log,
+            item: memoryStore!.inventory.find(
+              (entry) => entry.id === log.inventoryItemId || entry.name === log.itemName,
+            ),
+          }));
+          const missingInventory = restorations.find(
+            ({ log, item }) => !item && log.inventoryItemId,
+          );
+          if (missingInventory) {
+            throw new Error(
+              `Unable to restore stock for inventory item ${missingInventory.log.inventoryItemId}.`,
+            );
+          }
+          for (const { log, item } of restorations) {
             if (item) item.stock = roundQty(item.stock + log.usedAmount);
           }
         }

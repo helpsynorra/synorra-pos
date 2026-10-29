@@ -11,6 +11,10 @@ class RestockScreen extends StatefulWidget {
   final PosDrawerBuilder drawerBuilder;
   final VoidCallback onPrint;
   final VoidCallback onVoid;
+  final VoidCallback onOpenSales;
+  final VoidCallback onOpenInventory;
+  final VoidCallback onOpenStaff;
+  final VoidCallback onOpenFinance;
 
   const RestockScreen({
     super.key,
@@ -18,6 +22,10 @@ class RestockScreen extends StatefulWidget {
     required this.drawerBuilder,
     required this.onPrint,
     required this.onVoid,
+    required this.onOpenSales,
+    required this.onOpenInventory,
+    required this.onOpenStaff,
+    required this.onOpenFinance,
   });
 
   @override
@@ -182,15 +190,15 @@ class _RestockScreenState extends State<RestockScreen> {
   @override
   Widget build(BuildContext context) {
     final today = ManilaTime.today();
-    final rangeAnchor = _filterMode == 'date'
-        ? _parseSelectedDate() ?? today
-        : today;
+    final rangeAnchor =
+        _filterMode == 'date' ? _parseSelectedDate() ?? today : today;
     final filterRange = _filterMode == 'date' ? 'Today' : _activeRange;
     final filteredRestocks = widget.controller.restocks
         .where((record) =>
             ManilaTime.matchesRange(record.date, filterRange, rangeAnchor))
         .toList();
-    final visibleRestocks = filteredRestocks.take(_visibleRestockCount).toList();
+    final visibleRestocks =
+        filteredRestocks.take(_visibleRestockCount).toList();
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -342,8 +350,7 @@ class _RestockScreenState extends State<RestockScreen> {
                       );
                     }
                     return Column(
-                      children:
-                          visibleRestocks.map(_buildRestockCard).toList(),
+                      children: visibleRestocks.map(_buildRestockCard).toList(),
                     );
                   }
 

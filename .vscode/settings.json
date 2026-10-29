@@ -1,6 +1,9 @@
 {
     "python.terminal.useEnvFile": true,
     "chat.tools.terminal.autoApprove": {
-        "flutter": true
+        "flutter": true,
+        "npx tsc": true,
+        "dart": true,
+        "npx eslint": true
     }
 }
