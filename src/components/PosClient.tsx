@@ -23,7 +23,6 @@ import {
   SalePurchaseTransactions,
   type InventoryTab,
 } from "@/components/SalePurchaseTransactions";
-import { MenuCatalog } from "@/components/MenuCatalog";
 import {
   addonIdFromName,
   addonAllowsQty,
@@ -85,7 +84,7 @@ type PosClientProps = {
   >;
 };
 
-type PosPanel = "pos" | "menu" | Extract<InventoryTab, "stock" | "restock">;
+type PosPanel = "pos" | Extract<InventoryTab, "stock" | "restock">;
 
 const CASH_PRESETS = [500, 1000, 2000];
 const CHECKOUT_KEY = "synorra_pos_checkout";
@@ -815,11 +814,7 @@ export function PosClient({
           </button>
           {visiblePanel !== "pos" ? (
             <p className="truncate text-sm font-medium text-slate-500">
-              {visiblePanel === "menu"
-                ? "Menu"
-                : visiblePanel === "stock"
-                  ? "Stock inventory"
-                  : "Restock"}
+              {visiblePanel === "stock" ? "Stock inventory" : "Restock"}
             </p>
           ) : null}
         </header>
@@ -880,23 +875,6 @@ export function PosClient({
               }`}
             >
               POS
-            </button>
-
-
-            <button
-              type="button"
-              aria-current={visiblePanel === "menu" ? "page" : undefined}
-              onClick={() => {
-                setActivePanel("menu");
-                setMenuOpen(false);
-              }}
-              className={`mb-3 w-full rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
-                visiblePanel === "menu"
-                  ? "bg-[#101d37] text-white"
-                  : "text-neutral-600 hover:bg-neutral-100 hover:text-black"
-              }`}
-            >
-              Menu
             </button>
 
             {inventoryFeaturesEnabled ? <div>
@@ -1770,15 +1748,7 @@ export function PosClient({
           />
         ) : null}
 
-        {visiblePanel === "menu" ? (
-          <div className="min-h-0 flex-1 overflow-y-auto bg-neutral-100 p-2 sm:p-4">
-            <MenuCatalog
-              menu={menu}
-              categories={categories}
-              inventory={inventoryStore.inventory ?? []}
-            />
-          </div>
-        ) : inventoryFeaturesEnabled && (visiblePanel === "stock" || visiblePanel === "restock") ? (
+        {inventoryFeaturesEnabled && (visiblePanel === "stock" || visiblePanel === "restock") ? (
           <div className="min-h-0 flex-1 overflow-y-auto bg-neutral-100 p-2 sm:p-4">
             <SalePurchaseTransactions
               store={inventoryStore}

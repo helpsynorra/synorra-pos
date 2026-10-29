@@ -61,7 +61,7 @@ class _ThermalSlip extends StatelessWidget {
   }
 }
 
-class slipDialog extends StatefulWidget {
+class SlipDialog extends StatefulWidget {
   final Order order;
   final List<Order> orders;
   final List<MenuItem> menu;
@@ -70,7 +70,7 @@ class slipDialog extends StatefulWidget {
   final bool cupLabelsEnabled;
   final bool printButtonEnabled;
 
-  const slipDialog({
+  const SlipDialog({
     super.key,
     required this.order,
     required this.orders,
@@ -82,10 +82,10 @@ class slipDialog extends StatefulWidget {
   });
 
   @override
-  State<slipDialog> createState() => _slipDialogState();
+  State<SlipDialog> createState() => _SlipDialogState();
 }
 
-class _slipDialogState extends State<slipDialog> {
+class _SlipDialogState extends State<SlipDialog> {
   late String _selectedOrderId;
 
   @override

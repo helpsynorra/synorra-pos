@@ -34,8 +34,9 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
     super.initState();
     widget.controller.addListener(_refresh);
     _searchController.addListener(() {
-      if (mounted)
+      if (mounted) {
         setState(() => _query = _searchController.text.trim().toLowerCase());
+      }
     });
   }
 
@@ -105,7 +106,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
         syncDotColor:
             online ? const Color(0xFF22C55E) : const Color(0xFF9CA3AF),
         onPrint: () {},
-        onSync: () => widget.controller.syncService.syncAll(),
+        onSync: () => widget.controller.syncService.syncNow(),
       ),
       drawer: widget.drawerBuilder(PosSection.orderHistory),
       body: Column(
@@ -502,12 +503,12 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
+                const Row(
                   children: [
                     const Icon(Icons.delete_outline_rounded,
                         color: Color(0xFFB45309), size: 24),
-                    const SizedBox(width: 8),
-                    const Text('Waste Record',
+                    SizedBox(width: 8),
+                    Text('Waste Record',
                         style: TextStyle(
                             fontSize: 21,
                             fontWeight: FontWeight.w700,
@@ -597,13 +598,13 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                   ])),
                 ],
                 const Divider(height: 24),
-                Row(
+                const Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                         child: Text('Sales Amount',
                             style: TextStyle(
                                 fontSize: 13, color: Color(0xFF64748B)))),
-                    const Text('₱0.00 (No Sale)',
+                    Text('₱0.00 (No Sale)',
                         style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,

@@ -34,6 +34,22 @@ import { DEFAULT_STAFF_PERMISSIONS, DEFAULT_USERS, parseRole } from "@/lib/users
 
 const POS_STATE_ID = "synorra-pos";
 
+let staffAvatarMigrationWarningShown = false;
+
+function isMissingStaffAvatarColumn(error: { code?: string; message?: string } | null): boolean {
+  return Boolean(
+    error &&
+      ["PGRST204", "42703"].includes(error.code ?? "") &&
+      error.message?.includes("avatar_path"),
+  );
+}
+
+function warnStaffAvatarMigrationRequired(): void {
+  if (staffAvatarMigrationWarningShown) return;
+  staffAvatarMigrationWarningShown = true;
+  console.warn("Staff photo support is unavailable until migration 20261029000700_staff_avatars.sql is applied.");
+}
+
 let queue: Promise<unknown> = Promise.resolve();
 let memoryStore: StoreData | null = null;
 let memoryStoreReadAt = 0;
@@ -77,15 +93,24 @@ export async function legacyOwnerId(): Promise<string | null> {
 export async function getOwnerAccounts(): Promise<StaffUser[]> {
   if (!isRealSupabaseConfigured()) return (await getStore()).users.filter((user) => user.role === "cashier");
   const supabase = supabaseAdmin();
-  const [{ data, error }, { data: promotions, error: promotionsError }] = await Promise.all([
-    supabase.from("staff_users").select("id,owner_id,username,email,password,password_changed,name,role,title,permissions").eq("role", "cashier").order("created_at"),
+  const [staffResult, { data: promotions, error: promotionsError }] = await Promise.all([
+    supabase.from("staff_users").select("id,owner_id,username,email,password,password_changed,name,role,title,permissions,avatar_path").eq("role", "cashier").order("created_at"),
     supabase.from("promotions").select("owner_id,code,discount_type,discount_value,expires_at,redeemed_at,redeemed_order_id").order("created_at", { ascending: false }),
   ]);
-  if (error) throw new Error(`Unable to read Owner accounts: ${error.message}`);
+  let staffRows = staffResult.data;
+  if (isMissingStaffAvatarColumn(staffResult.error)) {
+    warnStaffAvatarMigrationRequired();
+    const fallback = await supabase.from("staff_users").select("id,owner_id,username,email,password,password_changed,name,role,title,permissions").eq("role", "cashier").order("created_at");
+    if (fallback.error) throw new Error(`Unable to read Owner accounts: ${fallback.error.message}`);
+    staffRows = (fallback.data ?? []).map((row) => ({ ...row, avatar_path: null }));
+  } else if (staffResult.error) {
+    throw new Error(`Unable to read Owner accounts: ${staffResult.error.message}`);
+  }
   if (promotionsError) throw new Error(`Unable to read promotion codes: ${promotionsError.message}`);
-  return (data ?? []).map((row) => ({
+  return (staffRows ?? []).map((row) => ({
     id: row.id, ownerId: row.owner_id ?? row.id, username: row.username, email: row.email ?? "",
     password: row.password ?? "", passwordChanged: Boolean(row.password_changed), name: row.name,
+    avatarPath: row.avatar_path ?? undefined,
     role: "cashier", title: "Owner", permissions: {
       ...(row.permissions ?? {}),
       promoCodes: (promotions ?? []).filter((promo) => promo.owner_id === row.id).map((promo) => ({
@@ -613,7 +638,14 @@ export async function uploadPublicMenuPhoto(
   return `data:${contentType};base64,${bytes.toString("base64")}`;
 }
 
-async function readStore(options?: { fresh?: boolean; ownerId?: string | null }): Promise<StoreData> {
+async function readStore(options?: {
+  fresh?: boolean;
+  ownerId?: string | null;
+  includeAdminHistory?: boolean;
+  includeInventory?: boolean;
+}): Promise<StoreData> {
+  const includeAdminHistory = options?.includeAdminHistory !== false;
+  const includeInventory = options?.includeInventory !== false;
   const ownerId = options && Object.prototype.hasOwnProperty.call(options, "ownerId")
     ? options.ownerId ?? null
     : await activeOwnerId();
@@ -622,7 +654,15 @@ async function readStore(options?: { fresh?: boolean; ownerId?: string | null })
   if (!options?.fresh && cached && Date.now() - cached.readAt < STORE_CACHE_TTL_MS) {
     memoryStore = cached.store;
     memoryStoreReadAt = cached.readAt;
-    return cached.store;
+    if (includeAdminHistory && includeInventory) return cached.store;
+    return {
+      ...cached.store,
+      inventory: includeInventory ? cached.store.inventory : [],
+      orders: [],
+      usageLogs: [],
+      restocks: [],
+      loginActivity: cached.store.loginActivity.slice(-50),
+    };
   }
   const previousStore = cached?.store ?? null;
   if (!isRealSupabaseConfigured()) {
@@ -638,31 +678,48 @@ async function readStore(options?: { fresh?: boolean; ownerId?: string | null })
   try {
     const tenantQuery = <T,>(query: T): T =>
       ownerId ? (query as any).eq("owner_id", ownerId) as T : query;
-    const [pos, users, categories, menu, inventory, orders, orderItems, usageLogs, restocks, recipes, recipeCostings, recipeCostingMenuItems, recipeCostingIngredients, loginActivity, offRequests, voidRequests, promotions, loginGates, workShifts] = await Promise.all([
+    const loginActivityQuery = includeAdminHistory
+      ? tenantQuery(supabase.from("login_activity").select("id, owner_id, user_id, username, name, role, type, at, photo_path").order("at"))
+      : tenantQuery(supabase.from("login_activity").select("id, owner_id, user_id, username, name, role, type, at, photo_path").order("at", { ascending: false }).range(0, 49));
+    const [pos, usersResult, categories, menu, inventory, orders, orderItems, usageLogs, restocks, recipes, recipeCostings, recipeCostingMenuItems, recipeCostingIngredients, loginActivity, offRequests, voidRequests, promotions, loginGates, workShifts] = await Promise.all([
       ownerId
-        ? supabase.from("pos_state").select("*").eq("owner_id", ownerId).maybeSingle()
-        : supabase.from("pos_state").select("*").eq("id", POS_STATE_ID).maybeSingle(),
-      tenantQuery(supabase.from("staff_users").select("*")).order("created_at"),
-      tenantQuery(supabase.from("menu_categories").select("*")).order("name"),
-      tenantQuery(supabase.from("menu_items").select("*")).order("created_at"),
-      tenantQuery(supabase.from("inventory_items").select("*")).order("created_at"),
-      tenantQuery(supabase.from("orders").select("*")).is("deleted_at", null).order("created_at", { ascending: false }),
-      tenantQuery(supabase.from("order_items").select("*")).order("created_at"),
-      tenantQuery(supabase.from("usage_logs").select("*")).order("created_at"),
-      tenantQuery(supabase.from("restocks").select("*")).order("created_at"),
-      tenantQuery(supabase.from("recipes").select("*")).order("created_at"),
-      tenantQuery(supabase.from("recipe_costings").select("*")).order("created_at"),
-      tenantQuery(supabase.from("recipe_costing_menu_items").select("*")).order("created_at"),
-      tenantQuery(supabase.from("recipe_costing_ingredients").select("*")).order("created_at"),
-      tenantQuery(supabase.from("login_activity").select("*")).order("at"),
-      tenantQuery(supabase.from("off_requests").select("*")).order("created_at"),
-      tenantQuery(supabase.from("void_requests").select("*")).order("requested_at", { ascending: false }),
-      tenantQuery(supabase.from("promotions").select("*")).order("created_at", { ascending: false }),
+        ? supabase.from("pos_state").select("id, owner_id, is_open, opened_at, opened_by, opened_by_name, inventory_features_enabled, print_button_hidden, cash_drawer_opening_float, attendance_auth_mode, updated_at").eq("owner_id", ownerId).maybeSingle()
+        : supabase.from("pos_state").select("id, owner_id, is_open, opened_at, opened_by, opened_by_name, inventory_features_enabled, print_button_hidden, cash_drawer_opening_float, attendance_auth_mode, updated_at").eq("id", POS_STATE_ID).maybeSingle(),
+      tenantQuery(supabase.from("staff_users").select("id, owner_id, username, email, password, password_changed, agreed_to_terms, agreed_at, hourly_rate, daily_rate, overtime_rate, permissions, name, role, title, avatar_path, created_at")).order("created_at"),
+      tenantQuery(supabase.from("menu_categories").select("id, owner_id, name, type")).order("name"),
+      tenantQuery(supabase.from("menu_items").select("id, owner_id, name, price, category_id, image, available, inventory_mode, stock_inventory_item_id, stock_usage_amount, types, styles, addons, created_at")).order("created_at"),
+      includeInventory ? tenantQuery(supabase.from("inventory_items").select("id, owner_id, name, unit, cost, stock, max_stock, reorder_threshold, opening_stock, purchase_unit_size, cup_usage_amount, cups_make, inventory_type, cup_size, created_at")).order("created_at") : Promise.resolve({ data: [], error: null }),
+      includeAdminHistory ? tenantQuery(supabase.from("orders").select("id, owner_id, created_at, barista_name, barista_user_id, subtotal, discount, promo_label, total, payment_method, ticket_no, paid, change, voided, voided_by, voided_by_name, void_reason, waste_reason, waste_baristas, deleted_at, record_type, service_mode")).is("deleted_at", null).order("created_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
+      includeAdminHistory ? tenantQuery(supabase.from("order_items").select("id, owner_id, order_id, menu_item_id, product_id_snapshot, name_snapshot, category_snapshot, category_type_snapshot, qty, price_snapshot, style, addons, service_mode, created_at")).order("created_at") : Promise.resolve({ data: [], error: null }),
+      includeAdminHistory ? tenantQuery(supabase.from("usage_logs").select("id, owner_id, order_id, order_item_id, inventory_item_id, item_name_snapshot, used_amount, unit, created_at")).order("created_at") : Promise.resolve({ data: [], error: null }),
+      includeAdminHistory ? tenantQuery(supabase.from("restocks").select("id, owner_id, inventory_item_id, item_name_snapshot, quantity_added, purchase_qty, purchase_unit, unit_cost, created_at")).order("created_at") : Promise.resolve({ data: [], error: null }),
+      tenantQuery(supabase.from("recipes").select("id, owner_id, menu_item_id, inventory_item_id, amount, unit, created_at")).order("created_at"),
+      tenantQuery(supabase.from("recipe_costings").select("id, owner_id, name, hot_cup_inventory_item_id, iced_cup_inventory_item_id, other_cup_inventory_item_id, extra_cup_inventory_item_ids, cup_recipes, created_at")).order("created_at"),
+      tenantQuery(supabase.from("recipe_costing_menu_items").select("id, owner_id, recipe_costing_id, menu_item_name, created_at")).order("created_at"),
+      tenantQuery(supabase.from("recipe_costing_ingredients").select("id, owner_id, recipe_costing_id, inventory_item_id, name, amount, unit, created_at")).order("created_at"),
+      loginActivityQuery,
+      tenantQuery(supabase.from("off_requests").select("id, owner_id, user_id, name, date, reason, status, created_at")).order("created_at"),
+      tenantQuery(supabase.from("void_requests").select("id, owner_id, requested_at, requested_by_id, requested_by_name, reason, status, order_id, items, subtotal, discount, promo_label, total, payment_method, approved_at, approved_by_name, processed_order_id")).order("requested_at", { ascending: false }),
+      tenantQuery(supabase.from("promotions").select("owner_id, code, discount_type, discount_value, expires_at, redeemed_at, redeemed_order_id, created_at")).order("created_at", { ascending: false }),
       ownerId
-        ? supabase.from("login_links").select("*").eq("owner_id", ownerId).maybeSingle()
-        : supabase.from("login_links").select("*").eq("id", POS_STATE_ID).maybeSingle(),
-      tenantQuery(supabase.from("work_shifts").select("*")).order("shift_date").order("start_time"),
+        ? supabase.from("login_links").select("id, owner_id, admin_path, updated_at").eq("owner_id", ownerId).maybeSingle()
+        : supabase.from("login_links").select("id, owner_id, admin_path, updated_at").eq("id", POS_STATE_ID).maybeSingle(),
+      tenantQuery(supabase.from("work_shifts").select("id, owner_id, shift_name, shift_date, start_time, end_time, opening_float, staff_user_ids, created_at, closing_cash, closed_at, closed_by_user_id")).order("shift_date").order("start_time"),
     ]);
+    let users = usersResult;
+    if (isMissingStaffAvatarColumn(usersResult.error)) {
+      warnStaffAvatarMigrationRequired();
+      const fallback = await tenantQuery(
+        supabase
+          .from("staff_users")
+          .select("id, owner_id, username, email, password, password_changed, agreed_to_terms, agreed_at, hourly_rate, daily_rate, overtime_rate, permissions, name, role, title, created_at"),
+      ).order("created_at");
+      if (fallback.error) throw new Error(`Unable to read staff_users: ${fallback.error.message}`);
+      users = {
+        ...fallback,
+        data: (fallback.data ?? []).map((row) => ({ ...row, avatar_path: null })),
+      };
+    }
     const failedRead = (
       [
         ["pos_state", pos.error],
@@ -733,6 +790,7 @@ async function readStore(options?: { fresh?: boolean; ownerId?: string | null })
               ownerId: row.owner_id ?? undefined,
               username: row.username,
               email: row.email ?? "",
+              avatarPath: row.avatar_path ?? undefined,
               password: row.password,
               passwordChanged: Boolean(row.password_changed),
               agreedToTerms: row.agreed_to_terms === true,
@@ -832,6 +890,7 @@ async function readStore(options?: { fresh?: boolean; ownerId?: string | null })
             },
             menuItemsForCategory,
           ),
+          categoryType: item.category_type_snapshot ?? undefined,
           style: parseDrinkStyle(item.style),
           addons: parseStoredOrderAddons(item.addons),
           serviceMode: item.service_mode === "take-out" ? "take-out" : item.service_mode === "dine-in" ? "dine-in" : undefined,
@@ -929,7 +988,7 @@ async function readStore(options?: { fresh?: boolean; ownerId?: string | null })
     if (previousStore) {
       store.printJobs = previousStore.printJobs;
     }
-    cacheStore(ownerId, store);
+    if (includeAdminHistory && includeInventory) cacheStore(ownerId, store);
     return store;
   } catch (error) {
     throw new Error(
@@ -1069,7 +1128,7 @@ export async function initializeOwnerStore(ownerId: string): Promise<void> {
 
 function withStore<T>(
   fn: (store: StoreData) => Promise<T> | T,
-  options?: { fresh?: boolean; ownerId?: string | null },
+  options?: { fresh?: boolean; ownerId?: string | null; includeAdminHistory?: boolean; includeInventory?: boolean },
 ): Promise<T> {
   const run = queue.then(async () => {
     const store = await readStore(options);
@@ -1082,7 +1141,11 @@ function withStore<T>(
   return run;
 }
 
-export function getStore(options?: { ownerId?: string | null }): Promise<StoreData> {
+export function getStore(options?: {
+  ownerId?: string | null;
+  includeAdminHistory?: boolean;
+  includeInventory?: boolean;
+}): Promise<StoreData> {
   return withStore((store) => store, options);
 }
 
@@ -1250,7 +1313,7 @@ export async function getPayrollRecords(): Promise<{ records: PayrollRecord[]; e
   if (!isRealSupabaseConfigured()) return { records: [] };
   const { data, error } = await supabaseAdmin()
     .from("payroll_records")
-    .select("*")
+    .select("id, owner_id, user_id, staff_name, period_start, period_end, hours, gross_pay, cash_advance, tardiness_deduction, net_pay, status, payout_ledger_id, paid_at")
     .eq("owner_id", await activeOwnerId() ?? POS_STATE_ID)
     .order("period_start", { ascending: false });
   if (error) {
@@ -1523,6 +1586,10 @@ export async function createOrderAtomic(input: {
       if (!memoryStore) memoryStore = normalizeStore(emptyStore());
       const { order, deductions } = input;
       const memoryOwnerId = await activeOwnerId();
+      const existingOrder = memoryStore.orders.find((entry) => entry.id === order.id);
+      if (existingOrder) {
+        return { ok: true, ticketNo: existingOrder.ticketNo };
+      }
       let promoEntry: PromotionCode | undefined;
       let promoOwner: StaffUser | undefined;
       if (order.promoLabel) {
@@ -1600,6 +1667,19 @@ export async function createOrderAtomic(input: {
     const supabase = supabaseAdmin();
     const { order, deductions } = input;
     const ownerId = await activeOwnerId() ?? POS_STATE_ID;
+    const existingOrderResult = await supabase
+      .from("orders")
+      .select("id,ticket_no")
+      .eq("id", order.id)
+      .eq("owner_id", ownerId)
+      .maybeSingle();
+    if (existingOrderResult.error) {
+      throw new Error(`Unable to check order idempotency: ${existingOrderResult.error.message}`);
+    }
+    if (existingOrderResult.data) {
+      order.ticketNo = existingOrderResult.data.ticket_no ?? "";
+      return { ok: true, ticketNo: order.ticketNo };
+    }
     const isWaste = order.paymentMethod === "waste" || order.recordType === "Waste" || isWasteOrder(order);
     const rpcArgs = {
       p_order_id: order.id,
@@ -1644,6 +1724,23 @@ export async function createOrderAtomic(input: {
       }));
     }
     if (error) {
+      if (error.code === "23505") {
+        const duplicateOrder = await supabase
+          .from("orders")
+          .select("id,ticket_no")
+          .eq("id", order.id)
+          .eq("owner_id", ownerId)
+          .maybeSingle();
+        if (duplicateOrder.error) {
+          throw new Error(
+            `Unable to verify retried order: ${duplicateOrder.error.message}`,
+          );
+        }
+        if (duplicateOrder.data) {
+          order.ticketNo = duplicateOrder.data.ticket_no ?? "";
+          return { ok: true, ticketNo: order.ticketNo };
+        }
+      }
       if (error.message.includes("PROMO_ALREADY_USED")) {
         return { ok: false, error: "The promotion code already used." };
       }
@@ -2537,10 +2634,21 @@ export async function upsertStaffUserRecord(user: StaffUser): Promise<void> {
         name: normalized.name,
         role: normalized.role,
         title: normalized.title,
+        ...(normalized.avatarPath ? { avatar_path: normalized.avatarPath } : {}),
       },
       { onConflict: "id" },
     );
-    if (error) throw new Error(`Unable to save staff user: ${error.message}`);
+    if (error) {
+      if (isMissingStaffAvatarColumn(error) && !normalized.avatarPath) {
+        warnStaffAvatarMigrationRequired();
+      } else {
+        throw new Error(
+          isMissingStaffAvatarColumn(error)
+            ? "Unable to save staff photo: apply migration 20261029000700_staff_avatars.sql first."
+            : `Unable to save staff user: ${error.message}`,
+        );
+      }
+    }
     const tenantOwnerId = normalized.role === "cashier" ? normalized.id : normalized.ownerId ?? activeOwner ?? POS_STATE_ID;
     const tenantCache = tenantStoreCache.get(tenantOwnerId);
     if (tenantCache) {
@@ -2997,7 +3105,7 @@ export async function getVoidRequestRecord(id: string): Promise<VoidRequest | nu
     const supabase = supabaseAdmin();
     const { data, error } = await supabase
       .from("void_requests")
-      .select("*")
+      .select("id, owner_id, requested_at, requested_by_id, requested_by_name, reason, status, order_id, items, subtotal, discount, promo_label, total, payment_method, approved_at, approved_by_name, processed_order_id")
       .eq("id", id)
       .eq("owner_id", await activeOwnerId() ?? POS_STATE_ID)
       .maybeSingle();

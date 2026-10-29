@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRestock, deleteAdminRecord, deleteRestock, saveAdminData } from "@/actions/pos";
 import { isWasteOrder } from "@/lib/analytics";
 import { formatQty, ingredientsForOrderLine, itemNameEquals, looksLikeCupItem, matchesInventoryRow, remainingForUsages, roundQty, stockLedgerForRange } from "@/lib/inventory";
@@ -15,6 +15,10 @@ function inventoryUsagePerPiece(item: StockItem, used: number) {
 function pieceSize(item: Pick<StockItem, "purchaseUnitSize">) {
   const size = Number(item.purchaseUnitSize);
   return size > 0 ? size : 1;
+}
+
+function newInventoryItemId() {
+  return `stock-${globalThis.crypto.randomUUID()}`;
 }
 
 function normalizeCupSize(value: string) {
@@ -52,6 +56,8 @@ type InventoryStore = Pick<
 
 type SalePurchaseTransactionsProps = {
   store: InventoryStore;
+  remoteHistory?: boolean;
+  remoteInventory?: boolean;
   tabs?: readonly InventoryTab[];
   activeTab?: InventoryTab;
   onTabChange?: (tab: InventoryTab) => void;
@@ -272,6 +278,16 @@ type UsageRecord = {
   soldAs: string;
 };
 
+type InventorySummary = {
+  inventoryItemId: string;
+  itemName: string;
+  unit: string;
+  opening: number;
+  restocked: number;
+  used: number;
+  remaining: number;
+};
+
 function usageItemKey(itemName: string, unit: string, orderId?: string) {
   return `${orderId ?? ""}::${itemName.trim().toLowerCase()}::${unit.trim().toLowerCase()}`;
 }
@@ -297,6 +313,8 @@ function aggregateUsageRows<
 
 export function SalePurchaseTransactions({
   store,
+  remoteHistory = false,
+  remoteInventory = false,
   tabs = ["transactions", "waste", "stock", "restock", "recipes", "used", "units"],
   activeTab: controlledActiveTab,
   onTabChange,
@@ -305,12 +323,31 @@ export function SalePurchaseTransactions({
   const {
     inventory,
     menu,
-    orders,
+    orders: storeOrders,
     recipeCostings: storeRecipeCostings,
     recipes,
-    restocks: restockSource,
-    usageLogs,
+    restocks: initialRestocks,
+    usageLogs: initialUsageLogs,
   } = store;
+  const [remoteOrders, setRemoteOrders] = useState<Order[]>([]);
+  const [remoteRestocks, setRemoteRestocks] = useState<RestockRecord[]>([]);
+  const [remoteUsageLogs, setRemoteUsageLogs] = useState<StoreData["usageLogs"]>([]);
+  const [remoteLoginActivity, setRemoteLoginActivity] = useState<StoreData["loginActivity"]>([]);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyHasMore, setHistoryHasMore] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(remoteHistory);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [usageDetailsTruncated, setUsageDetailsTruncated] = useState(false);
+  const [inventoryPage, setInventoryPage] = useState(1);
+  const [inventoryTotal, setInventoryTotal] = useState(0);
+  const [inventoryHasMore, setInventoryHasMore] = useState(false);
+  const [inventoryLoading, setInventoryLoading] = useState(remoteInventory);
+  const [inventoryError, setInventoryError] = useState<string | null>(null);
+  const [inventorySummaries, setInventorySummaries] = useState<InventorySummary[]>([]);
+  const [inventorySummaryError, setInventorySummaryError] = useState<string | null>(null);
+  const orders = remoteHistory ? remoteOrders : storeOrders;
+  const restockSource = remoteHistory ? remoteRestocks : initialRestocks;
+  const usageLogs = remoteHistory ? remoteUsageLogs : initialUsageLogs;
   const [internalActiveTab, setInternalActiveTab] = useState<InventoryTab>(() => {
     if (typeof window !== "undefined") {
       const savedTab = window.localStorage.getItem("inventory-active-tab");
@@ -324,9 +361,17 @@ export function SalePurchaseTransactions({
   });
 
   const activeTab = controlledActiveTab ?? internalActiveTab;
-
   function setActiveTab(tab: InventoryTab) {
     setInternalActiveTab(tab);
+    setHistoryPage(1);
+    if (remoteHistory) {
+      setHistoryLoading(true);
+      setHistoryError(null);
+    }
+    if (remoteInventory && ["stock", "restock", "recipes", "units"].includes(tab)) {
+      setInventoryLoading(true);
+      setInventoryError(null);
+    }
 
     if (typeof window !== "undefined") {
       window.localStorage.setItem("inventory-active-tab", tab);
@@ -335,9 +380,9 @@ export function SalePurchaseTransactions({
     onTabChange?.(tab);
   }
   const allOrderTransactions: Transaction[] = ordersToTransactions(
-    store.orders,
+    orders,
     store.users,
-    store.loginActivity,
+    remoteHistory ? remoteLoginActivity : store.loginActivity,
   );
   const persistedTransactions = allOrderTransactions.filter((transaction) => transaction.type !== "Waste");
   const wasteTransactions = allOrderTransactions.filter((transaction) => transaction.type === "Waste");
@@ -432,11 +477,72 @@ export function SalePurchaseTransactions({
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
+    if (remoteInventory) return;
     setStocks(persistedStocks);
     setUsages(persistedUsages);
     setRestocks(persistedRestocks);
-  }, [persistedStocks, persistedUsages, persistedRestocks]);
+  }, [persistedStocks, persistedUsages, persistedRestocks, remoteInventory]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  useEffect(() => {
+    if (!remoteInventory || !["stock", "restock", "recipes", "units"].includes(activeTab)) return;
+    let active = true;
+    const loadInventory = async () => {
+      try {
+        const fetchPage = async (page: number) => {
+          const response = await fetch(`/api/admin/inventory?page=${page}`, { cache: "no-store" });
+          const result = await response.json() as {
+            inventory?: StoreData["inventory"];
+            hasMore?: boolean;
+            total?: number;
+            error?: string;
+          };
+          if (!response.ok) throw new Error(result.error || "Unable to load inventory.");
+          if (!Array.isArray(result.inventory) || typeof result.hasMore !== "boolean" || typeof result.total !== "number") {
+            throw new Error("Inventory response was incomplete.");
+          }
+          return result;
+        };
+        const firstPage = await fetchPage(activeTab === "stock" ? inventoryPage : 1);
+        const inventoryRows = [...firstPage.inventory!];
+        if (activeTab !== "stock") {
+          let page = 1;
+          let hasMore = firstPage.hasMore!;
+          while (hasMore && page < 2000) {
+            page += 1;
+            const result = await fetchPage(page);
+            inventoryRows.push(...result.inventory!);
+            hasMore = result.hasMore!;
+          }
+          if (hasMore) throw new Error("Inventory exceeds the supported page limit.");
+        }
+        if (!active) return;
+        setStocks(inventoryRows.map((item) => ({
+          id: item.id,
+          name: item.name,
+          stock: item.stock,
+          cost: item.cost,
+          reorderThreshold: item.reorderThreshold,
+          openingStock: item.openingStock ?? (item.purchaseUnitSize ? 10 * item.purchaseUnitSize : item.stock),
+          unit: looksLikeCupItem(item, storeRecipeCostings) ? "pcs" : item.unit || "pcs",
+          purchaseUnitSize: item.purchaseUnitSize,
+          cupUsageAmount: item.cupUsageAmount,
+          cupsMake: item.cupsMake,
+          inventoryType: item.inventoryType,
+          cupSize: item.cupSize,
+        })));
+        setInventoryTotal(firstPage.total!);
+        setInventoryHasMore(activeTab === "stock" && firstPage.hasMore!);
+        setInventoryError(null);
+      } catch (error) {
+        if (active) setInventoryError(error instanceof Error ? error.message : "Unable to load inventory.");
+      } finally {
+        if (active) setInventoryLoading(false);
+      }
+    };
+    void loadInventory();
+    return () => { active = false; };
+  }, [activeTab, inventoryPage, remoteInventory, storeRecipeCostings]);
 
   useEffect(() => {
     stocksRef.current = stocks;
@@ -485,7 +591,55 @@ export function SalePurchaseTransactions({
     cupRecipes?: Record<string, RecipeIngredient[]>;
     activeCupInventoryItemId?: string;
   };
-  const [recipeCostings, setRecipeCostings] = useState<Costing[]>([]);
+  const [recipeCostings, setRecipeCostings] = useState<Costing[]>(() => {
+    const saved = storeRecipeCostings ?? [];
+    if (saved.length === 0) return [];
+
+    const otherItemIds = new Set(
+      inventory
+        .filter((item) =>
+          item.inventoryType &&
+          item.inventoryType !== "cup" &&
+          !item.inventoryType.startsWith("cup_") &&
+          item.inventoryType !== "ingredient",
+        )
+        .map((item) => item.id),
+    );
+    return saved.map((costing) => {
+      const menuStyles = new Set(
+        costing.menuItems.flatMap((name) => {
+          const menuItem = recipeMenu.find(
+            (item) => item.name.trim().toLowerCase() === name.trim().toLowerCase(),
+          );
+          return menuItem
+            ? normalizeMenuStyles(menuItem)
+            : (/^\s*iced\b/i.test(name)
+              ? ["iced" as const]
+              : /^\s*hot\b/i.test(name)
+                ? ["hot" as const]
+                : []);
+        }),
+      );
+      const activeCupId = menuStyles.size === 1
+        ? (menuStyles.has("iced")
+          ? costing.icedCupInventoryItemId
+          : costing.hotCupInventoryItemId)
+        : costing.icedCupInventoryItemId || costing.hotCupInventoryItemId;
+      const activeRecipe =
+        (activeCupId && costing.cupRecipes?.[activeCupId]) || costing.ingredients;
+      const otherItems = activeRecipe.filter((item) =>
+        otherItemIds.has(item.inventoryItemId),
+      );
+      return {
+        ...costing,
+        activeCupInventoryItemId: activeCupId,
+        ingredients: activeRecipe.filter(
+          (item) => !otherItemIds.has(item.inventoryItemId),
+        ),
+        otherItems,
+      };
+    });
+  });
   const [editingCostingIndex, setEditingCostingIndex] = useState<number | null>(null);
   const [savingRecipes, setSavingRecipes] = useState(false);
   const [otherDrinkName, setOtherDrinkName] = useState("");
@@ -493,39 +647,6 @@ export function SalePurchaseTransactions({
   const [showDrinkSearch, setShowDrinkSearch] = useState(false);
   const [drinkSearch, setDrinkSearch] = useState("");
   const [selectedDrinkCategories, setSelectedDrinkCategories] = useState<string[]>([]);
-  const hasHydratedCostings = useRef(false);
-
-  useEffect(() => {
-    if (hasHydratedCostings.current) return;
-
-    hasHydratedCostings.current = true;
-
-    const saved = store.recipeCostings;
-
-    if (saved && saved.length > 0) {
-      const otherItemIds = new Set(store.inventory
-        .filter((item) => item.inventoryType && item.inventoryType !== "cup" && !item.inventoryType.startsWith("cup_") && item.inventoryType !== "ingredient")
-        .map((item) => item.id));
-      setRecipeCostings(saved.map((costing) => {
-        const menuStyles = new Set(costing.menuItems.flatMap((name) => {
-          const menu = recipeMenu.find((item) => item.name.trim().toLowerCase() === name.trim().toLowerCase());
-          return menu ? normalizeMenuStyles(menu) : (/^\s*iced\b/i.test(name) ? ["iced" as const] : /^\s*hot\b/i.test(name) ? ["hot" as const] : []);
-        }));
-        const activeCupId = menuStyles.size === 1
-          ? (menuStyles.has("iced") ? costing.icedCupInventoryItemId : costing.hotCupInventoryItemId)
-          : costing.icedCupInventoryItemId || costing.hotCupInventoryItemId;
-        const activeRecipe = (activeCupId && costing.cupRecipes?.[activeCupId]) || costing.ingredients;
-        const otherItems = activeRecipe.filter((item) => otherItemIds.has(item.inventoryItemId));
-        return {
-          ...costing,
-          activeCupInventoryItemId: activeCupId,
-          ingredients: activeRecipe.filter((item) => !otherItemIds.has(item.inventoryItemId)),
-          otherItems,
-        };
-      }));
-    }
-  }, [recipeMenu, store.inventory, store.recipeCostings]);
-
   function updateCosting(index: number, patch: Partial<Costing>) {
     setRecipeCostings((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, ...patch } : row));
   }
@@ -786,7 +907,7 @@ export function SalePurchaseTransactions({
         };
       } else {
         nextStocks.push({
-          id: `stock-${Date.now()}-${nextStocks.length}`,
+          id: newInventoryItemId(),
           name: ingredient.name.trim(),
           stock: 0,
           unit,
@@ -853,9 +974,9 @@ export function SalePurchaseTransactions({
       void saveAdminData({
         usageLogs: next.map((entry) => ({
           id: entry.id,
-          orderId: store.usageLogs.find((item) => item.id === entry.id)?.orderId || "",
-          orderItemId: store.usageLogs.find((item) => item.id === entry.id)?.orderItemId || "",
-          inventoryItemId: entry.inventoryItemId ?? store.usageLogs.find((item) => item.id === entry.id)?.inventoryItemId,
+          orderId: usageLogs.find((item) => item.id === entry.id)?.orderId || "",
+          orderItemId: usageLogs.find((item) => item.id === entry.id)?.orderItemId || "",
+          inventoryItemId: entry.inventoryItemId ?? usageLogs.find((item) => item.id === entry.id)?.inventoryItemId,
           date: entry.date,
           itemName: entry.itemName,
           usedAmount: entry.usedAmount,
@@ -937,7 +1058,7 @@ export function SalePurchaseTransactions({
       setEditStockId(null);
     } else {
       const newItem: StockItem = {
-        id: `stock-${Date.now()}`,
+        id: newInventoryItemId(),
         name: itemName,
         stock: toBaseQuantity({ purchaseUnitSize }, pieces),
         openingStock: toBaseQuantity({ purchaseUnitSize }, pieces),
@@ -979,7 +1100,7 @@ export function SalePurchaseTransactions({
     const name = window.prompt("Item name");
     if (!name?.trim()) return;
     if (stocks.some((item) => item.name.trim().toLowerCase() === name.trim().toLowerCase())) return;
-    const nextStocks = [...stocks, { id: `stock-${Date.now()}`, name: name.trim(), stock: 0, unit: "pcs" }];
+    const nextStocks = [...stocks, { id: newInventoryItemId(), name: name.trim(), stock: 0, unit: "pcs" }];
     setStocks(nextStocks);
     await persistInventory(nextStocks);
   };
@@ -1114,10 +1235,91 @@ export function SalePurchaseTransactions({
   const rangeEnd = period.to;
   const isLiveRange = rangeStart === getTodayDate() && rangeEnd === getTodayDate();
 
-  function inDateRange(value: string) {
+  useEffect(() => {
+    if (!remoteInventory || activeTab !== "stock") return;
+    let active = true;
+    fetch(`/api/admin/inventory-summary?from=${encodeURIComponent(rangeStart)}&to=${encodeURIComponent(rangeEnd)}`, {
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        const result = await response.json() as {
+          items?: InventorySummary[];
+          error?: string;
+        };
+        if (!response.ok) throw new Error(result.error || "Unable to load inventory summary.");
+        if (!Array.isArray(result.items)) throw new Error("Inventory summary response was incomplete.");
+        if (active) {
+          setInventorySummaryError(null);
+          setInventorySummaries(result.items);
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) setInventorySummaryError(error instanceof Error ? error.message : "Unable to load inventory summary.");
+      });
+    return () => { active = false; };
+  }, [activeTab, rangeEnd, rangeStart, remoteInventory]);
+
+  useEffect(() => {
+    if (!remoteHistory) return;
+    const kind = activeTab === "restock" ? "restocks"
+      : activeTab === "used" ? "usage"
+        : activeTab === "transactions" || activeTab === "waste" ? "transactions"
+          : null;
+    if (!kind) return;
+
+    let active = true;
+    const query = new URLSearchParams({
+      kind,
+      from: rangeStart,
+      to: rangeEnd,
+      page: String(historyPage),
+    });
+    fetch(`/api/admin/history?${query}`, { cache: "no-store" })
+      .then(async (response) => {
+        const result = await response.json() as {
+          orders?: Order[];
+          restocks?: StoreData["restocks"];
+          usageLogs?: StoreData["usageLogs"];
+          loginActivity?: StoreData["loginActivity"];
+          page?: number;
+          hasMore?: boolean;
+          usageLogsTruncated?: boolean;
+          error?: string;
+        };
+        if (!response.ok) throw new Error(result.error || "Unable to load Admin history.");
+        if (!active) return;
+        if (kind === "transactions") {
+          if (!Array.isArray(result.orders) || !Array.isArray(result.loginActivity)) {
+            throw new Error("Transaction history response was incomplete.");
+          }
+          setRemoteOrders(result.orders);
+          setRemoteLoginActivity(result.loginActivity);
+        } else if (kind === "restocks") {
+          if (!Array.isArray(result.restocks)) throw new Error("Restock history response was incomplete.");
+          setRemoteRestocks(result.restocks);
+        } else {
+          if (!Array.isArray(result.orders) || !Array.isArray(result.usageLogs)) {
+            throw new Error("Usage logbook response was incomplete.");
+          }
+          setRemoteOrders(result.orders);
+          setRemoteUsageLogs(result.usageLogs);
+          setUsageDetailsTruncated(result.usageLogsTruncated === true);
+        }
+        setHistoryHasMore(result.hasMore === true);
+      })
+      .catch((error: unknown) => {
+        if (active) setHistoryError(error instanceof Error ? error.message : "Unable to load Admin history.");
+      })
+      .finally(() => {
+        if (active) setHistoryLoading(false);
+      });
+    return () => { active = false; };
+  }, [activeTab, historyPage, rangeEnd, rangeStart, remoteHistory]);
+
+  const inDateRange = useCallback((value: string) => {
     const day = phDateString(value);
     return day >= rangeStart && day <= rangeEnd;
-  }
+  }, [rangeEnd, rangeStart]);
 
   const transactionsInRange = transactions.filter((transaction) => inDateRange(transaction.date));
   const wasteInRange = wasteTransactions.filter((transaction) => inDateRange(transaction.date));
@@ -1149,7 +1351,7 @@ export function SalePurchaseTransactions({
 
   const usageGroups = useMemo(() => {
     const keyword = filterKeyword.trim().toLowerCase();
-    return store.orders
+    return orders
       .filter((order) => !order.voided && inDateRange(order.createdAt))
       .map((order) => {
         const items = aggregateUsageRows(usages.filter((usage) => usage.orderId === order.id));
@@ -1177,7 +1379,7 @@ export function SalePurchaseTransactions({
         );
       })
       .sort((a, b) => b.date.localeCompare(a.date) || b.orderId.localeCompare(a.orderId));
-  }, [filterKeyword, rangeEnd, rangeStart, store.orders, usages]);
+  }, [filterKeyword, inDateRange, orders, usages]);
 
   const dateRangeFilter = (
     <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
@@ -1192,8 +1394,20 @@ export function SalePurchaseTransactions({
           onChange={(event) => {
             setRangeType(event.target.value as PeriodRange);
             setFilterMode("range");
+            setHistoryPage(1);
+            if (remoteHistory) {
+              setHistoryLoading(true);
+              setHistoryError(null);
+            }
           }}
-          onClick={() => setFilterMode("range")}
+          onClick={() => {
+            setFilterMode("range");
+            setHistoryPage(1);
+            if (remoteHistory) {
+              setHistoryLoading(true);
+              setHistoryError(null);
+            }
+          }}
           className="min-w-0 flex-1 cursor-pointer bg-transparent text-sm outline-none"
         >
           <option value="today">Today</option>
@@ -1217,13 +1431,57 @@ export function SalePurchaseTransactions({
           onChange={(event) => {
             setFilterDate(event.target.value);
             setFilterMode("date");
+            setHistoryPage(1);
+            if (remoteHistory) {
+              setHistoryLoading(true);
+              setHistoryError(null);
+            }
           }}
-          onClick={() => setFilterMode("date")}
+          onClick={() => {
+            setFilterMode("date");
+            setHistoryPage(1);
+            if (remoteHistory) {
+              setHistoryLoading(true);
+              setHistoryError(null);
+            }
+          }}
           className="min-w-0 flex-1 cursor-pointer bg-transparent text-sm outline-none"
         />
       </div>
     </div>
   );
+
+  const historyPagination = remoteHistory ? (
+    <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-neutral-600">
+      <span>{historyLoading ? "Loading history…" : `Page ${historyPage} · up to 50 rows`}</span>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            setHistoryLoading(true);
+            setHistoryError(null);
+            setHistoryPage((page) => Math.max(1, page - 1));
+          }}
+          disabled={historyLoading || historyPage <= 1}
+          className="rounded border border-neutral-300 bg-white px-3 py-1.5 disabled:opacity-40"
+        >
+          Previous
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setHistoryLoading(true);
+            setHistoryError(null);
+            setHistoryPage((page) => page + 1);
+          }}
+          disabled={historyLoading || !historyHasMore}
+          className="rounded border border-neutral-300 bg-white px-3 py-1.5 disabled:opacity-40"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  ) : null;
 
   return (
     <div className="min-h-[calc(100svh-65px)] min-w-0 space-y-5 bg-slate-50 p-3 sm:space-y-6 sm:p-5 xl:p-7 2xl:p-9">
@@ -1240,6 +1498,12 @@ export function SalePurchaseTransactions({
       </div> : null}
 
       {activeTab !== "recipes" && activeTab !== "units" ? dateRangeFilter : null}
+      {remoteHistory && (activeTab === "transactions" || activeTab === "waste" || activeTab === "restock" || activeTab === "used") && historyError ? (
+        <p role="alert" className="text-sm text-red-600">{historyError}</p>
+      ) : null}
+      {remoteHistory && activeTab === "used" && usageDetailsTruncated ? (
+        <p role="status" className="text-sm text-amber-700">Some usage details for this page exceeded the 500-row detail cap. Narrow the date range to view a smaller set.</p>
+      ) : null}
 
       {activeTab === "units" && (
         <section className="space-y-4">
@@ -1722,6 +1986,7 @@ export function SalePurchaseTransactions({
               </tbody>
             </table>
           </div>
+          {historyPagination}
         </div>
       )}
 
@@ -1801,12 +2066,14 @@ export function SalePurchaseTransactions({
               </tbody>
             </table>
           </div>
+          {historyPagination}
         </section>
       )}
 
       {activeTab === "stock" && (
         <div className="space-y-6">
           {stockNotice ? <p className="text-sm text-red-600">{stockNotice}</p> : null}
+          {inventorySummaryError ? <p role="alert" className="text-sm text-red-600">{inventorySummaryError}</p> : null}
           <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-400 space-y-4">
             <h3 className="text-xs font-bold text-neutral-700 uppercase">{editStockId ? "Edit Stock Item" : "Add Stock Item"}</h3>
             <form onSubmit={handleSaveStock} className={`grid grid-cols-1 sm:grid-cols-2 ${stockInventoryType === "cup" ? "md:grid-cols-5" : "md:grid-cols-4"} gap-4 items-end`}>
@@ -1960,7 +2227,7 @@ export function SalePurchaseTransactions({
                   if (stockItemFilter !== "all" && item.id !== stockItemFilter) return false;
                   return true;
                 }).map((s) => {
-                  const { opening, restocked, used, remaining } = stockLedgerForRange({
+                  const clientLedger = stockLedgerForRange({
                     itemName: s.name,
                     inventoryItemId: s.id,
                     liveStock: s.stock,
@@ -1969,6 +2236,8 @@ export function SalePurchaseTransactions({
                     restocks,
                     usages,
                   });
+                  const serverSummary = inventorySummaries.find((item) => item.inventoryItemId === s.id);
+                  const { opening, restocked, used, remaining } = serverSummary ?? clientLedger;
                   const isLiveDate = isLiveRange;
                   const threshold = Number(s.reorderThreshold ?? 0);
                   const isLowStock = threshold > 0 && remaining <= threshold;
@@ -2063,6 +2332,43 @@ export function SalePurchaseTransactions({
               </tbody>
             </table>
           </div>
+          {remoteInventory ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-neutral-600">
+              <span>
+                {inventoryLoading
+                  ? "Loading inventory…"
+                  : inventoryError
+                    ? inventoryError
+                    : `Page ${inventoryPage} · ${inventoryTotal} inventory items`}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInventoryLoading(true);
+                    setInventoryError(null);
+                    setInventoryPage((page) => Math.max(1, page - 1));
+                  }}
+                  disabled={inventoryLoading || inventoryPage <= 1}
+                  className="rounded border border-neutral-300 bg-white px-3 py-1.5 disabled:opacity-40"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInventoryLoading(true);
+                    setInventoryError(null);
+                    setInventoryPage((page) => page + 1);
+                  }}
+                  disabled={inventoryLoading || !inventoryHasMore}
+                  className="rounded border border-neutral-300 bg-white px-3 py-1.5 disabled:opacity-40"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
 
@@ -2110,6 +2416,7 @@ export function SalePurchaseTransactions({
               </tbody>
             </table>
           </div>
+          {historyPagination}
         </div>
       )}
 
@@ -2225,6 +2532,7 @@ export function SalePurchaseTransactions({
               </tbody>
             </table>
           </div>
+          {historyPagination}
         </div>
       )}
     </div>

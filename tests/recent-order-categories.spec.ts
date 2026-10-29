@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { orderItemCategories, orderItemCategory } from "../src/lib/menu";
+import { orderItemCategories, orderItemCategory, orderItemTypes } from "../src/lib/menu";
 import type { MenuItem, OrderItem } from "../src/lib/types";
 
 test("collects order item categories once and preserves configured category labels", () => {
@@ -43,4 +43,19 @@ test("resolves the configured category by product id when an order has no catego
 
   expect(orderItemCategory(orderItem, menu)).toBe("Coffee");
   expect(orderItemCategories([orderItem], menu)).toEqual(["Coffee"]);
+});
+
+test("shows saved menu item types once in Recent Orders", () => {
+  const menu = [
+    { id: "cake", name: "Chocolate Cake", category: "Cake", categoryType: "Desserts" },
+    { id: "coffee", name: "Spanish Latte", category: "Coffee", categoryType: "Coffee" },
+  ] satisfies Pick<MenuItem, "id" | "name" | "category" | "categoryType">[];
+  const items = [
+    { productId: "cake", name: "Chocolate Cake", qty: 1, price: 100, categoryType: "Desserts" },
+    { productId: "cake", name: "Chocolate Cake", qty: 1, price: 100, categoryType: "Desserts" },
+    { productId: "coffee", name: "Spanish Latte", qty: 1, price: 120, categoryType: "Coffee" },
+    { productId: "custom", name: "Custom Type Item", qty: 1, price: 50, categoryType: "Seasonal" },
+  ] satisfies OrderItem[];
+
+  expect(orderItemTypes(items, menu)).toEqual(["Desserts", "Coffee", "Seasonal"]);
 });

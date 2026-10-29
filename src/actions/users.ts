@@ -73,6 +73,19 @@ function compactStaffKey(value: string) {
   return String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+function validStaffAvatarPath(path: string | undefined, userId: string): string | undefined {
+  if (!path) return undefined;
+  const [uploaderId, filename, ...extra] = path.split("/");
+  if (
+    uploaderId !== userId ||
+    extra.length > 0 ||
+    !/^[0-9a-f-]{36}\.(?:jpg|png|webp)$/i.test(filename ?? "")
+  ) {
+    return undefined;
+  }
+  return path;
+}
+
 function hasBaristaCredentials(user: StaffUser, username: string, password: string) {
   const normalizedUsername = username.trim().toLowerCase();
   const normalizedPassword = password.trim();
@@ -188,10 +201,15 @@ export async function createStaffUser(input: {
   hourlyRate: string;
   dailyRate: string;
   overtimeRate: string;
+  avatarPath?: string;
 }) {
   const session = await getSession();
   if (!session || (session.role !== "admin" && session.role !== "cashier")) {
     throw new Error("Only an Owner or admin can manage staff.");
+  }
+  const uploadedAvatarPath = validStaffAvatarPath(input.avatarPath, session.userId);
+  if (input.avatarPath && !uploadedAvatarPath) {
+    return { error: "The staff photo upload is invalid. Please try again." };
   }
   const parsed = parseStaff({ ...input, requirePassword: true });
   if ("error" in parsed) return parsed;
@@ -231,6 +249,7 @@ export async function createStaffUser(input: {
       hourlyRate: parsed.hourlyRate,
       dailyRate: parsed.dailyRate,
       overtimeRate: parsed.overtimeRate,
+      avatarPath: uploadedAvatarPath,
     });
     if (parsed.role === "cashier") {
       await initializeOwnerStore(id);
@@ -254,11 +273,13 @@ export async function updateStaffUser(input: {
   hourlyRate: string;
   dailyRate: string;
   overtimeRate: string;
+  avatarPath?: string;
 }) {
     const session = await getSession();
   if (!session || (session.role !== "admin" && session.role !== "cashier")) {
     return { error: "Only an Owner or admin can edit staff accounts." };
   }
+  const uploadedAvatarPath = validStaffAvatarPath(input.avatarPath, session.userId);
   const isOwner = session.role === "cashier";
   const parsed = parseStaff({ ...input, requirePassword: false });
   if ("error" in parsed) return parsed;
@@ -275,6 +296,13 @@ export async function updateStaffUser(input: {
         (user.ownerId && user.ownerId !== session.userId)))
   ) {
     return { error: "Staff account not found." };
+  }
+  if (
+    input.avatarPath &&
+    input.avatarPath !== user.avatarPath &&
+    !uploadedAvatarPath
+  ) {
+    return { error: "The staff photo upload is invalid. Please try again." };
   }
   const taken = (store.users ?? []).some(
     (entry) => entry.id !== input.id && entry.username.trim().toLowerCase() === parsed.username.toLowerCase(),
@@ -307,6 +335,9 @@ export async function updateStaffUser(input: {
     hourlyRate: parsed.hourlyRate,
     dailyRate: parsed.dailyRate,
     overtimeRate: parsed.overtimeRate,
+    avatarPath: input.avatarPath === undefined || input.avatarPath === user.avatarPath
+      ? user.avatarPath
+      : uploadedAvatarPath,
   };
 
   try {

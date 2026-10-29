@@ -58,3 +58,38 @@ export async function getAttendancePhotoUrl(activityId: string): Promise<string>
   }
   return data.signedUrl;
 }
+
+export async function getStaffAvatarUrl(staffUserId: string): Promise<string | null> {
+  const session = await getSession();
+  if (!session || (session.role !== "admin" && session.role !== "cashier")) {
+    throw new Error("Only the Owner or admin can view staff photos.");
+  }
+  if (typeof staffUserId !== "string" || !staffUserId.trim()) {
+    throw new Error("Select a valid staff account.");
+  }
+
+  const { data: user, error: userError } = await supabaseAdmin()
+    .from("staff_users")
+    .select("id, owner_id, avatar_path")
+    .eq("id", staffUserId)
+    .maybeSingle();
+  if (userError) {
+    throw new Error(`Unable to load staff photo details: ${userError.message}`);
+  }
+  if (!user || (session.role === "cashier" && user.owner_id !== session.userId)) {
+    throw new Error("Staff account not found in your workspace.");
+  }
+  if (!user.avatar_path) return null;
+
+  const { data, error } = await supabaseAdmin()
+    .storage
+    .from("staff-avatars")
+    .createSignedUrl(user.avatar_path, 60 * 60);
+  if (error) {
+    throw new Error(`Unable to open staff photo: ${error.message}`);
+  }
+  if (!data?.signedUrl) {
+    throw new Error("Unable to open staff photo: no secure link was returned.");
+  }
+  return data.signedUrl;
+}

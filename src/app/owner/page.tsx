@@ -17,7 +17,7 @@ export default async function AdminPage() {
 
   
   const [store, ledger, payrollRecords] = await Promise.all([
-    getStore(),
+    getStore({ includeAdminHistory: false, includeInventory: false }),
     getAdminLedgerEntries(),
     getPayrollRecords(),
   ]);
@@ -38,6 +38,7 @@ export default async function AdminPage() {
             initialLedgerError={ledger.error ?? null}
             payrollRecords={payrollRecords.records}
             payrollError={payrollRecords.error ?? null}
+            remoteHistory
           />
         }
       >

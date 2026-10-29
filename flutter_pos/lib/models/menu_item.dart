@@ -76,6 +76,7 @@ class MenuItem {
   final String name;
   final double price;
   final String category;
+  final String? categoryType;
   final String image;
   final bool available;
   final String inventoryMode;
@@ -90,6 +91,7 @@ class MenuItem {
     required this.name,
     required this.price,
     required this.category,
+    this.categoryType,
     required this.image,
     this.available = true,
     this.inventoryMode = 'none',
@@ -178,6 +180,7 @@ class MenuItem {
       name: json['name'] as String? ?? 'Unnamed Item',
       price: (json['price'] as num?)?.toDouble() ?? 0.0,
       category: category,
+      categoryType: json['categoryType'] as String? ?? json['category_type'] as String?,
       image: legacy['image'] as String,
       available: json['available'] != false,
       inventoryMode: json['inventoryMode']?.toString() == 'stock_only' ||
@@ -202,6 +205,8 @@ class MenuItem {
     'name': name,
     'price': price,
     'category': category,
+    if (categoryType != null && categoryType!.trim().isNotEmpty)
+      'categoryType': categoryType,
     'image': image,
     'available': available,
     'inventoryMode': inventoryMode,

@@ -88,9 +88,36 @@ class SupabaseService {
     return decoded;
   }
 
-  Future<Map<String, dynamic>> _getPosApi() async {
+  Future<Map<String, dynamic>> pushSyncBatch(
+    List<Map<String, dynamic>> operations,
+  ) async {
+    try {
+      return await _postPosApi({
+        'action': 'sync_batch',
+        'operations': operations,
+      });
+    } catch (error) {
+      final retryable = error is http.ClientException ||
+          error is TimeoutException ||
+          error is SocketException ||
+          error is HandshakeException;
+      return {
+        'ok': false,
+        'error': error.toString(),
+        'retryable': retryable,
+      };
+    }
+  }
+
+  Future<Map<String, dynamic>> _getPosApi({String? cursor}) async {
+    final uri = cursor == null
+        ? _posApiUri
+        : _posApiUri.replace(queryParameters: {
+            ..._posApiUri.queryParameters,
+            'cursor': cursor,
+          });
     final response = await http
-        .get(_posApiUri, headers: _posApiHeaders())
+        .get(uri, headers: _posApiHeaders())
         .timeout(const Duration(seconds: 20));
     final decoded = response.body.isEmpty
         ? <String, dynamic>{}
@@ -359,44 +386,69 @@ class SupabaseService {
     }
   }
 
+  Future<Map<String, dynamic>?> fetchPosSyncDelta(String cursor) async {
+    try {
+      return await _getPosApi(cursor: cursor);
+    } catch (e) {
+      debugPrint('POS API incremental sync error: $e');
+      return null;
+    }
+  }
+
+  Future<String?> fetchStaffAvatarSignedUrl(String staffUserId) async {
+    try {
+      final result = await _postPosApi({
+        'action': 'get_staff_avatar_url',
+        'staffUserId': staffUserId,
+      });
+      final url = result['signedUrl'];
+      return result['ok'] == true && url is String && url.isNotEmpty
+          ? url
+          : null;
+    } catch (e) {
+      debugPrint('POS API staff avatar URL error: $e');
+      return null;
+    }
+  }
+
   @Deprecated('Use fetchFullStore() through the authenticated POS API.')
   Future<Map<String, dynamic>?> fetchFullStoreDirect() async {
     try {
       final results = await Future.wait<List<Map<String, dynamic>>>([
         _restSelect(
-            '${SupabaseConfig.tablePosState}?select=*&id=eq.${SupabaseConfig.posStateId}'),
+            '${SupabaseConfig.tablePosState}?select=id,is_open,opened_at,opened_by,opened_by_name,inventory_features_enabled,print_button_hidden,cash_drawer_opening_float,attendance_auth_mode&id=eq.${SupabaseConfig.posStateId}'),
         _restSelect(
-            '${SupabaseConfig.tableStaffUsers}?select=*&order=created_at.asc'),
+            '${SupabaseConfig.tableStaffUsers}?select=id,owner_id,username,email,name,role,title,permissions,password_changed&order=created_at.asc'),
         _restSelect(
-            '${SupabaseConfig.tableMenuCategories}?select=*&order=name.asc'),
+            '${SupabaseConfig.tableMenuCategories}?select=id,name,type&order=name.asc'),
         _restSelect(
-            '${SupabaseConfig.tableMenuItems}?select=*&order=created_at.asc'),
+            '${SupabaseConfig.tableMenuItems}?select=id,name,price,category_id,image,available,inventory_mode,stock_inventory_item_id,stock_usage_amount,types,styles,addons&order=created_at.asc'),
         _restSelect(
-            '${SupabaseConfig.tableInventoryItems}?select=*&order=created_at.asc'),
+            '${SupabaseConfig.tableInventoryItems}?select=id,name,unit,cost,stock,max_stock,reorder_threshold,opening_stock,purchase_unit_size,cup_usage_amount,cups_make,inventory_type,cup_size&order=created_at.asc'),
         _restSelect(
-            '${SupabaseConfig.tableOrders}?select=*&deleted_at=is.null&order=created_at.desc&limit=200'),
+            '${SupabaseConfig.tableOrders}?select=id,owner_id,created_at,barista_name,barista_user_id,subtotal,discount,promo_label,total,payment_method,ticket_no,paid,change,voided,void_reason,voided_by,waste_reason,waste_baristas,deleted_at,record_type,service_mode&deleted_at=is.null&order=created_at.desc&limit=200'),
         _restSelect(
-            '${SupabaseConfig.tableOrderItems}?select=*&order=created_at.asc'),
+            '${SupabaseConfig.tableOrderItems}?select=id,order_id,menu_item_id,product_id_snapshot,name_snapshot,category_snapshot,category_type_snapshot,qty,price_snapshot,style,addons,service_mode&order=created_at.asc'),
         _restSelect(
-            '${SupabaseConfig.tableUsageLogs}?select=*&order=created_at.asc'),
+            '${SupabaseConfig.tableUsageLogs}?select=id,order_id,order_item_id,inventory_item_id,item_name_snapshot,used_amount,unit,created_at&order=created_at.asc'),
         _restSelect(
-            '${SupabaseConfig.tableRestocks}?select=*&order=created_at.desc'),
+            '${SupabaseConfig.tableRestocks}?select=id,inventory_item_id,item_name_snapshot,quantity_added,purchase_qty,purchase_unit,unit_cost,created_at&order=created_at.desc&limit=200'),
         _restSelect(
-            '${SupabaseConfig.tableCostings}?select=*&order=created_at.asc'),
+            '${SupabaseConfig.tableCostings}?select=id,product_name&order=created_at.asc'),
         _restSelect(
-            '${SupabaseConfig.tableCostingIngredients}?select=*&order=created_at.asc'),
+            '${SupabaseConfig.tableCostingIngredients}?select=id,costing_id,name,amount,unit,output_cups&order=created_at.asc'),
         _restSelect(
-            '${SupabaseConfig.tableRecipes}?select=*&order=created_at.asc'),
+            '${SupabaseConfig.tableRecipes}?select=id,menu_item_id,inventory_item_id,amount,unit&order=created_at.asc'),
         _restSelect(
-            '${SupabaseConfig.tableRecipeCostings}?select=*&order=created_at.asc'),
+            '${SupabaseConfig.tableRecipeCostings}?select=id,name,hot_cup_inventory_item_id,iced_cup_inventory_item_id,other_cup_inventory_item_id,extra_cup_inventory_item_ids,cup_recipes&order=created_at.asc'),
         _restSelect(
-            '${SupabaseConfig.tableRecipeCostingMenuItems}?select=*&order=created_at.asc'),
+            '${SupabaseConfig.tableRecipeCostingMenuItems}?select=id,recipe_costing_id,menu_item_name&order=created_at.asc'),
         _restSelect(
-            '${SupabaseConfig.tableRecipeCostingIngredients}?select=*&order=created_at.asc'),
+            '${SupabaseConfig.tableRecipeCostingIngredients}?select=id,recipe_costing_id,inventory_item_id,name,amount,unit&order=created_at.asc'),
         _restSelect(
-            '${SupabaseConfig.tableLoginActivity}?select=*&order=at.desc&limit=200'),
+            '${SupabaseConfig.tableLoginActivity}?select=id,user_id,username,name,role,type,at,photo_path&order=at.desc&limit=200'),
         _restSelect(
-            '${SupabaseConfig.tableVoidRequests}?select=*&order=requested_at.desc&limit=100'),
+            '${SupabaseConfig.tableVoidRequests}?select=id,requested_at,requested_by_id,requested_by_name,reason,status,order_id,items,subtotal,discount,promo_label,total,payment_method,approved_at,approved_by_name,processed_order_id&order=requested_at.desc&limit=100'),
       ]);
 
       final posRows = results[0];
@@ -580,7 +632,7 @@ class SupabaseService {
       }
 
       final res = await _restSelect(
-          '${SupabaseConfig.tableMenuItems}?select=*&order=created_at.asc');
+          '${SupabaseConfig.tableMenuItems}?select=id,name,price,category_id,image,available,inventory_mode,stock_inventory_item_id,stock_usage_amount,types,styles,addons&order=created_at.asc');
       return res.map((map) {
         final catId = map['category_id']?.toString();
         if (catId != null && catMap.containsKey(catId)) {
@@ -609,7 +661,7 @@ class SupabaseService {
   Future<List<InventoryItem>?> fetchInventory() async {
     try {
       final res = await _restSelect(
-          '${SupabaseConfig.tableInventoryItems}?select=*&order=created_at.asc');
+          '${SupabaseConfig.tableInventoryItems}?select=id,name,unit,cost,stock,max_stock,reorder_threshold,opening_stock,purchase_unit_size,cup_usage_amount,cups_make,inventory_type,cup_size&order=created_at.asc');
       return res.map((e) => InventoryItem.fromJson(e)).toList();
     } catch (e) {
       debugPrint('Error fetching inventory: $e');
@@ -620,7 +672,7 @@ class SupabaseService {
   Future<List<RestockRecord>?> fetchRestocks() async {
     try {
       final res = await _restSelect(
-          '${SupabaseConfig.tableRestocks}?select=*&order=created_at.desc&limit=200');
+          '${SupabaseConfig.tableRestocks}?select=id,inventory_item_id,item_name_snapshot,quantity_added,purchase_qty,purchase_unit,unit_cost,created_at&order=created_at.desc&limit=200');
       return res.map((map) {
         map['isSynced'] = true;
         return RestockRecord.fromJson(map);
@@ -634,7 +686,7 @@ class SupabaseService {
   Future<List<StaffUser>?> fetchStaff() async {
     try {
       final res = await _restSelect(
-          '${SupabaseConfig.tableStaffUsers}?select=*&order=created_at.asc');
+          '${SupabaseConfig.tableStaffUsers}?select=id,owner_id,username,email,name,role,title,permissions,password_changed&order=created_at.asc');
       return res.map((e) => StaffUser.fromJson(e)).toList();
     } catch (e) {
       debugPrint('Error fetching staff: $e');
@@ -645,9 +697,15 @@ class SupabaseService {
   Future<List<Order>?> fetchRecentOrders() async {
     try {
       final ordersRes = await _restSelect(
-          '${SupabaseConfig.tableOrders}?select=*&deleted_at=is.null&order=created_at.desc&limit=100');
-      final itemsRes =
-          await _restSelect('${SupabaseConfig.tableOrderItems}?select=*');
+          '${SupabaseConfig.tableOrders}?select=id,owner_id,created_at,barista_name,barista_user_id,subtotal,discount,promo_label,total,payment_method,ticket_no,paid,change,voided,voided_by,voided_by_name,void_reason,waste_reason,waste_baristas,deleted_at,record_type,service_mode&deleted_at=is.null&order=created_at.desc&limit=100');
+      final orderIds = ordersRes
+          .map((order) => order['id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toList();
+      final itemsRes = orderIds.isEmpty
+          ? <Map<String, dynamic>>[]
+          : await _restSelect(
+              '${SupabaseConfig.tableOrderItems}?select=id,order_id,menu_item_id,product_id_snapshot,name_snapshot,category_snapshot,category_type_snapshot,qty,price_snapshot,style,addons,service_mode&order_id=in.(${orderIds.join(',')})');
 
       final itemsByOrder = <String, List<Map<String, dynamic>>>{};
       for (final item in itemsRes) {
@@ -686,6 +744,7 @@ class SupabaseService {
                 'serviceMode': order.serviceMode,
                 if (i.style != null) 'style': i.style,
                 if (i.category != null) 'category': i.category,
+                if (i.categoryType != null) 'categoryType': i.categoryType,
                 'addons': i.addons.map((a) => a.toJson()).toList(),
               })
           .toList();

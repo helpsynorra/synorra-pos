@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import Image from "next/image";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   createOffRequest,
   createStaffUser,
@@ -23,7 +24,7 @@ import {
   updateStaffPassword,
   updateLoginGates,
 } from "@/actions/users";
-import { getAttendancePhotoUrl, saveAttendanceSettings } from "@/actions/attendance";
+import { getAttendancePhotoUrl, getStaffAvatarUrl, saveAttendanceSettings } from "@/actions/attendance";
 import { createWorkShift, deleteWorkShift } from "@/actions/shifts";
 import type { PublicStaffUser } from "@/lib/users";
 import { DEFAULT_STAFF_PERMISSIONS } from "@/lib/users";
@@ -38,6 +39,108 @@ const staffField =
   "w-full rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#58789d] focus:bg-white focus:ring-4 focus:ring-[#e8f0fa]";
 const adminField =
   "h-12 w-full min-w-0 rounded-xl border border-[#dce6f4] bg-white px-3.5 text-sm text-[#243a5e] outline-none transition focus:border-[#58789d] focus:ring-2 focus:ring-[#e8f0fa]";
+
+const staffAvatarUrlCache = new Map<string, { url: string | null; expiresAt: number }>();
+const staffAvatarUrlRequests = new Map<string, Promise<string | null>>();
+
+async function cachedStaffAvatarUrl(id: string, avatarPath: string): Promise<string | null> {
+  const cacheKey = `${id}:${avatarPath}`;
+  const cached = staffAvatarUrlCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.url;
+  const pending = staffAvatarUrlRequests.get(cacheKey);
+  if (pending) return pending;
+  const request = getStaffAvatarUrl(id)
+    .then((url) => {
+      staffAvatarUrlCache.set(cacheKey, {
+        url,
+        expiresAt: Date.now() + (url ? 50 : 5) * 60 * 1000,
+      });
+      return url;
+    })
+    .finally(() => staffAvatarUrlRequests.delete(cacheKey));
+  staffAvatarUrlRequests.set(cacheKey, request);
+  return request;
+}
+
+async function compressStaffAvatar(file: File): Promise<File> {
+  if (file.size > 10 * 1024 * 1024) {
+    throw new Error("Choose a photo smaller than 10 MB before compression.");
+  }
+  const image = await createImageBitmap(file);
+  const scale = Math.min(1, 256 / Math.max(image.width, image.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.width * scale));
+  canvas.height = Math.max(1, Math.round(image.height * scale));
+  const context = canvas.getContext("2d");
+  if (!context) {
+    image.close();
+    throw new Error("This browser cannot prepare the staff photo.");
+  }
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  image.close();
+  let blob: Blob | null = null;
+  for (const quality of [0.72, 0.6, 0.48, 0.36]) {
+    blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+    if (blob && blob.size <= 153_600) break;
+  }
+  if (!blob) throw new Error("Unable to compress the staff photo.");
+  if (blob.size > 153_600) {
+    throw new Error("The compressed photo is larger than 150 KB. Choose a smaller image.");
+  }
+  return new File([blob], "staff-avatar.jpg", { type: "image/jpeg" });
+}
+
+function StaffAvatar({ id, name, avatarPath, className }: {
+  id: string;
+  name: string;
+  avatarPath?: string;
+  className: string;
+}) {
+  const containerRef = useRef<HTMLSpanElement>(null);
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (!avatarPath) return;
+    const requestedAvatarPath = avatarPath;
+    let active = true;
+    const loadAvatar = () => {
+      void cachedStaffAvatarUrl(id, requestedAvatarPath)
+        .then((signedUrl) => {
+          if (active) setUrl(signedUrl);
+        })
+        .catch(() => {
+          if (active) setFailed(true);
+        });
+    };
+    if (typeof IntersectionObserver === "undefined") {
+      loadAvatar();
+      return () => {
+        active = false;
+      };
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.disconnect();
+      loadAvatar();
+    }, { rootMargin: "120px" });
+    if (containerRef.current) observer.observe(containerRef.current);
+    return () => {
+      active = false;
+      observer.disconnect();
+    };
+  }, [avatarPath, id]);
+
+  return (
+    <span ref={containerRef} title={failed ? "Staff photo could not be loaded" : name} className={`${className} overflow-hidden`}>
+      {url ? (
+        <Image src={url} alt={`${name} profile`} width={48} height={48} unoptimized loading="lazy" decoding="async" className="h-full w-full object-cover" />
+      ) : (
+        name.trim().charAt(0).toUpperCase() || "S"
+      )}
+    </span>
+  );
+}
 
 type UserManagerProps = {
   users: PublicStaffUser[];
@@ -136,6 +239,9 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
   const [payBasis, setPayBasis] = useState<"hourly" | "daily">("hourly");
   const [payRate, setPayRate] = useState("");
   const [overtimeRate, setOvertimeRate] = useState("1.5");
+  const [avatarPath, setAvatarPath] = useState<string | undefined>();
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [attendanceAuthMode, setAttendanceAuthMode] = useState<AttendanceAuthMode>(attendanceSettings?.attendanceAuthMode ?? "username_password");
   const [attendancePhoto, setAttendancePhoto] = useState<{ url: string; name: string; type: "Clock-in" | "Clock-out" } | null>(null);
   const [shiftName, setShiftName] = useState("");
@@ -164,6 +270,10 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
   const [promoCodeRecords, setPromoCodeRecords] = useState<Record<string, PromotionCode[]>>(
     () => Object.fromEntries(users.map((user) => [user.id, user.permissions?.promoCodes ?? []])),
   );
+
+  useEffect(() => () => {
+    if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+  }, [avatarPreview]);
   const [promoValueDrafts, setPromoValueDrafts] = useState<Record<string, number>>({});
   const [promoTypeDrafts, setPromoTypeDrafts] = useState<Record<string, PromotionCode["discountType"]>>({});
   const [promoItemCountDrafts, setPromoItemCountDrafts] = useState<Record<string, number>>({});
@@ -303,6 +413,8 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
     setPayBasis("hourly");
     setPayRate("");
     setOvertimeRate("1.5");
+    setAvatarPath(undefined);
+    setAvatarFile(null);
     setNotice(null);
     setTab("staff");
   }
@@ -326,12 +438,16 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
     setPayBasis(user.dailyRate != null ? "daily" : "hourly");
     setPayRate(String(user.dailyRate ?? user.hourlyRate ?? ""));
     setOvertimeRate(String(user.overtimeRate ?? 1.5));
+    setAvatarPath(user.avatarPath);
+    setAvatarFile(null);
     setNotice(null);
   }
 
   function resetForm() {
     setEditingId(null);
     setPassword("");
+    setAvatarPath(undefined);
+    setAvatarFile(null);
   }
 
   function startSessionEdit(row: StaffSession) {
@@ -409,35 +525,90 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                 onSubmit={(event) => {
                   event.preventDefault();
                   const submittedPassword = password;
+                  const submittedAvatar = avatarFile;
+                  const currentAvatarPath = avatarPath;
+                  const activeEditingId = editingId;
                   setPassword("");
                   startTransition(async () => {
-                    const payload = {
-                      name,
-                      username,
-                      email,
-                      title: role,
-                      role: role === "Owner" ? "cashier" : role === "Cashier" ? "pos_cashier" : role.toLowerCase(),
-                      password: submittedPassword,
-                      hourlyRate: payBasis === "hourly" ? payRate : "",
-                      dailyRate: payBasis === "daily" ? payRate : "",
-                      overtimeRate,
-                    };
-                    const result =
-                      editingId === "new"
+                    let uploadedPath: string | undefined;
+                    try {
+                      if (!activeEditingId) throw new Error("Select a staff account before saving.");
+                      if (submittedAvatar) {
+                        const compressedAvatar = await compressStaffAvatar(submittedAvatar);
+                        const formData = new FormData();
+                        formData.set("avatar", compressedAvatar);
+                        const response = await fetch("/api/admin/staff-avatar", { method: "POST", body: formData });
+                        const body: unknown = await response.json();
+                        if (
+                          !response.ok ||
+                          !body ||
+                          typeof body !== "object" ||
+                          !("path" in body) ||
+                          typeof body.path !== "string"
+                        ) {
+                          const message = body && typeof body === "object" && "error" in body && typeof body.error === "string"
+                            ? body.error
+                            : "Unable to upload the staff photo.";
+                          throw new Error(message);
+                        }
+                        uploadedPath = body.path;
+                      }
+
+                      const payload = {
+                        name,
+                        username,
+                        email,
+                        title: role,
+                        role: role === "Owner" ? "cashier" : role === "Cashier" ? "pos_cashier" : role.toLowerCase(),
+                        password: submittedPassword,
+                        hourlyRate: payBasis === "hourly" ? payRate : "",
+                        dailyRate: payBasis === "daily" ? payRate : "",
+                        overtimeRate,
+                        avatarPath: uploadedPath ?? currentAvatarPath,
+                      };
+                      const result = activeEditingId === "new"
                         ? await createStaffUser(payload)
-                        : await updateStaffUser({ id: editingId, ...payload });
-                    if (result && "error" in result && result.error) {
-                      setNotice(typeof result.error === "string" ? result.error : "Could not save.");
-                      return;
+                        : await updateStaffUser({ id: activeEditingId, ...payload });
+                      if (result && "error" in result && result.error) {
+                        if (uploadedPath) {
+                          await fetch("/api/admin/staff-avatar", {
+                            method: "DELETE",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ path: uploadedPath }),
+                          });
+                        }
+                        setNotice(typeof result.error === "string" ? result.error : "Could not save.");
+                        return;
+                      }
+
+                      if (currentAvatarPath && uploadedPath && currentAvatarPath !== uploadedPath) {
+                        const cleanup = await fetch("/api/admin/staff-avatar", {
+                          method: "DELETE",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ path: currentAvatarPath }),
+                        });
+                        if (!cleanup.ok) {
+                          setNotice("Staff details saved, but the previous photo could not be removed.");
+                        }
+                      }
+                      if (activeEditingId === "new") {
+                        startCreate();
+                        setEditingId(null);
+                        if (!currentAvatarPath || !uploadedPath || currentAvatarPath === uploadedPath) setNotice(null);
+                        return;
+                      }
+                      resetForm();
+                      if (!currentAvatarPath || !uploadedPath || currentAvatarPath === uploadedPath) setNotice(null);
+                    } catch (error) {
+                      if (uploadedPath) {
+                        await fetch("/api/admin/staff-avatar", {
+                          method: "DELETE",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ path: uploadedPath }),
+                        });
+                      }
+                      setNotice(error instanceof Error ? error.message : "Could not save staff details.");
                     }
-                    if (editingId === "new") {
-                      startCreate();
-                      setEditingId(null);
-                      setNotice(null);
-                      return;
-                    }
-                    resetForm();
-                    setNotice(null);
                   });
                 }}
               >
@@ -483,6 +654,33 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                         />
                       </label>
                     </div>
+                    <label className="block space-y-2 text-xs font-semibold text-slate-600">
+                      <span>Profile photo</span>
+                      <span className="flex items-center gap-3">
+                        {avatarPreview ? (
+                          <span className="size-12 overflow-hidden rounded-full bg-slate-100">
+                            <Image src={avatarPreview} alt="Selected staff photo preview" width={48} height={48} unoptimized className="h-full w-full object-cover" />
+                          </span>
+                        ) : editing && avatarPath ? (
+                          <StaffAvatar id={editing.id} name={editing.name} avatarPath={avatarPath} className="flex size-12 shrink-0 items-center justify-center rounded-full bg-[#101d37] font-bold text-white" />
+                        ) : (
+                          <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-[#101d37] font-bold text-white">
+                            {name.trim().charAt(0).toUpperCase() || "S"}
+                          </span>
+                        )}
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0] ?? null;
+                            setAvatarFile(file);
+                            setAvatarPreview(file ? URL.createObjectURL(file) : null);
+                          }}
+                          className="min-w-0 text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-[#edf4fc] file:px-3 file:py-2 file:font-semibold file:text-[#243a5e]"
+                        />
+                      </span>
+                      <span className="block font-normal text-slate-500">The photo is resized to 256 px and compressed before secure upload. Maximum compressed size: 150 KB.</span>
+                    </label>
                   </section>
 
                   <section className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 sm:p-5">
@@ -571,9 +769,12 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                 <div key={user.id} className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-[#b8cce4] hover:shadow-lg hover:shadow-slate-900/5 sm:p-5">
                   <div className="flex items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-3.5">
-                    <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#101d37] to-[#58789d] text-base font-bold text-white shadow-md shadow-[#dce8f7]">
-                      {user.name.trim().charAt(0).toUpperCase() || "S"}
-                    </div>
+                    <StaffAvatar
+                      id={user.id}
+                      name={user.name}
+                      avatarPath={user.avatarPath}
+                      className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#101d37] to-[#58789d] text-base font-bold text-white shadow-md shadow-[#dce8f7]"
+                    />
                     <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="truncate text-sm font-bold text-slate-900">{user.name}</p>
@@ -1081,11 +1282,22 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                   ) : (
                     sessions.map((row) => {
                       const isEditing = editingSessionId === row.id;
+                      const sessionStaff = users.find((user) => user.id === row.userId);
                       return (
                         <tr key={row.id} className="border-t border-neutral-100">
                           <td className="px-4 py-3">
-                            <p className="font-medium">{row.name}</p>
-                            <p className="text-xs text-neutral-400">{row.role === "pos_cashier" ? "Cashier" : "Barista"} · {row.username}</p>
+                            <div className="flex items-center gap-2.5">
+                              <StaffAvatar
+                                id={row.userId}
+                                name={row.name}
+                                avatarPath={sessionStaff?.avatarPath}
+                                className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#101d37] text-xs font-bold text-white"
+                              />
+                              <div className="min-w-0">
+                                <p className="font-medium">{row.name}</p>
+                                <p className="text-xs text-neutral-400">{row.role === "pos_cashier" ? "Cashier" : "Barista"} · {row.username}</p>
+                              </div>
+                            </div>
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             {isEditing && row.loginId ? (

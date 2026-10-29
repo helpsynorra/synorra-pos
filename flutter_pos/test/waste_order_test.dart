@@ -112,7 +112,7 @@ void main() {
         ),
       );
 
-      final coffeeItem = const MenuItem(
+      const coffeeItem = MenuItem(
         id: 'drink-1',
         name: 'Americano',
         price: 100,

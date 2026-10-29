@@ -74,9 +74,7 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   void reassemble() {
     super.reassemble();
-    // Ensure Hot Reload immediately syncs with Supabase
     _errorMessage = null;
-    widget.controller.syncService.syncAll();
   }
 
   @override
@@ -138,29 +136,40 @@ class _LoginScreenState extends State<LoginScreen>
     widget.controller.supabaseService.setPosApiToken(null);
 
     StaffUser? authenticatedStaff;
+    late final Map<String, dynamic> authRes;
 
-    // 1. Authenticate through the POS API without persisting a token yet.
-    final authRes = _mustChangePassword
-        ? await widget.controller.supabaseService.changeCashierPassword(
-            email: email,
-            password: password,
-            newPassword: newPassword,
-          )
-        : _isNewLogin
-            ? await widget.controller.supabaseService.authenticateNewOwner(
-                email: email,
-                username: username,
-                password: password,
-                legalAccepted: _acceptedLegal,
-                persistSessionToken: false,
-              )
-            : await widget.controller.supabaseService.authenticateStaff(
-                '',
-                password,
-                email: email,
-                persistSessionToken: false,
-                timeout: Duration(seconds: hasCachedStaffAccount ? 5 : 12),
-              );
+    if (hasCachedStaffAccount && !_mustChangePassword && !_isNewLogin) {
+      authenticatedStaff = await widget.controller
+          .authenticateCachedStaffOffline(email: email, password: password);
+      authRes = {
+        'ok': false,
+        'offline': true,
+        if (authenticatedStaff == null) 'error': 'Invalid Owner credentials',
+      };
+    } else {
+      // Initial enrollment and required password changes need server verification.
+      authRes = _mustChangePassword
+          ? await widget.controller.supabaseService.changeCashierPassword(
+              email: email,
+              password: password,
+              newPassword: newPassword,
+            )
+          : _isNewLogin
+              ? await widget.controller.supabaseService.authenticateNewOwner(
+                  email: email,
+                  username: username,
+                  password: password,
+                  legalAccepted: _acceptedLegal,
+                  persistSessionToken: false,
+                )
+              : await widget.controller.supabaseService.authenticateStaff(
+                  '',
+                  password,
+                  email: email,
+                  persistSessionToken: false,
+                  timeout: Duration(seconds: hasCachedStaffAccount ? 5 : 12),
+                );
+    }
     if (authRes['requiresPasswordChange'] == true) {
       setState(() {
         _isLoading = false;
@@ -232,9 +241,6 @@ class _LoginScreenState extends State<LoginScreen>
       await widget.controller.localStorage.saveStaff(cachedStaff);
     }
     widget.controller.supabaseService.setPosApiToken(posApiToken);
-    if (authenticatedToken != null && authenticatedToken.isNotEmpty) {
-      unawaited(widget.controller.syncService.syncAll());
-    }
     widget.controller.currentUser = authenticatedUser;
     widget.controller.isPosOpen = true;
     unawaited(widget.controller
@@ -1800,7 +1806,7 @@ class _LoginScreenState extends State<LoginScreen>
             children: [
               const DecoratedBox(
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF4F6F9),
+                  color: Color(0xFFF4F6F9),
                 ),
               ),
               Positioned(

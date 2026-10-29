@@ -534,8 +534,8 @@ class PosController extends ChangeNotifier {
     for (final category in nextCategories) {
       final trimmed = category.trim();
       if (trimmed.isEmpty || trimmed.toLowerCase() == 'all') continue;
-      if (!normalizedCategories.any((entry) =>
-          entry.trim().toLowerCase() == trimmed.toLowerCase())) {
+      if (!normalizedCategories.any(
+          (entry) => entry.trim().toLowerCase() == trimmed.toLowerCase())) {
         normalizedCategories.add(trimmed);
       }
     }
@@ -724,6 +724,8 @@ class PosController extends ChangeNotifier {
         style: style,
         addons: addons,
         category: product.category,
+        categoryType: product.categoryType ??
+            localStorage.getCategoryTypes()[product.category],
       ));
     }
     _refreshPromotionDiscount();
@@ -856,39 +858,6 @@ class PosController extends ChangeNotifier {
 
       final deductions = syncService.buildDeductionsForOrder(order);
 
-      // Push immediately to centralized database
-      final hasPosApiToken = syncService.isOnline &&
-          await syncService.ensurePosApiToken(forceRefresh: true);
-      final pushRes = !syncService.isOnline || !hasPosApiToken
-          ? {
-              'ok': false,
-              'error': !hasPosApiToken
-                  ? 'POS session required to sync this order.'
-                  : 'Device is offline.',
-              'retryable': !syncService.isOnline,
-            }
-          : await supabaseService.pushOrderAtomic(order, deductions);
-      final authRequired = !hasPosApiToken ||
-          pushRes['error']?.toString().contains('POS session expired.') == true;
-      final shouldQueueForRetry =
-          !syncService.isOnline || authRequired || pushRes['retryable'] == true;
-      if (pushRes['ok'] != true && !shouldQueueForRetry) {
-        isProcessing = false;
-        notifyListeners();
-        return {
-          'ok': false,
-          'error': pushRes['error']?.toString() ??
-              'The server did not save this order. Please retry.',
-        };
-      }
-      if (pushRes['ok'] == true) {
-        order.isSynced = true;
-        if (pushRes['ticketNo'] != null &&
-            pushRes['ticketNo'].toString().isNotEmpty) {
-          order.ticketNo = pushRes['ticketNo'].toString();
-        }
-      }
-
       await localStorage.addOrder(order);
       orders.insert(0, order);
       lastCompletedOrder = order;
@@ -907,18 +876,14 @@ class PosController extends ChangeNotifier {
 
       clearCart();
       syncService.updatePendingCount();
-      // Refresh full state from Admin backend
-      if (pushRes['ok'] == true) syncService.syncAll();
 
       isProcessing = false;
       notifyListeners();
       return {
         'ok': true,
         'order': order,
-        'synced': pushRes['ok'] == true,
-        'networkFailure': !syncService.isOnline || pushRes['retryable'] == true,
-        if (pushRes['ok'] != true)
-          'syncError': pushRes['error']?.toString() ?? 'Unknown server error',
+        'synced': false,
+        'queued': true,
       };
     } catch (e) {
       isProcessing = false;
@@ -984,31 +949,6 @@ class PosController extends ChangeNotifier {
         isSynced: false,
       );
       final deductions = syncService.buildDeductionsForOrder(order);
-      final hasPosApiToken = syncService.isOnline &&
-          await syncService.ensurePosApiToken(forceRefresh: true);
-      final pushRes = !syncService.isOnline || !hasPosApiToken
-          ? {
-              'ok': false,
-              'error': !hasPosApiToken
-                  ? 'POS session required to sync this waste record.'
-                  : 'Device is offline.',
-              'retryable': !syncService.isOnline,
-            }
-          : await supabaseService.pushOrderAtomic(order, deductions);
-      final authRequired = !hasPosApiToken ||
-          pushRes['error']?.toString().contains('POS session expired.') == true;
-      final shouldQueueForRetry =
-          !syncService.isOnline || authRequired || pushRes['retryable'] == true;
-      if (pushRes['ok'] != true && !shouldQueueForRetry) {
-        return {
-          'ok': false,
-          'error':
-              pushRes['error']?.toString() ?? 'Could not save waste record.',
-        };
-      }
-      if (pushRes['ok'] == true) {
-        order.isSynced = true;
-      }
       await localStorage.addOrder(order);
       orders.insert(0, order);
       for (final deduction in deductions) {
@@ -1024,12 +964,11 @@ class PosController extends ChangeNotifier {
       await localStorage.saveInventory(inventory);
       clearCart();
       syncService.updatePendingCount();
-      if (pushRes['ok'] == true) syncService.syncAll();
       return {
         'ok': true,
         'order': order,
-        'synced': pushRes['ok'] == true,
-        'networkFailure': !syncService.isOnline || pushRes['retryable'] == true,
+        'synced': false,
+        'queued': true,
       };
     } catch (error) {
       return {'ok': false, 'error': error.toString()};
@@ -1054,42 +993,13 @@ class PosController extends ChangeNotifier {
       return {'ok': false, 'error': 'Order is already voided'};
     }
 
-    final manager = staffUsers.firstWhere(
-      (u) =>
-          u.username.toLowerCase() == managerUsername.trim().toLowerCase() &&
-          u.isManager,
-      orElse: () => const StaffUser(
-          id: '', username: '', password: '', name: '', role: ''),
-    );
-
-    // Verify manager/admin credentials against centralized backend first
-    final remoteVoid = await supabaseService.voidOrderAtomic(
-      orderId,
-      reason,
+    final manager = await authenticateStaffForPurpose(
       managerUsername.trim(),
-      managerUsername: managerUsername.trim(),
-      managerPassword: managerPassword,
+      managerPassword,
+      accepts: (staff) => staff.isManager,
     );
-
-    if (remoteVoid['ok'] == true) {
-      order.voided = true;
-      order.voidReason = reason;
-      order.voidedBy = (remoteVoid['voidedBy'] as String?) ??
-          (manager.id.isNotEmpty ? manager.id : null);
-      order.isSynced = true;
-      await localStorage.addOrder(order);
-      await syncService.syncAll();
-      notifyListeners();
-      return {'ok': true};
-    }
-
-    // Fallback local verification if offline
-    if (manager.id.isEmpty || manager.password != managerPassword) {
-      return {
-        'ok': false,
-        'error':
-            remoteVoid['error']?.toString() ?? 'Invalid manager credentials'
-      };
+    if (manager == null) {
+      return {'ok': false, 'error': 'Invalid manager credentials'};
     }
 
     order.voided = true;
@@ -1097,8 +1007,9 @@ class PosController extends ChangeNotifier {
     order.voidedBy = manager.id;
     order.isSynced = false;
     await localStorage.addOrder(order);
+    syncService.updatePendingCount();
     notifyListeners();
-    return {'ok': true};
+    return {'ok': true, 'queued': true};
   }
 
   Future<Map<String, dynamic>> voidCheckout(
@@ -1151,43 +1062,13 @@ class PosController extends ChangeNotifier {
       isSynced: false,
     );
 
-    final result = syncService.isOnline
-        ? await supabaseService.pushOrderAtomic(
-            order,
-            const [],
-            managerUsername: manager.username,
-            managerPassword: managerPassword,
-          )
-        : {'ok': false, 'retryable': true};
-    if (result['ok'] != true && result['retryable'] != true) {
-      return {
-        'ok': false,
-        'error': result['error'] ?? 'Unable to void checkout.'
-      };
-    }
-
-    if (result['ok'] != true) {
-      await localStorage.addOrder(order);
-      orders.insert(0, order);
-      clearCart();
-      paymentMethod = 'cash';
-      syncService.updatePendingCount();
-      notifyListeners();
-      return {'ok': true, 'queued': true};
-    }
-
-    order.isSynced = true;
-    if (result['ticketNo'] != null &&
-        result['ticketNo'].toString().isNotEmpty) {
-      order.ticketNo = result['ticketNo'].toString();
-    }
     await localStorage.addOrder(order);
     orders.insert(0, order);
     clearCart();
     paymentMethod = 'cash';
-    await syncService.syncAll();
+    syncService.updatePendingCount();
     notifyListeners();
-    return {'ok': true};
+    return {'ok': true, 'queued': true};
   }
 
   Future<StaffUser?> authenticateStaffForPurpose(
@@ -1195,6 +1076,18 @@ class PosController extends ChangeNotifier {
     String password, {
     required bool Function(StaffUser staff) accepts,
   }) async {
+    final normalizedUsername = username.trim().toLowerCase();
+    final cachedStaff = localStorage.getStaff().where((cached) {
+      return cached.username.trim().toLowerCase() == normalizedUsername ||
+          cached.name.trim().toLowerCase() == normalizedUsername;
+    }).firstOrNull;
+    if (cachedStaff != null) {
+      if (!accepts(cachedStaff)) return null;
+      final savedPassword =
+          await localStorage.getOfflineStaffCredential(cachedStaff.id);
+      return savedPassword == password ? cachedStaff : null;
+    }
+
     final auth = await supabaseService.authenticateStaff(
       username,
       password,
@@ -1213,23 +1106,7 @@ class PosController extends ChangeNotifier {
       return staff;
     }
 
-    if (auth['offline'] != true) return null;
-
-    final normalizedUsername = username.trim().toLowerCase();
-    final staff = localStorage.getStaff().where((cached) {
-      return cached.username.trim().toLowerCase() == normalizedUsername ||
-          cached.name.trim().toLowerCase() == normalizedUsername;
-    }).firstOrNull;
-    if (staff == null || !accepts(staff)) return null;
-
-    try {
-      await localStorage.migrateLegacyStaffCredentials();
-    } catch (_) {
-      // Still try the secure credential store if legacy migration fails.
-    }
-    final savedPassword =
-        await localStorage.getOfflineStaffCredential(staff.id);
-    return savedPassword == password ? staff : null;
+    return null;
   }
 
   Future<StaffUser?> authenticateCachedStaffOffline({
@@ -1315,17 +1192,15 @@ class PosController extends ChangeNotifier {
     if (targetOrder == null) pendingCartVoidRequestId = request.id;
     if (targetOrder == null) _persistActiveCheckout();
 
-    final synced = await supabaseService.pushVoidRequest(request);
-    if (synced) {
-      request.isSynced = true;
-      await localStorage.saveVoidRequests(voidRequests);
-      await localStorage.removePendingVoidRequest(request.id);
-    }
     syncService.updatePendingCount();
     notifyListeners();
-    if (synced) await syncService.syncAll();
 
-    return {'ok': true, 'synced': synced, 'requestId': request.id};
+    return {
+      'ok': true,
+      'synced': false,
+      'queued': true,
+      'requestId': request.id
+    };
   }
 
   // --- Inventory & Restock Operations (Synced with Admin) ---
@@ -1337,22 +1212,18 @@ class PosController extends ChangeNotifier {
       inventory.add(item);
     }
     await localStorage.saveInventory(inventory);
+    await localStorage.queueInventoryItem(item);
     notifyListeners();
-
-    await supabaseService.upsertInventoryItem(item);
-    await syncService.syncAll();
+    syncService.updatePendingCount();
   }
 
   Future<Map<String, dynamic>> deleteInventoryItem(String id) async {
-    final res = await supabaseService.deleteInventoryItem(id);
-    if (res['ok'] == true) {
-      inventory.removeWhere((i) => i.id == id);
-      await localStorage.saveInventory(inventory);
-      await syncService.syncAll();
-      notifyListeners();
-      return {'ok': true};
-    }
-    return res;
+    inventory.removeWhere((i) => i.id == id);
+    await localStorage.saveInventory(inventory);
+    await localStorage.queueInventoryDelete(id);
+    syncService.updatePendingCount();
+    notifyListeners();
+    return {'ok': true, 'queued': true};
   }
 
   Future<void> addRestockRecord({
@@ -1374,9 +1245,6 @@ class PosController extends ChangeNotifier {
       isSynced: false,
     );
 
-    final synced = await supabaseService.pushRestockAtomic(record);
-    record.isSynced = synced;
-
     await localStorage.addRestock(record);
     restocks.insert(0, record);
 
@@ -1390,7 +1258,6 @@ class PosController extends ChangeNotifier {
 
     syncService.updatePendingCount();
     notifyListeners();
-    await syncService.syncAll();
   }
 
   Future<void> restockItem(String inventoryItemId, double piecesQty,
@@ -1414,16 +1281,7 @@ class PosController extends ChangeNotifier {
 
   Future<RestockDeleteResult> deleteRestock(String restockId) async {
     final existing = restocks.where((r) => r.id == restockId).firstOrNull;
-    var deleted = await supabaseService.deleteRestockAtomic(restockId);
-    if (!deleted) {
-      try {
-        await localStorage.addPendingRestockDelete(restockId);
-      } catch (_) {
-        return RestockDeleteResult.failed;
-      }
-    } else {
-      await localStorage.removePendingRestockDelete(restockId);
-    }
+    await localStorage.addPendingRestockDelete(restockId);
 
     restocks.removeWhere((r) => r.id == restockId);
     await localStorage.saveRestocks(restocks);
@@ -1445,19 +1303,15 @@ class PosController extends ChangeNotifier {
     }
     notifyListeners();
 
-    await syncService.syncAll();
-    deleted = !localStorage.getPendingRestockDeletes().contains(restockId);
-    return deleted ? RestockDeleteResult.deleted : RestockDeleteResult.queued;
+    syncService.updatePendingCount();
+    return RestockDeleteResult.queued;
   }
 
   // --- Shift Clock In / Out ---
   Future<void> punchShift(
     StaffUser staff,
-    String type, {
-    String? username,
-    String? password,
-    Uint8List? photoBytes,
-  }) async {
+    String type,
+  ) async {
     if (!staff.canClockShift || (type != 'login' && type != 'logout')) {
       return;
     }
@@ -1472,9 +1326,6 @@ class PosController extends ChangeNotifier {
       staff,
       type,
       idPrefix: 'shift',
-      attendanceUsername: username,
-      attendancePassword: password,
-      attendancePhoto: photoBytes,
     );
   }
 
@@ -1482,9 +1333,6 @@ class PosController extends ChangeNotifier {
     StaffUser staff,
     String type, {
     required String idPrefix,
-    String? attendanceUsername,
-    String? attendancePassword,
-    Uint8List? attendancePhoto,
   }) async {
     final now = ManilaTime.utcNowIso8601();
     final log = LoginActivity(
@@ -1498,43 +1346,9 @@ class PosController extends ChangeNotifier {
       isSynced: false,
     );
 
-    if (staff.canClockShift) {
-      final result = await supabaseService.pushLoginActivity(
-        log,
-        username: attendanceUsername,
-        password: attendancePassword,
-        photoBytes: attendancePhoto,
-      );
-      if (result['ok'] != true) {
-        throw Exception(
-            result['error'] ?? 'Attendance could not be verified or recorded.');
-      }
-      log.photoPath = result['photoPath'] as String?;
-      log.isSynced = true;
-      await localStorage.addLoginActivity(log);
-      shiftLogs.insert(0, log);
-      _restoreOnShiftBarista();
-      syncService.updatePendingCount();
-      notifyListeners();
-      await syncService.syncAll();
-      return;
-    }
-
     await localStorage.addLoginActivity(log);
     shiftLogs.insert(0, log);
     syncService.updatePendingCount();
     notifyListeners();
-
-    final result = await supabaseService.pushLoginActivity(log);
-    final ok = result['ok'] == true;
-    if (ok) {
-      log.isSynced = true;
-      await localStorage.removePendingLoginActivity(log.id);
-      await localStorage.saveLoginActivity(shiftLogs);
-    }
-
-    syncService.updatePendingCount();
-    notifyListeners();
-    await syncService.syncAll();
   }
 }

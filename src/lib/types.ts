@@ -124,6 +124,7 @@ export type OrderItem = {
   price: number;
   style?: DrinkStyle;
   category?: string;
+  categoryType?: MenuCategoryType;
   addons?: OrderAddon[];
   serviceMode?: "dine-in" | "take-out";
 };
@@ -222,6 +223,7 @@ export type StaffUser = {
   ownerId?: string;
   username: string;
   email?: string;
+  avatarPath?: string;
   password: string;
   passwordChanged?: boolean;
   agreedToTerms?: boolean;

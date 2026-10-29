@@ -48,6 +48,7 @@ class OrderItem {
   final String? style; // 'hot' or 'iced'
   final List<OrderAddonSelection> addons;
   final String? category;
+  final String? categoryType;
   final String? serviceMode;
 
   OrderItem({
@@ -58,6 +59,7 @@ class OrderItem {
     this.style,
     this.addons = const [],
     this.category,
+    this.categoryType,
     this.serviceMode,
   });
 
@@ -101,6 +103,7 @@ class OrderItem {
       style: json['style'] as String?,
       addons: parsedAddons,
       category: json['category'] as String?,
+      categoryType: json['categoryType'] as String? ?? json['category_type'] as String?,
       serviceMode: json['serviceMode'] as String? ?? json['service_mode'] as String?,
     );
   }
@@ -113,6 +116,7 @@ class OrderItem {
     if (style != null) 'style': style,
     'addons': addons.map((a) => a.toJson()).toList(),
     if (category != null) 'category': category,
+    if (categoryType != null) 'categoryType': categoryType,
     if (serviceMode != null) 'serviceMode': serviceMode,
   };
 }

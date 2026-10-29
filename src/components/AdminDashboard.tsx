@@ -2,31 +2,166 @@
 
 import { useState, useEffect, useMemo, useTransition } from "react";
 import { approveVoidRequest } from "@/actions/pos";
-import { drinkDisplayName, formatMoney, orderItemCategories, orderLineListLabel, orderLineOptionsLabel } from "@/lib/menu";
+import { drinkDisplayName, formatMoney, orderItemTypes, orderLineListLabel, orderLineOptionsLabel } from "@/lib/menu";
 import { phDateString, phDateTimeLabel, phPeriodBounds, phTimestamp, type PeriodRange } from "@/lib/datetime";
 import { paymentLabel } from "@/lib/payments";
-import { ingredientsForOrderLine } from "@/lib/inventory";
 import { inferMenuCategoryType, menuCategoryTypeForName, menuCategoryTypeLabel, normalizeMenuCategoryType } from "@/lib/menu";
 import { parseRole } from "@/lib/users";
 import { pairLoginSessions } from "@/lib/staff-sessions";
 import {
   bestSellers,
-  busiestDay,
   cafeHours,
   categorySales,
-  lastNDays,
-  liveOrders,
-  isWasteOrder,
   lowSellers,
-  ordersOnDay,
-  paymentStats,
-  productStats,
   drinkProductStats,
-  salesByHour,
-  salesByYearMonths,
-  sumSales,
 } from "@/lib/analytics";
-import type { Order, StoreData } from "@/lib/types";
+import type { Order, PaymentMethod, StoreData } from "@/lib/types";
+
+type SalesSummary = {
+  totals: { sales: number; orders: number; averageTicket: number };
+  payments: { method: string; count: number; sales: number }[];
+  days: { date: string; orders: number; sales: number; quantity: number }[];
+  months: { month: string; orders: number; sales: number }[];
+  hours: { hour: number; quantity: number }[];
+  products: {
+    id: string;
+    name: string;
+    category: string;
+    categoryType: string;
+    qty: number;
+    sales: number;
+    iced: number;
+    hot: number;
+  }[];
+};
+
+type RecentOrdersPage = {
+  orders: Order[];
+  page: number;
+  hasMore: boolean;
+  total: number;
+};
+
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function isSalesSummary(value: unknown): value is SalesSummary {
+  const isRecord = (entry: unknown): entry is Record<string, unknown> =>
+    Boolean(entry && typeof entry === "object" && !Array.isArray(entry));
+  const isNumber = (entry: unknown): entry is number =>
+    typeof entry === "number" && Number.isFinite(entry);
+  if (!isRecord(value)) return false;
+  const summary = value;
+  const totals = summary.totals;
+  if (!isRecord(totals)) return false;
+  const isPayment = (entry: unknown) =>
+    isRecord(entry) &&
+    typeof entry.method === "string" &&
+    ["cash", "gcash", "maya", "cards", "grab", "foodpanda", "split"].includes(entry.method) &&
+    isNumber(entry.count) &&
+    isNumber(entry.sales);
+  const isDay = (entry: unknown) =>
+    isRecord(entry) &&
+    typeof entry.date === "string" &&
+    DATE_PATTERN.test(entry.date) &&
+    isNumber(entry.orders) &&
+    isNumber(entry.sales) &&
+    isNumber(entry.quantity);
+  const isMonth = (entry: unknown) =>
+    isRecord(entry) &&
+    typeof entry.month === "string" &&
+    DATE_PATTERN.test(entry.month) &&
+    isNumber(entry.orders) &&
+    isNumber(entry.sales);
+  const isHour = (entry: unknown) => {
+    if (!isRecord(entry)) return false;
+    const hour = entry.hour;
+    return isNumber(hour) &&
+      Number.isInteger(hour) &&
+      hour >= 0 &&
+      hour <= 23 &&
+      isNumber(entry.quantity);
+  };
+  const isProduct = (entry: unknown) =>
+    isRecord(entry) &&
+    typeof entry.id === "string" &&
+    typeof entry.name === "string" &&
+    typeof entry.category === "string" &&
+    typeof entry.categoryType === "string" &&
+    isNumber(entry.qty) &&
+    isNumber(entry.sales) &&
+    isNumber(entry.iced) &&
+    isNumber(entry.hot);
+
+  return (
+    isNumber(totals.sales) &&
+    isNumber(totals.orders) &&
+    isNumber(totals.averageTicket) &&
+    Array.isArray(summary.payments) &&
+    summary.payments.every(isPayment) &&
+    Array.isArray(summary.days) &&
+    summary.days.every(isDay) &&
+    Array.isArray(summary.months) &&
+    summary.months.every(isMonth) &&
+    Array.isArray(summary.hours) &&
+    summary.hours.every(isHour) &&
+    Array.isArray(summary.products) &&
+    summary.products.every(isProduct)
+  );
+}
+
+function hourLabel(hour: number) {
+  if (hour === 0) return "12 AM";
+  if (hour < 12) return `${hour} AM`;
+  if (hour === 12) return "12 PM";
+  return `${hour - 12} PM`;
+}
+
+function summaryPaymentMethod(method: string): PaymentMethod {
+  switch (method) {
+    case "cash":
+    case "gcash":
+    case "maya":
+    case "cards":
+    case "grab":
+    case "foodpanda":
+    case "split":
+      return method;
+    default:
+      throw new Error(`Unsupported payment method in sales summary: ${method}`);
+  }
+}
+
+function isRecentOrdersPage(value: unknown): value is RecentOrdersPage {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const result = value as Record<string, unknown>;
+  return (
+    Array.isArray(result.orders) &&
+    result.orders.every((order) => {
+      if (!order || typeof order !== "object" || Array.isArray(order)) return false;
+      const entry = order as Record<string, unknown>;
+      return (
+        typeof entry.id === "string" &&
+        typeof entry.createdAt === "string" &&
+        typeof entry.baristaName === "string" &&
+        typeof entry.total === "number" &&
+        Array.isArray(entry.items) &&
+        entry.items.every((item) => {
+          if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+          const line = item as Record<string, unknown>;
+          return (
+            typeof line.productId === "string" &&
+            typeof line.name === "string" &&
+            typeof line.qty === "number" &&
+            typeof line.price === "number"
+          );
+        })
+      );
+    }) &&
+    typeof result.page === "number" &&
+    typeof result.hasMore === "boolean" &&
+    typeof result.total === "number"
+  );
+}
 
 function Metric({
   label,
@@ -173,6 +308,21 @@ export function AdminDashboard({
   const [approvalPending, startApprovalTransition] = useTransition();
   const [drinksOpen, setDrinksOpen] = useState(true);
   const [ordersOpen, setOrdersOpen] = useState(true);
+  const [salesSummaryResult, setSalesSummaryResult] = useState<{
+    rangeKey: string;
+    summary: SalesSummary | null;
+    error: string | null;
+  } | null>(null);
+  const [recentOrderPageSelection, setRecentOrderPageSelection] = useState({
+    rangeKey: "",
+    page: 1,
+  });
+  const [recentOrderPageResult, setRecentOrderPageResult] = useState<{
+    rangeKey: string;
+    page: number;
+    result: RecentOrdersPage | null;
+    error: string | null;
+  } | null>(null);
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -188,73 +338,158 @@ export function AdminDashboard({
   const periodBounds = activeFilterMode === "date" && filterDateStr
     ? { from: filterDateStr, to: filterDateStr }
     : phPeriodBounds(rangeType as PeriodRange);
-  const startOfPeriod = new Date(`${periodBounds.from}T00:00:00+08:00`);
+  const periodKey = `${periodBounds.from}:${periodBounds.to}`;
   const now = new Date(`${periodBounds.to}T23:59:59.999+08:00`);
+  const recentOrderPage = recentOrderPageSelection.rangeKey === periodKey
+    ? recentOrderPageSelection.page
+    : 1;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(
+      `/api/admin/sales-summary?from=${encodeURIComponent(periodBounds.from)}&to=${encodeURIComponent(periodBounds.to)}`,
+      { signal: controller.signal },
+    )
+      .then(async (response) => {
+        const result: unknown = await response.json();
+        if (!response.ok) {
+          const message =
+            result && typeof result === "object" && "error" in result
+              ? String(result.error)
+              : "Unable to load sales summary.";
+          throw new Error(message);
+        }
+        if (!isSalesSummary(result)) {
+          throw new Error("Sales summary response was invalid.");
+        }
+        setSalesSummaryResult({ rangeKey: periodKey, summary: result, error: null });
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setSalesSummaryResult({
+          rangeKey: periodKey,
+          summary: null,
+          error: error instanceof Error ? error.message : "Unable to load sales summary.",
+        });
+      });
+
+    return () => controller.abort();
+  }, [periodBounds.from, periodBounds.to, periodKey]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(
+      `/api/admin/recent-orders?from=${encodeURIComponent(periodBounds.from)}&to=${encodeURIComponent(periodBounds.to)}&page=${recentOrderPage}`,
+      { signal: controller.signal },
+    )
+      .then(async (response) => {
+        const result: unknown = await response.json();
+        if (!response.ok) {
+          const message =
+            result && typeof result === "object" && "error" in result
+              ? String(result.error)
+              : "Unable to load recent orders.";
+          throw new Error(message);
+        }
+        if (!isRecentOrdersPage(result)) {
+          throw new Error("Recent orders response was invalid.");
+        }
+        setRecentOrderPageResult({
+          rangeKey: periodKey,
+          page: recentOrderPage,
+          result,
+          error: null,
+        });
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setRecentOrderPageResult({
+          rangeKey: periodKey,
+          page: recentOrderPage,
+          result: null,
+          error: error instanceof Error ? error.message : "Unable to load recent orders.",
+        });
+      });
+
+    return () => controller.abort();
+  }, [periodBounds.from, periodBounds.to, periodKey, recentOrderPage]);
 
   const todayDateStr = formatDateStr(now);
-  const yesterdayDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  const yesterdayDateStr = formatDateStr(yesterdayDate);
-  const ordersForDashboard = store.orders;
-
-  const today = ordersOnDay(ordersForDashboard, now);
-  const yesterday = ordersOnDay(ordersForDashboard, yesterdayDate);
-  const week = lastNDays(ordersForDashboard, 7, now);
+  const salesSummary = salesSummaryResult?.rangeKey === periodKey
+    ? salesSummaryResult.summary
+    : null;
+  const salesSummaryError = salesSummaryResult?.rangeKey === periodKey
+    ? salesSummaryResult.error
+    : null;
+  const salesSummaryLoading = salesSummaryResult?.rangeKey !== periodKey;
+  const currentRecentOrderPage =
+    recentOrderPageResult?.rangeKey === periodKey &&
+    recentOrderPageResult.page === recentOrderPage
+      ? recentOrderPageResult.result
+      : null;
+  const recentOrderPageError =
+    recentOrderPageResult?.rangeKey === periodKey &&
+    recentOrderPageResult.page === recentOrderPage
+      ? recentOrderPageResult.error
+      : null;
+  const recentOrdersLoading = !currentRecentOrderPage && !recentOrderPageError;
   const currentWeekStart = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
   const currentWeekRangeStr = `${formatDateStr(currentWeekStart)} – ${todayDateStr}`;
+  const summary = salesSummary ?? {
+    totals: { sales: 0, orders: 0, averageTicket: 0 },
+    payments: [],
+    days: [],
+    months: [],
+    hours: [],
+    products: [],
+  };
 
   let trackingItems: { key: string; label: string; value: number; caption: string; display: string }[] = [];
   let trackingTitle = "Sales tracking";
   let trackingSubtitle = "";
 
   if (rangeType === "month" || rangeType === "lastMonth") {
-    const daysInMonth = Number(periodBounds.to.slice(8, 10));
-    const monthDays = lastNDays(ordersForDashboard, daysInMonth, now);
     trackingTitle = `Sales tracking · ${rangeType === "month" ? "This Month" : "Last Month"}`;
-    trackingItems = monthDays.map((d) => ({
-      key: d.date,
-      label: d.label.split(",")[0],
-      value: d.sales,
-      display: formatMoney(d.sales),
-      caption: `${d.orders} tix`,
+    trackingItems = summary.days.map((day) => ({
+      key: day.date,
+      label: new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", day: "numeric" })
+        .format(new Date(`${day.date}T12:00:00+08:00`)),
+      value: day.sales,
+      display: formatMoney(day.sales),
+      caption: `${day.orders} tix`,
     }));
   } else if (rangeType === "thisYear") {
     trackingTitle = "Sales tracking · This Year (Monthly)";
-    const yearMonths = salesByYearMonths(ordersForDashboard, Number(periodBounds.to.slice(0, 4)));
-    trackingItems = yearMonths.map((m) => ({
-      key: m.key,
-      label: m.label,
-      value: m.sales,
-      display: m.sales > 0 ? formatMoney(m.sales) : "",
-      caption: `${m.orders} tix`,
+    trackingItems = summary.months.map((month) => ({
+      key: month.month,
+      label: new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", month: "short" })
+        .format(new Date(`${month.month}T12:00:00+08:00`)),
+      value: month.sales,
+      display: month.sales > 0 ? formatMoney(month.sales) : "",
+      caption: `${month.orders} tix`,
     }));
   } else if (rangeType === "lastYear") {
     trackingTitle = "Sales tracking · Last Year (Monthly)";
-    const targetYear = Number(periodBounds.to.slice(0, 4));
-    const yearMonths = salesByYearMonths(ordersForDashboard, targetYear);
-    trackingItems = yearMonths.map((m) => ({
-      key: m.key,
-      label: m.label,
-      value: m.sales,
-      display: m.sales > 0 ? formatMoney(m.sales) : "",
-      caption: `${m.orders} tix`,
+    trackingItems = summary.months.map((month) => ({
+      key: month.month,
+      label: new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", month: "short" })
+        .format(new Date(`${month.month}T12:00:00+08:00`)),
+      value: month.sales,
+      display: month.sales > 0 ? formatMoney(month.sales) : "",
+      caption: `${month.orders} tix`,
     }));
   } else if (rangeType === "week" || rangeType === "lastWeek") {
     trackingTitle = rangeType === "lastWeek" ? "Sales tracking · Last Week" : "Sales tracking · 7 days";
     trackingSubtitle = currentWeekRangeStr;
-    const targetWeekDays = lastNDays(ordersForDashboard, 7, now);
-    trackingItems = targetWeekDays.map((day) => ({
+    trackingItems = summary.days.map((day) => ({
       key: day.date,
-      label: day.label,
+      label: new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", weekday: "short", month: "short", day: "numeric" })
+        .format(new Date(`${day.date}T12:00:00+08:00`)),
       value: day.sales,
       display: formatMoney(day.sales),
       caption: `${day.orders} tix`,
     }));
   }
-
-  const filteredOrdersList = liveOrders(ordersForDashboard).filter((order) => {
-    const orderTime = new Date(order.createdAt).getTime();
-    return orderTime >= startOfPeriod.getTime() && orderTime <= now.getTime();
-  });
 
   const categoryTypeByName = new Map(
     Object.entries(store.categoryTypes ?? {}).map(([category, type]) => [
@@ -262,61 +497,53 @@ export function AdminDashboard({
       normalizeMenuCategoryType(type),
     ]),
   );
-  const analyticsMenu = store.menu.map((item) => ({
-    ...item,
+  const productStatsList = summary.products.map((product) => ({
+    ...product,
     categoryType: menuCategoryTypeForName(
-      item.category,
-      categoryTypeByName.get(item.category.trim().toLowerCase()) ?? item.categoryType,
+      product.category,
+      categoryTypeByName.get(product.category.trim().toLowerCase()) ??
+        product.categoryType ??
+        inferMenuCategoryType(product.category),
     ),
   }));
-  const productStatsList = productStats(filteredOrdersList, analyticsMenu);
+  const productDetailsById = new Map(summary.products.map((product) => [product.id, product]));
   const best = bestSellers(productStatsList, 5);
   const low = lowSellers(productStatsList, 5);
-  const drinkStyles = new Map<string, { iced: number; hot: number }>();
-  for (const order of filteredOrdersList) {
-    for (const line of order.items) {
-      const current = drinkStyles.get(line.productId) ?? { iced: 0, hot: 0 };
-      if (line.style === "iced") current.iced += line.qty;
-      else if (line.style === "hot") current.hot += line.qty;
-      drinkStyles.set(line.productId, current);
-    }
-  }
   const drinkSoldRows = drinkProductStats(productStatsList)
     .filter((item) => item.qty > 0)
     .map((item) => ({
       ...item,
-      iced: drinkStyles.get(item.id)?.iced ?? 0,
-      hot: drinkStyles.get(item.id)?.hot ?? 0,
+      iced: productDetailsById.get(item.id)?.iced ?? 0,
+      hot: productDetailsById.get(item.id)?.hot ?? 0,
     }))
     .sort((a, b) => b.qty - a.qty || a.name.localeCompare(b.name));
   
   const categories = categorySales(drinkProductStats(productStatsList)).filter((item) => item.qty > 0);
   
-  const rawHours = salesByHour(filteredOrdersList, now, rangeType === "week" && activeFilterMode === "range" ? 7 : 1);
-  const updatedHoursMap = rawHours.map(slot => {
-    const slotOrders = filteredOrdersList.filter(o => {
-      const orderHour = new Date(o.createdAt).getHours();
-      return orderHour === slot.hour;
-    });
-    const totalQtyInHour = slotOrders.reduce((acc, order) => {
-      return acc + order.items.reduce((sum, item) => sum + item.qty, 0);
-    }, 0);
-    return {
-      ...slot,
-      orders: totalQtyInHour,
-    };
-  });
-
-  const hours = cafeHours(updatedHoursMap);
+  const hours = cafeHours(
+    Array.from({ length: 24 }, (_, hour) => ({
+      hour,
+      label: hourLabel(hour),
+      sales: 0,
+      orders: summary.hours.find((entry) => entry.hour === hour)?.quantity ?? 0,
+    })),
+  );
   const peak = hours.reduce(
     (bestHour, slot) => (slot.orders > bestHour.orders ? slot : bestHour),
     hours[0],
   );
 
-  const busy = busiestDay(week);
+  const busy = summary.days.reduce(
+    (bestDay, day) => (day.sales > bestDay.sales ? day : bestDay),
+    summary.days[0],
+  );
   
-  const payments = paymentStats(filteredOrdersList);
-  const totalSalesAmount = sumSales(filteredOrdersList);
+  const payments = summary.payments.map((entry) => ({
+    ...entry,
+    method: summaryPaymentMethod(entry.method),
+    label: paymentLabel(summaryPaymentMethod(entry.method)),
+  }));
+  const totalSalesAmount = summary.totals.sales;
   const menuCategoryTypeByName = new Map(
     store.menu.map((item) => [
       item.category.trim().toLowerCase(),
@@ -369,41 +596,8 @@ export function AdminDashboard({
   );
   const totalSoldQty = soldProductSummary.reduce((sum, group) => sum + group.quantity, 0);
   const totalSoldSales = soldProductSummary.reduce((sum, group) => sum + group.sales, 0);
-  const costByCategory = filteredOrdersList.reduce((totals, order) => {
-    order.items.forEach((line) => {
-      const menuItem = store.menu.find((item) => item.id === line.productId) ?? store.menu.find((item) => item.name.trim().toLowerCase() === line.name.trim().toLowerCase());
-      const category = menuItem?.category ?? "Other";
-      const lineCost = ingredientsForOrderLine(store, line).reduce((sum, ingredient) => {
-        const inventoryItem = store.inventory.find((item) => item.id === ingredient.inventoryItemId);
-        if (!inventoryItem) return sum;
-        const packSize = Number(inventoryItem.purchaseUnitSize) || Number(inventoryItem.cupsMake) || 1;
-        return sum + (Number(ingredient.amount) / packSize) * Number(inventoryItem.cost || 0) * line.qty;
-      }, 0);
-      const normalizedCategory = category.replace(/[^a-z]/gi, "").toLowerCase();
-      const key = /pastr/.test(normalizedCategory)
-        ? "pastries"
-        : /food/.test(normalizedCategory)
-          ? "food"
-          : /drink|coffee|beverage|tea/.test(normalizedCategory)
-            ? "drinks"
-            : null;
-      if (key) totals[key] += lineCost;
-    });
-    return totals;
-  }, { drinks: 0, food: 0, pastries: 0 });
-  const totalCost = costByCategory.drinks + costByCategory.food + costByCategory.pastries;
+  const computedAverageTicket = summary.totals.averageTicket;
 
-  const computedAverageTicket = filteredOrdersList.length > 0 
-    ? totalSalesAmount / filteredOrdersList.length 
-    : 0;
-
-  const latest = [...ordersForDashboard]
-    .filter((order) => {
-      if (order.deletedAt || isWasteOrder(order)) return false;
-      const orderTime = phTimestamp(order.createdAt);
-      return orderTime >= startOfPeriod.getTime() && orderTime <= now.getTime();
-    })
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const orderOwnerName = (order: Order) => {
     const owner = store.users.find(
       (user) => user.id === order.ownerId && user.role === "cashier",
@@ -465,10 +659,21 @@ export function AdminDashboard({
     typeof order.subtotal === "number" && Number.isFinite(order.subtotal)
       ? Math.max(0, order.subtotal - (order.discount ?? 0))
       : order.total;
+  const latest = currentRecentOrderPage?.orders ?? [];
   const pendingVoidRequests: typeof store.voidRequests = [];
 
   if (!isClient) {
     return <div className="p-8 text-center text-neutral-500">Loading dashboard...</div>;
+  }
+  if (salesSummaryLoading) {
+    return <div className="p-8 text-center text-neutral-500">Loading sales summary...</div>;
+  }
+  if (salesSummaryError || !salesSummary) {
+    return (
+      <div role="alert" className="p-8 text-center text-sm text-red-700">
+        {salesSummaryError ?? "Sales summary is unavailable."}
+      </div>
+    );
   }
 
   return (
@@ -614,22 +819,22 @@ export function AdminDashboard({
             <>
               <Metric
                 label="Today's Sales"
-                value={formatMoney(sumSales(today))}
+                value={formatMoney(summary.totals.sales)}
               />
               <Metric
                 label="Today's Orders"
-                value={String(today.length)}
+                value={String(summary.totals.orders)}
               />
             </>
           ) : (
             <>
               <Metric
                 label="Period Sales"
-                value={formatMoney(filteredOrdersList.reduce((s, o) => s + o.total, 0))}
+                value={formatMoney(summary.totals.sales)}
               />
-              <Metric 
-                label="Period Orders" 
-                value={String(filteredOrdersList.length)} 
+              <Metric
+                label="Period Orders"
+                value={String(summary.totals.orders)}
               />
             </>
           )}
@@ -676,7 +881,10 @@ export function AdminDashboard({
           {rangeType === "week" && (
             <Metric
               label="Busiest Day"
-              value={busy?.label ?? "—"}
+              value={busy
+                ? new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", weekday: "short", month: "short", day: "numeric" })
+                    .format(new Date(`${busy.date}T12:00:00+08:00`))
+                : "—"}
             />
           )}
         </div>
@@ -863,13 +1071,22 @@ export function AdminDashboard({
           </button>
         </div>
         {ordersOpen ? (
-          latest.length === 0 ? (
+          recentOrdersLoading ? (
+            <p className="mt-4 py-6 text-center text-sm text-neutral-500">
+              Loading recent orders...
+            </p>
+          ) : recentOrderPageError ? (
+            <p role="alert" className="mt-4 py-6 text-center text-sm text-red-700">
+              {recentOrderPageError}
+            </p>
+          ) : latest.length === 0 ? (
             <p className="mt-4 py-6 text-center text-sm text-neutral-500">
               No recent orders found for the selected range.
             </p>
           ) : (
-          <div className="mt-4 overflow-x-auto">
-            <div className={showPromoVoucher ? "min-w-[1060px]" : "min-w-[970px]"}>
+          <>
+            <div className="mt-4 overflow-x-auto">
+              <div className={showPromoVoucher ? "min-w-[1060px]" : "min-w-[970px]"}>
               <div className={`hidden gap-x-3 border-b border-neutral-200 pb-2 text-xs text-neutral-500 lg:grid ${showPromoVoucher ? "grid-cols-12" : "grid-cols-11"}`}>
                 <p className="min-w-0">Time</p>
                 <p className="min-w-0">Owner</p>
@@ -929,7 +1146,7 @@ export function AdminDashboard({
                     </ul>
                     <p className="min-w-0 break-words text-xs text-neutral-500 lg:text-sm">
                       <span className="lg:hidden">Type: </span>
-                      {orderItemCategories(order.items, store.menu).join(", ") || "—"}
+                      {orderItemTypes(order.items, store.menu).join(", ") || "—"}
                     </p>
                     <div className="min-w-0">
                       <span
@@ -972,7 +1189,39 @@ export function AdminDashboard({
                 ))}
               </div>
             </div>
-          </div>
+            </div>
+            {currentRecentOrderPage ? (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-neutral-200 pt-3">
+                <p className="text-xs text-neutral-500">
+                  Showing {(recentOrderPage - 1) * 50 + 1}–
+                  {Math.min(recentOrderPage * 50, currentRecentOrderPage.total)} of{" "}
+                  {currentRecentOrderPage.total} orders
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={recentOrderPage <= 1}
+                    onClick={() =>
+                      setRecentOrderPageSelection({ rangeKey: periodKey, page: recentOrderPage - 1 })
+                    }
+                    className="rounded border border-neutral-300 px-3 py-1.5 text-xs disabled:opacity-40"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!currentRecentOrderPage.hasMore}
+                    onClick={() =>
+                      setRecentOrderPageSelection({ rangeKey: periodKey, page: recentOrderPage + 1 })
+                    }
+                    className="rounded border border-neutral-300 px-3 py-1.5 text-xs disabled:opacity-40"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </>
           )
         ) : null}
       </section>

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../models/staff_user.dart';
+import 'offline_staff_avatar.dart';
 
 class BaristaShiftDialog extends StatefulWidget {
   final List<StaffUser> onShiftBaristas;
@@ -11,6 +12,7 @@ class BaristaShiftDialog extends StatefulWidget {
   final String authMode;
   final Future<StaffUser?> Function(String username, String password)
       authenticateBarista;
+  final Future<String?> Function(String staffUserId) resolveStaffAvatarUrl;
   final Future<void> Function(
     StaffUser staff,
     String type, {
@@ -25,6 +27,7 @@ class BaristaShiftDialog extends StatefulWidget {
     required this.staffUsers,
     required this.authMode,
     required this.authenticateBarista,
+    required this.resolveStaffAvatarUrl,
     required this.onPunch,
   });
 
@@ -336,7 +339,19 @@ class _BaristaShiftDialogState extends State<BaristaShiftDialog> {
                             staff.role == _selectedRole && staff.canClockShift)
                         .map((staff) => DropdownMenuItem(
                               value: staff.id,
-                              child: Text(staff.name),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  OfflineStaffAvatar(
+                                    staff: staff,
+                                    resolveSignedUrl:
+                                        widget.resolveStaffAvatarUrl,
+                                    radius: 14,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(staff.name),
+                                ],
+                              ),
                             ))
                         .toList(),
                     onChanged: _isLoading

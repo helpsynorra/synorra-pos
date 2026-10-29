@@ -68,6 +68,7 @@ export function publicUser(user: StaffUser): PublicStaffUser {
     id: user.id,
     username: user.username,
     email: user.email,
+    avatarPath: user.avatarPath,
     passwordChanged: user.passwordChanged,
     name: user.name,
     hourlyRate: user.hourlyRate,

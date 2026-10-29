@@ -1,13 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../lib/models/inventory_item.dart';
-import '../lib/models/menu_item.dart';
-import '../lib/models/order.dart';
-import '../lib/models/order_item.dart';
-import '../lib/services/local_storage_service.dart';
-import '../lib/services/supabase_service.dart';
-import '../lib/services/sync_service.dart';
+import 'package:synorra_pos/models/inventory_item.dart';
+import 'package:synorra_pos/models/menu_item.dart';
+import 'package:synorra_pos/models/order.dart';
+import 'package:synorra_pos/models/order_item.dart';
+import 'package:synorra_pos/services/local_storage_service.dart';
+import 'package:synorra_pos/services/supabase_service.dart';
+import 'package:synorra_pos/services/sync_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

@@ -60,28 +60,31 @@ class PosAppBar extends StatelessWidget implements PreferredSizeWidget {
             child: const Text('Print', style: TextStyle(fontSize: 12)),
           ),
         if (showPrintButton) const SizedBox(width: 6),
-        InkWell(
-          onTap: onSync,
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: syncDotColor,
-                    shape: BoxShape.circle,
+        Tooltip(
+          message: syncStatus,
+          child: InkWell(
+            onTap: onSync,
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: syncDotColor,
+                      shape: BoxShape.circle,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  syncStatus,
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
-                ),
-              ],
+                  const SizedBox(width: 6),
+                  const Text(
+                    'Sync Now',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

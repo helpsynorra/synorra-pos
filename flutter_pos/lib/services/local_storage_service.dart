@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/supabase_config.dart';
 import '../models/menu_item.dart';
@@ -13,6 +15,49 @@ import '../models/login_activity.dart';
 import '../models/print_job.dart';
 import 'offline_credential_store.dart';
 
+bool _hiveInitialized = false;
+int _testBoxCounter = 0;
+
+class _HivePreferences {
+  final Box<dynamic> box;
+
+  const _HivePreferences(this.box);
+
+  String? getString(String key) {
+    final value = box.get(key);
+    if (value is String) return value;
+    if (value is Map || value is List) return jsonEncode(value);
+    return null;
+  }
+
+  bool? getBool(String key) => box.get(key) as bool?;
+
+  List<String>? getStringList(String key) {
+    final value = box.get(key);
+    return value is List ? value.whereType<String>().toList() : null;
+  }
+
+  Future<void> setString(String key, String value) async {
+    dynamic stored = value;
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is Map || decoded is List) stored = decoded;
+    } on FormatException {
+      // Keep ordinary strings as strings in Hive.
+    }
+    await box.put(key, stored);
+  }
+
+  Future<void> setBool(String key, bool value) => box.put(key, value);
+
+  Future<void> setStringList(String key, List<String> value) =>
+      box.put(key, List<String>.of(value));
+
+  Future<void> remove(String key) async {
+    await box.delete(key);
+  }
+}
+
 class LocalStorageService {
   final OfflineCredentialStore _offlineCredentialStore;
 
@@ -23,6 +68,7 @@ class LocalStorageService {
   // Versioned cache keys so legacy hardcoded seed data is never loaded
   static const String _keyMenu = 'v2_cache_menu_items';
   static const String _keyCategories = 'v2_cache_categories';
+  static const String _keyCategoryTypes = 'v1_pos_category_types';
   static const String _keyCategoryOrder = 'v1_pos_category_order';
   static const String _keyInventory = 'v2_cache_inventory';
   static const String _keyOrders = 'v2_cache_orders';
@@ -40,6 +86,8 @@ class LocalStorageService {
   static const String _keyActiveStoreOwnerId = 'v1_active_store_owner_id';
   static const String _keyActiveStaffProfile = 'v1_active_staff_profile';
   static const String _keyPosApiToken = 'v1_pos_api_token';
+  static const String _keyPosSyncCursor = 'v1_pos_sync_cursor';
+  static const String _keyPosLastSyncAt = 'v1_pos_last_sync_at';
   static const String _keyActiveCheckout = 'v1_active_checkout';
 
   // Offline Queues (v2)
@@ -48,16 +96,62 @@ class LocalStorageService {
   static const String _queueRestockDeletes = 'v1_offline_queue_restock_deletes';
   static const String _queueVoidRequests = 'v2_offline_queue_void_requests';
   static const String _queueLoginActivity = 'v2_offline_queue_login_activity';
+  static const String _queueInventory = 'v1_offline_queue_inventory';
+  static const String _queueInventoryDeletes =
+      'v1_offline_queue_inventory_deletes';
 
   static const String _keySupabaseUrl = 'supabase_url';
   static const String _keySupabaseAnonKey = 'supabase_anon_key';
   static const String _keyAdminApiUrl = 'admin_api_url';
 
-  late SharedPreferences _prefs;
+  late _HivePreferences _prefs;
   Future<void>? _legacyCredentialMigration;
 
   Future<void> init() async {
-    _prefs = await SharedPreferences.getInstance();
+    if (!_hiveInitialized) {
+      if (Platform.environment.containsKey('FLUTTER_TEST')) {
+        final testDirectory =
+            await Directory.systemTemp.createTemp('synorra_pos_test_');
+        Hive.init(testDirectory.path);
+      } else {
+        await Hive.initFlutter();
+      }
+      _hiveInitialized = true;
+    }
+    final isTest = Platform.environment.containsKey('FLUTTER_TEST');
+    final boxName = isTest
+        ? 'synorra_pos_local_test_${_testBoxCounter++}'
+        : 'synorra_pos_local_v1';
+    final box = await Hive.openBox<dynamic>(boxName);
+    if (isTest) {
+      await box.clear();
+    }
+    _prefs = _HivePreferences(box);
+
+    final legacy = await SharedPreferences.getInstance();
+    for (final key in legacy.getKeys()) {
+      if (box.containsKey(key)) continue;
+      final value = legacy.get(key);
+      if (value is String) {
+        dynamic stored = value;
+        try {
+          final decoded = jsonDecode(value);
+          if (decoded is Map || decoded is List) stored = decoded;
+        } on FormatException {
+          // Preserve non-JSON values exactly as they were stored.
+        }
+        await box.put(key, stored);
+      } else if (value is bool ||
+          value is num ||
+          value is int ||
+          value is double) {
+        await box.put(key, value);
+      } else if (value is List) {
+        await box.put(key, value.toList());
+      }
+      await legacy.remove(key);
+    }
+    await migrateLegacyStaffCredentials();
   }
 
   Future<void> migrateLegacyStaffCredentials() {
@@ -93,6 +187,19 @@ class LocalStorageService {
   }
 
   String? getPosApiToken() => _prefs.getString(_keyPosApiToken);
+
+  String? getPosSyncCursor() => _prefs.getString(_keyPosSyncCursor);
+
+  DateTime? getPosLastSyncAt() {
+    final value = _prefs.getString(_keyPosLastSyncAt);
+    return value == null ? null : DateTime.tryParse(value);
+  }
+
+  Future<void> savePosLastSyncAt(DateTime value) =>
+      _prefs.setString(_keyPosLastSyncAt, value.toUtc().toIso8601String());
+
+  Future<void> savePosSyncCursor(String cursor) =>
+      _prefs.setString(_keyPosSyncCursor, cursor);
 
   Future<void> saveOfflineStaffCredential(
     String staffId,
@@ -137,12 +244,18 @@ class LocalStorageService {
         _keyPosOpenedAt,
         _keyPosFeatureSettings,
         _keyActiveCheckout,
+        _keyPosApiToken,
+        _keyPosLastSyncAt,
       ]) {
         await _prefs.remove(key);
       }
     }
-    if (nextOwnerId != null)
+    if (nextOwnerId != null) {
       await _prefs.setString(_keyActiveStoreOwnerId, nextOwnerId);
+    }
+    if (previousOwnerId != nextOwnerId) {
+      await _prefs.remove(_keyPosSyncCursor);
+    }
     await _prefs.setString(_keyActiveStaffId, staff.id);
     await _prefs.setString(
       _keyActiveStaffProfile,
@@ -163,7 +276,6 @@ class LocalStorageService {
     await _prefs.remove(_keyActiveStaffId);
     await _prefs.remove(_keyActiveStaffProfile);
     await _prefs.remove(_keyPosApiToken);
-    await _prefs.remove(_keyActiveStoreOwnerId);
   }
 
   // --- Connection Config ---
@@ -186,10 +298,11 @@ class LocalStorageService {
   }
 
   Future<void> setAdminApiUrl(String adminApiUrl) async {
-    await _prefs.setString(
-      _keyAdminApiUrl,
-      SupabaseConfig.normalizePosApiUrl(adminApiUrl),
-    );
+    final normalizedUrl = SupabaseConfig.normalizePosApiUrl(adminApiUrl);
+    if (getAdminApiUrl() != normalizedUrl) {
+      await _prefs.remove(_keyPosSyncCursor);
+    }
+    await _prefs.setString(_keyAdminApiUrl, normalizedUrl);
   }
 
   // --- POS State ---
@@ -320,6 +433,37 @@ class LocalStorageService {
     return _prefs.getStringList(_keyCategories) ?? ['All'];
   }
 
+  Future<void> saveCategoryTypes(Map<String, String> categoryTypes) async {
+    final normalized = <String, String>{};
+    for (final entry in categoryTypes.entries) {
+      final category = entry.key.trim();
+      final type = entry.value.trim();
+      if (category.isNotEmpty && type.isNotEmpty) {
+        normalized[category] = type;
+      }
+    }
+    await _prefs.setString(_keyCategoryTypes, jsonEncode(normalized));
+  }
+
+  Map<String, String> getCategoryTypes() {
+    final raw = _prefs.getString(_keyCategoryTypes);
+    if (raw == null) return {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return {};
+      return decoded.entries.fold<Map<String, String>>({}, (result, entry) {
+        final category = entry.key.toString().trim();
+        final type = entry.value.toString().trim();
+        if (category.isNotEmpty && type.isNotEmpty) {
+          result[category] = type;
+        }
+        return result;
+      });
+    } catch (_) {
+      return {};
+    }
+  }
+
   Future<void> saveCategoryOrder(List<String> categories) async {
     await _prefs.setStringList(_keyCategoryOrder, categories);
   }
@@ -346,6 +490,56 @@ class LocalStorageService {
     } catch (_) {
       return [];
     }
+  }
+
+  Future<void> queueInventoryItem(InventoryItem item) async {
+    final queue = getPendingInventoryItems()
+      ..removeWhere((entry) => entry.id == item.id)
+      ..add(item);
+    await _prefs.setString(
+      _queueInventory,
+      jsonEncode(queue.map((entry) => entry.toJson()).toList()),
+    );
+    final deletes = getPendingInventoryDeletes()..remove(item.id);
+    await _prefs.setStringList(_queueInventoryDeletes, deletes);
+  }
+
+  List<InventoryItem> getPendingInventoryItems() {
+    final raw = _prefs.getString(_queueInventory);
+    if (raw == null) return [];
+    try {
+      final list = jsonDecode(raw) as List;
+      return list
+          .map((entry) =>
+              InventoryItem.fromJson(Map<String, dynamic>.from(entry as Map)))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> removePendingInventoryItem(String id) async {
+    final queue = getPendingInventoryItems()
+      ..removeWhere((item) => item.id == id);
+    await _prefs.setString(
+      _queueInventory,
+      jsonEncode(queue.map((item) => item.toJson()).toList()),
+    );
+  }
+
+  List<String> getPendingInventoryDeletes() =>
+      _prefs.getStringList(_queueInventoryDeletes) ?? [];
+
+  Future<void> queueInventoryDelete(String id) async {
+    await removePendingInventoryItem(id);
+    final deletes = getPendingInventoryDeletes();
+    if (!deletes.contains(id)) deletes.add(id);
+    await _prefs.setStringList(_queueInventoryDeletes, deletes);
+  }
+
+  Future<void> removePendingInventoryDelete(String id) async {
+    final deletes = getPendingInventoryDeletes()..remove(id);
+    await _prefs.setStringList(_queueInventoryDeletes, deletes);
   }
 
   // --- Recipes, RecipeCostings, Costings & UsageLogs Cache ---
@@ -646,7 +840,9 @@ class LocalStorageService {
         getPendingRestocks().length +
         getPendingRestockDeletes().length +
         getPendingVoidRequests().length +
-        getPendingLoginActivity().length;
+        getPendingLoginActivity().length +
+        getPendingInventoryItems().length +
+        getPendingInventoryDeletes().length;
   }
 
   Future<void> clearPendingQueues() async {
@@ -655,5 +851,7 @@ class LocalStorageService {
     await _prefs.remove(_queueRestockDeletes);
     await _prefs.remove(_queueVoidRequests);
     await _prefs.remove(_queueLoginActivity);
+    await _prefs.remove(_queueInventory);
+    await _prefs.remove(_queueInventoryDeletes);
   }
 }

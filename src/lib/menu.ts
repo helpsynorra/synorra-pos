@@ -376,6 +376,26 @@ export function orderItemCategory(
   return item.category?.trim() || menuItem?.category.trim() || undefined;
 }
 
+export function orderItemTypes(
+  items: OrderItem[],
+  menu: Pick<MenuItem, "id" | "name" | "category" | "categoryType">[],
+): string[] {
+  const types = new Map<string, string>();
+  for (const item of items) {
+    const menuItem =
+      menu.find((entry) => entry.id === item.productId) ??
+      menu.find((entry) => entry.name.trim().toLowerCase() === item.name.trim().toLowerCase());
+    const type = item.categoryType?.trim() ||
+      menuItem?.categoryType?.trim() ||
+      item.category?.trim() ||
+      menuItem?.category.trim();
+    if (!type) continue;
+    const key = type.toLowerCase();
+    if (!types.has(key)) types.set(key, type);
+  }
+  return [...types.values()];
+}
+
 export function cartLineKey(item: Pick<OrderItem, "productId" | "style" | "addons">) {
   const addons = (item.addons ?? [])
     .filter((addon) => addon.qty > 0)
@@ -406,6 +426,7 @@ export function pricedOrderLine(
     qty,
     price: menuItem.price + addonExtra(addons),
     category: menuItem.category,
+    categoryType: menuItem.categoryType,
     style: nextStyle,
     addons,
   };

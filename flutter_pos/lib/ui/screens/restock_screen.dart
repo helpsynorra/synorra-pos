@@ -213,7 +213,7 @@ class _RestockScreenState extends State<RestockScreen> {
         showPrintButton: !widget.controller.syncService.printButtonHidden &&
             widget.controller.syncService.hasPermission('printButton'),
         onPrint: widget.onPrint,
-        onSync: () => widget.controller.syncService.syncAll(),
+        onSync: () => widget.controller.syncService.syncNow(),
       ),
       drawer: widget.drawerBuilder(PosSection.restock),
       body: SingleChildScrollView(

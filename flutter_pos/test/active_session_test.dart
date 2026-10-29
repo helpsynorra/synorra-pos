@@ -211,7 +211,8 @@ void main() {
       (await controller.authenticateCachedStaffOffline(
         email: 'rey@example.com',
         password: '1234',
-      ))?.id,
+      ))
+          ?.id,
       staff.id,
     );
 
@@ -426,6 +427,34 @@ class _StubSupabaseService extends SupabaseService {
     pushedManagerPassword = managerPassword;
     pushedDeductions = deductions;
     return orderResponse;
+  }
+
+  @override
+  Future<Map<String, dynamic>> pushSyncBatch(
+    List<Map<String, dynamic>> operations,
+  ) async {
+    final results = <Map<String, dynamic>>[];
+    for (final operation in operations) {
+      if (operation['action'] == 'create_order' ||
+          operation['action'] == 'void_checkout') {
+        final order = Order.fromJson(
+          Map<String, dynamic>.from(operation['order'] as Map),
+        );
+        final deductions = (operation['deductions'] as List? ?? const [])
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList();
+        results.add(await pushOrderAtomic(
+          order,
+          deductions,
+          managerUsername: operation['managerUsername'] as String?,
+          managerPassword: operation['managerPassword'] as String?,
+        ));
+      } else {
+        results.add({'ok': true});
+      }
+    }
+    return {'ok': true, 'results': results};
   }
 
   @override

@@ -10,7 +10,6 @@ import '../widgets/product_card.dart';
 import '../widgets/cart_panel.dart';
 import '../widgets/drink_options_dialog.dart';
 import '../widgets/slip_dialog.dart';
-import '../widgets/void_dialog.dart';
 import '../widgets/barista_shift_dialog.dart';
 import '../widgets/bluetooth_printer_picker_dialog.dart';
 import '../widgets/pos_navigation_drawer.dart';
@@ -209,7 +208,7 @@ class _PosScreenState extends State<PosScreen> {
 
     showDialog(
       context: context,
-      builder: (_) => slipDialog(
+      builder: (_) => SlipDialog(
         order: order,
         orders: widget.controller.orders,
         menu: widget.controller.menu,
@@ -231,6 +230,8 @@ class _PosScreenState extends State<PosScreen> {
         onShiftBaristas: widget.controller.onShiftBaristas,
         staffUsers: widget.controller.staffUsers,
         authMode: widget.controller.syncService.attendanceAuthMode,
+        resolveStaffAvatarUrl:
+            widget.controller.supabaseService.fetchStaffAvatarSignedUrl,
         authenticateBarista: (username, password) async {
           return widget.controller.authenticateStaffForPurpose(
             username,
@@ -243,13 +244,10 @@ class _PosScreenState extends State<PosScreen> {
           await widget.controller.punchShift(
             staff,
             type,
-            username: username,
-            password: password,
-            photoBytes: photoBytes,
           );
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
+            const SnackBar(
                 content: Text(
                     '${staff.name} clocked ${type == "login" ? "in" : "out"}')),
           );
@@ -318,13 +316,13 @@ class _PosScreenState extends State<PosScreen> {
         res['networkFailure'] == true;
     if (res['ok'] == true && mounted) {
       final order = res['order'] as Order;
-      if (res['synced'] != true && !offline) {
+      if (res['queued'] == true) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Saved on this device only. Server sync failed: ${res['syncError']}',
+              'Order saved locally and queued for the next scheduled sync. Use Sync Now to send it sooner.',
             ),
-            duration: const Duration(seconds: 8),
+            duration: Duration(seconds: 6),
           ),
         );
       }
@@ -528,7 +526,7 @@ class _PosScreenState extends State<PosScreen> {
         SnackBar(
           content: Text(result['synced'] == true
               ? 'Waste recorded ($selectedReason) and inventory deducted.'
-              : 'Waste saved ($selectedReason) on this device and queued to sync.'),
+              : 'Waste saved ($selectedReason) locally and queued for scheduled sync.'),
         ),
       );
     } else {
@@ -645,7 +643,7 @@ class _PosScreenState extends State<PosScreen> {
       onOpenHelpCenter: _openHelpCenter,
       onConnectLabels: () => _openPrinterPicker(PrinterRole.labels),
       onConnectslip: () => _openPrinterPicker(PrinterRole.slip),
-      onSync: () => controller.syncService.syncAll(),
+      onSync: () => controller.syncService.syncNow(),
       onLogout: _handleLogout,
     );
   }
@@ -692,7 +690,7 @@ class _PosScreenState extends State<PosScreen> {
         syncStatus: syncStatusLabel,
         syncDotColor: syncDotColor,
         onPrint: _openslipDialog,
-        onSync: () => sync.syncAll(),
+        onSync: () => sync.syncNow(),
       ),
       drawer: _buildPosDrawer(PosSection.terminal),
       body: LayoutBuilder(

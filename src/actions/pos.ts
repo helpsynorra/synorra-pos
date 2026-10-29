@@ -218,7 +218,11 @@ export async function saveAdminData(data: {
   }
 
   await updateStore((store) => {
-    if (data.inventory) store.inventory = data.inventory;
+    if (data.inventory) {
+      const byId = new Map(store.inventory.map((item) => [item.id, item]));
+      for (const item of data.inventory) byId.set(item.id, item);
+      store.inventory = [...byId.values()];
+    }
     if (data.restocks) store.restocks = data.restocks;
     if (data.recipes && Object.keys(data.recipes).length > 0) store.recipes = data.recipes;
     if (data.recipeCostings) store.recipeCostings = data.recipeCostings;

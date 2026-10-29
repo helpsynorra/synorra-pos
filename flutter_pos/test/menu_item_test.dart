@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:synorra_pos/models/menu_item.dart';
+import 'package:synorra_pos/models/order_item.dart';
 import 'package:synorra_pos/services/sync_service.dart';
 
 void main() {
@@ -38,9 +39,36 @@ void main() {
     expect(item.styles, ['iced']);
   });
 
+  test('round trips the configured category type', () {
+    final item = MenuItem.fromJson({
+      'id': 'custom-dessert',
+      'name': 'Mango Tart',
+      'price': 100,
+      'category': 'Tarts',
+      'categoryType': 'Desserts',
+      'image': '/images/tart.jpg',
+    });
+
+    expect(item.categoryType, 'Desserts');
+    expect(MenuItem.fromJson(item.toJson()).categoryType, 'Desserts');
+  });
+
+  test('round trips the category type on an order item', () {
+    final item = OrderItem(
+      productId: 'seasonal-item',
+      name: 'Seasonal Item',
+      qty: 1,
+      price: 50,
+      category: 'Seasonal menu',
+      categoryType: 'Limited Edition',
+    );
+
+    expect(OrderItem.fromJson(item.toJson()).categoryType, 'Limited Edition');
+  });
+
   test('keeps local menu and category edits when server sync is stale', () {
     final localMenu = <MenuItem>[
-      MenuItem(
+      const MenuItem(
         id: 'local-item',
         name: 'Local Item',
         price: 30,
@@ -49,7 +77,7 @@ void main() {
       ),
     ];
     final remoteMenu = <MenuItem>[
-      MenuItem(
+      const MenuItem(
         id: 'remote-item',
         name: 'Remote Item',
         price: 40,

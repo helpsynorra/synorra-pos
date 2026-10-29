@@ -2,7 +2,18 @@ import bcrypt from "bcryptjs";
 import { NextRequest, NextResponse } from "next/server";
 import { phIsoTimestamp } from "@/lib/datetime";
 import { ingredientsForOrderLine, roundQty } from "@/lib/inventory";
-import { normalizeMenuAddons, normalizeMenuStyles } from "@/lib/menu";
+import {
+  hydrateOrderLine,
+  inferMenuCategoryType,
+  normalizeMenuAddons,
+  normalizeMenuCategoryType,
+  normalizeMenuStyles,
+  normalizeMenuTypeOptions,
+  parseDrinkStyle,
+  parseMenuImageOptions,
+  parseStoredOrderAddons,
+  stripMenuImage,
+} from "@/lib/menu";
 import { parsePayment } from "@/lib/payments";
 import { createPosApiToken, readPosApiToken } from "@/lib/pos-api-auth";
 import { pairLoginSessions } from "@/lib/staff-sessions";
@@ -62,6 +73,7 @@ function orderItemsFromApi(value: unknown): OrderItem[] {
           })
         : undefined,
       category: typeof item.category === "string" ? item.category : undefined,
+      categoryType: typeof item.categoryType === "string" ? item.categoryType : undefined,
     }];
   });
 }
@@ -69,6 +81,497 @@ function orderItemsFromApi(value: unknown): OrderItem[] {
 function orderTimestampFromApi(value: unknown): string | null {
   if (typeof value !== "string" || !value.trim()) return null;
   return phIsoTimestamp(value) || null;
+}
+
+type PosSyncEvent = {
+  eventId: string;
+  tableName: string;
+  recordId: string;
+  operation: "upsert" | "delete";
+  rowData: Record<string, unknown>;
+};
+
+// PostgREST rows are dynamically shaped by each explicit select list.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type PosSyncRow = Record<string, any>;
+
+function eventIds(events: PosSyncEvent[], table: string, operation?: PosSyncEvent["operation"]) {
+  return [...new Set(events
+    .filter((event) => event.tableName === table && (!operation || event.operation === operation))
+    .map((event) => event.recordId)
+    .filter(Boolean))];
+}
+
+function eventParentIds(events: PosSyncEvent[], table: string, field: string) {
+  return [...new Set(events
+    .filter((event) => event.tableName === table)
+    .map((event) => String(event.rowData[field] ?? ""))
+    .filter(Boolean))];
+}
+
+function deletedEventIds(events: PosSyncEvent[], table: string, presentIds: Set<string>) {
+  return [...new Set(events
+    .filter((event) => event.tableName === table && event.operation === "delete")
+    .map((event) => event.recordId)
+    .filter((id) => id && !presentIds.has(id)))];
+}
+
+async function selectSyncRows(
+  table: string,
+  columns: string,
+  ownerId: string,
+  ids?: string[],
+  idColumn = "id",
+) {
+  if (ids && ids.length === 0) return [];
+  let query = supabaseAdmin().from(table as never).select(columns).eq("owner_id", ownerId);
+  if (ids) query = query.in(idColumn, ids);
+  const { data, error } = await query;
+  if (error) throw new Error(`Unable to read ${table} for POS sync: ${error.message}`);
+  return (data ?? []) as PosSyncRow[];
+}
+
+function mapSyncMenuItem(row: PosSyncRow, category?: PosSyncRow) {
+  const categoryName = category?.name ?? "Other";
+  const categoryType = normalizeMenuCategoryType(
+    category?.type ?? inferMenuCategoryType(categoryName),
+  );
+  const legacy = parseMenuImageOptions(row.image);
+  const storedStyles = Array.isArray(row.styles)
+    ? row.styles.filter((style: unknown) => style === "hot" || style === "iced")
+    : legacy.styles;
+  const storedAddons = Array.isArray(row.addons) && row.addons.length > 0
+    ? row.addons
+    : legacy.addons;
+  return {
+    id: row.id,
+    name: row.name,
+    price: row.price,
+    category: categoryName,
+    categoryType,
+    image: stripMenuImage(row.image),
+    available: row.available,
+    inventoryMode: row.inventory_mode === "stock_only" || row.inventory_mode === "stock_and_recipe"
+      ? row.inventory_mode
+      : "none",
+    stockInventoryItemId: row.stock_inventory_item_id ?? undefined,
+    stockUsageAmount: row.stock_usage_amount == null ? undefined : Number(row.stock_usage_amount),
+    types: normalizeMenuTypeOptions({ types: row.types }),
+    styles: normalizeMenuStyles({
+      category: categoryName,
+      categoryType,
+      styles: storedStyles,
+    }),
+    addons: normalizeMenuAddons({ addons: storedAddons }),
+  };
+}
+
+function mapSyncOrder(row: PosSyncRow, lines: PosSyncRow[]) {
+  const items = lines.map((item) => {
+    const category = typeof item.category_snapshot === "string"
+      ? item.category_snapshot
+      : undefined;
+    return hydrateOrderLine({
+      productId: item.product_id_snapshot ?? item.menu_item_id ?? "",
+      name: item.name_snapshot ?? "",
+      qty: Number(item.qty) || 0,
+      price: Number(item.price_snapshot) || 0,
+      category,
+      categoryType: item.category_type_snapshot ?? undefined,
+      style: parseDrinkStyle(item.style),
+      addons: parseStoredOrderAddons(item.addons),
+      serviceMode: item.service_mode === "take-out"
+        ? "take-out"
+        : item.service_mode === "dine-in"
+          ? "dine-in"
+          : undefined,
+    });
+  });
+  const isWaste = row.payment_method === "waste" || row.record_type === "Waste";
+  return {
+    id: row.id,
+    ownerId: row.owner_id ?? undefined,
+    createdAt: row.created_at,
+    baristaName: row.barista_name,
+    baristaUserId: row.barista_user_id ?? undefined,
+    items,
+    subtotal: row.subtotal,
+    discount: row.discount,
+    promoLabel: row.promo_label ?? undefined,
+    total: row.total,
+    paymentMethod: parsePayment(row.payment_method),
+    serviceMode: row.service_mode === "dine-in" || row.service_mode === "take-out"
+      ? row.service_mode
+      : items.find((item) => item.serviceMode)?.serviceMode,
+    ticketNo: isWaste ? "" : row.ticket_no,
+    recordType: isWaste ? "Waste" : row.record_type === "Purchase" ? "Purchase" : "Sale",
+    paid: row.paid,
+    change: row.change,
+    voided: row.voided,
+    voidedBy: row.voided_by ?? undefined,
+    voidedByName: row.voided_by_name ?? undefined,
+    voidReason: row.payment_method === "waste" ? undefined : row.void_reason ?? undefined,
+    wasteReason: row.waste_reason ?? (row.payment_method === "waste" ? row.void_reason ?? undefined : undefined),
+    wasteBaristas: Array.isArray(row.waste_baristas)
+      ? row.waste_baristas.map(String).filter(Boolean)
+      : undefined,
+    isSynced: true,
+  };
+}
+
+async function buildPosSyncDelta(ownerId: string, cursor: string) {
+  const { data: feed, error: feedError } = await supabaseAdmin().rpc("pos_sync_read_changes", {
+    p_owner_id: ownerId,
+    p_after_id: cursor,
+    p_limit: 1000,
+  });
+  if (feedError) {
+    throw new Error(`Unable to read POS sync changes: ${feedError.message}`);
+  }
+  const result = feed as { events?: PosSyncEvent[]; cursor?: string; hasMore?: boolean } | null;
+  const events = Array.isArray(result?.events) ? result.events : [];
+  const delta: PosSyncRow = {
+    ok: true,
+    mode: "delta",
+    timestamp: new Date().toISOString(),
+    cursor: result?.cursor ?? cursor,
+    hasMore: result?.hasMore === true,
+    deleted: {},
+  };
+  if (events.length === 0) return delta;
+
+  const changedTables = new Set(events.map((event) => event.tableName));
+  const addDeleted = (key: string, ids: string[]) => {
+    if (ids.length > 0) delta.deleted[key] = ids;
+  };
+
+  if (changedTables.has("pos_state")) {
+    const [row] = await selectSyncRows(
+      "pos_state",
+      "id,is_open,opened_at,opened_by,opened_by_name,inventory_features_enabled,print_button_hidden,cash_drawer_opening_float,attendance_auth_mode",
+      ownerId,
+    );
+    if (row) {
+      delta.pos = {
+        isOpen: Boolean(row.is_open),
+        openedAt: row.opened_at,
+        openedBy: row.opened_by_name ?? row.opened_by,
+        inventoryFeaturesEnabled: row.inventory_features_enabled !== false,
+        printButtonHidden: row.print_button_hidden === true,
+        cashDrawerOpeningFloat: Number(row.cash_drawer_opening_float) || 0,
+        attendanceAuthMode: row.attendance_auth_mode ?? "username_password",
+      };
+    } else {
+      delta.pos = {
+        isOpen: false,
+        openedAt: null,
+        openedBy: null,
+        inventoryFeaturesEnabled: false,
+        printButtonHidden: false,
+        cashDrawerOpeningFloat: 0,
+        attendanceAuthMode: "username_password",
+      };
+    }
+  }
+
+  if (changedTables.has("menu_categories")) {
+    const rows = await selectSyncRows("menu_categories", "id,name,type", ownerId);
+    delta.categories = rows.map((row) => row.name);
+    delta.categoryTypes = Object.fromEntries(rows.map((row) => [
+      String(row.name ?? "").trim(),
+      normalizeMenuCategoryType(row.type ?? inferMenuCategoryType(String(row.name ?? ""))),
+    ]));
+  }
+
+  if (changedTables.has("menu_items")) {
+    const ids = eventIds(events, "menu_items", "upsert");
+    const rows = await selectSyncRows(
+      "menu_items",
+      "id,name,price,category_id,image,available,inventory_mode,stock_inventory_item_id,stock_usage_amount,types,styles,addons",
+      ownerId,
+      ids,
+    );
+    const categoryIds = [...new Set(rows.map((row) => row.category_id).filter(Boolean))];
+    const categories = await selectSyncRows("menu_categories", "id,name,type", ownerId, categoryIds);
+    const categoriesById = new Map(categories.map((row) => [row.id, row]));
+    delta.menu = rows.map((row) => mapSyncMenuItem(row, categoriesById.get(row.category_id)));
+    addDeleted("menu", deletedEventIds(events, "menu_items", new Set(rows.map((row) => row.id))));
+  }
+
+  if (changedTables.has("inventory_items")) {
+    const ids = eventIds(events, "inventory_items", "upsert");
+    const rows = await selectSyncRows(
+      "inventory_items",
+      "id,name,unit,cost,stock,max_stock,reorder_threshold,opening_stock,purchase_unit_size,cup_usage_amount,cups_make,inventory_type,cup_size",
+      ownerId,
+      ids,
+    );
+    delta.inventory = rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      unit: row.unit,
+      cost: Number(row.cost),
+      stock: Number(row.stock),
+      maxStock: Number(row.max_stock),
+      reorderThreshold: row.reorder_threshold == null ? undefined : Number(row.reorder_threshold),
+      openingStock: row.opening_stock == null ? undefined : Number(row.opening_stock),
+      purchaseUnitSize: row.purchase_unit_size == null ? undefined : Number(row.purchase_unit_size),
+      cupUsageAmount: row.cup_usage_amount == null ? undefined : Number(row.cup_usage_amount),
+      cupsMake: row.cups_make == null ? undefined : Number(row.cups_make),
+      inventoryType: typeof row.inventory_type === "string" && row.inventory_type.trim()
+        ? row.inventory_type.trim()
+        : undefined,
+      cupSize: typeof row.cup_size === "string" && row.cup_size.trim() ? row.cup_size.trim() : undefined,
+    }));
+    addDeleted("inventory", deletedEventIds(events, "inventory_items", new Set(rows.map((row) => row.id))));
+  }
+
+  const affectedOrderIds = new Set([
+    ...eventIds(events, "orders"),
+    ...eventParentIds(events, "order_items", "order_id"),
+  ]);
+  if (affectedOrderIds.size > 0) {
+    const ids = [...affectedOrderIds];
+    const orderRows = await selectSyncRows(
+      "orders",
+      "id,owner_id,created_at,barista_name,barista_user_id,subtotal,discount,promo_label,total,payment_method,ticket_no,paid,change,voided,voided_by,voided_by_name,void_reason,waste_reason,waste_baristas,deleted_at,record_type,service_mode",
+      ownerId,
+      ids,
+    );
+    const lineRows = await selectSyncRows(
+      "order_items",
+      "id,order_id,menu_item_id,product_id_snapshot,name_snapshot,category_snapshot,category_type_snapshot,qty,price_snapshot,style,addons,service_mode",
+      ownerId,
+      ids,
+      "order_id",
+    );
+    const linesByOrder = new Map<string, PosSyncRow[]>();
+    for (const line of lineRows) {
+      const current = linesByOrder.get(line.order_id) ?? [];
+      current.push(line);
+      linesByOrder.set(line.order_id, current);
+    }
+    const activeOrders = orderRows.filter((row) => !row.deleted_at);
+    delta.orders = activeOrders.map((row) => mapSyncOrder(row, linesByOrder.get(row.id) ?? []));
+    const presentOrders = new Set(activeOrders.map((row) => row.id));
+    addDeleted("orders", [
+      ...deletedEventIds(events, "orders", presentOrders),
+      ...orderRows.filter((row) => row.deleted_at).map((row) => row.id),
+    ].filter((id, index, list) => list.indexOf(id) === index));
+  }
+
+  if (changedTables.has("restocks")) {
+    const rows = await selectSyncRows(
+      "restocks",
+      "id,inventory_item_id,item_name_snapshot,quantity_added,purchase_qty,purchase_unit,unit_cost,created_at",
+      ownerId,
+      eventIds(events, "restocks", "upsert"),
+    );
+    delta.restocks = rows.map((row) => ({
+      id: row.id,
+      inventoryItemId: row.inventory_item_id ?? undefined,
+      itemName: row.item_name_snapshot,
+      quantityAdded: Number(row.quantity_added),
+      purchaseQty: row.purchase_qty == null ? undefined : Number(row.purchase_qty),
+      purchaseUnit: row.purchase_unit ?? undefined,
+      unitCost: row.unit_cost == null ? undefined : Number(row.unit_cost),
+      date: row.created_at,
+      isSynced: true,
+    }));
+    addDeleted("restocks", deletedEventIds(events, "restocks", new Set(rows.map((row) => row.id))));
+  }
+
+  if (changedTables.has("usage_logs")) {
+    const rows = await selectSyncRows(
+      "usage_logs",
+      "id,order_id,order_item_id,inventory_item_id,item_name_snapshot,used_amount,unit,created_at",
+      ownerId,
+      eventIds(events, "usage_logs", "upsert"),
+    );
+    delta.usageLogs = rows.map((row) => ({
+      id: row.id,
+      orderId: row.order_id ?? "",
+      orderItemId: row.order_item_id ?? "",
+      inventoryItemId: row.inventory_item_id ?? undefined,
+      date: row.created_at,
+      itemName: row.item_name_snapshot,
+      usedAmount: Number(row.used_amount),
+      unit: row.unit,
+    }));
+    addDeleted("usageLogs", deletedEventIds(events, "usage_logs", new Set(rows.map((row) => row.id))));
+  }
+
+  if (changedTables.has("recipes")) {
+    const menuIds = [...new Set(events
+      .filter((event) => event.tableName === "recipes")
+      .map((event) => String(event.rowData.menu_item_id ?? ""))
+      .filter(Boolean))];
+    const rows = await selectSyncRows(
+      "recipes",
+      "id,menu_item_id,inventory_item_id,amount,unit",
+      ownerId,
+      menuIds,
+      "menu_item_id",
+    );
+    const grouped: Record<string, Record<string, unknown>[]> = Object.fromEntries(menuIds.map((id) => [id, []]));
+    for (const row of rows) {
+      grouped[row.menu_item_id].push({
+        inventoryItemId: row.inventory_item_id,
+        name: "",
+        amount: Number(row.amount),
+        unit: row.unit,
+      });
+    }
+    delta.recipes = grouped;
+  }
+
+  const costingIds = new Set([
+    ...eventIds(events, "recipe_costings"),
+    ...eventParentIds(events, "recipe_costing_menu_items", "recipe_costing_id"),
+    ...eventParentIds(events, "recipe_costing_ingredients", "recipe_costing_id"),
+  ]);
+  if (costingIds.size > 0) {
+    const ids = [...costingIds];
+    const parents = await selectSyncRows(
+      "recipe_costings",
+      "id,name,hot_cup_inventory_item_id,iced_cup_inventory_item_id,other_cup_inventory_item_id,extra_cup_inventory_item_ids,cup_recipes",
+      ownerId,
+      ids,
+    );
+    const menus = await selectSyncRows(
+      "recipe_costing_menu_items",
+      "id,recipe_costing_id,menu_item_name",
+      ownerId,
+      ids,
+      "recipe_costing_id",
+    );
+    const ingredients = await selectSyncRows(
+      "recipe_costing_ingredients",
+      "id,recipe_costing_id,inventory_item_id,name,amount,unit",
+      ownerId,
+      ids,
+      "recipe_costing_id",
+    );
+    delta.recipeCostings = parents.map((row) => ({
+      id: row.id,
+      name: row.name,
+      menuItems: menus.filter((item) => item.recipe_costing_id === row.id).map((item) => item.menu_item_name),
+      ingredients: ingredients.filter((item) => item.recipe_costing_id === row.id).map((item) => ({
+        inventoryItemId: item.inventory_item_id ?? (item.name ? "other" : ""),
+        name: item.name,
+        amount: Number(item.amount),
+        unit: item.unit,
+      })),
+      hotCupInventoryItemId: row.hot_cup_inventory_item_id ?? undefined,
+      icedCupInventoryItemId: row.iced_cup_inventory_item_id ?? undefined,
+      otherCupInventoryItemId: row.other_cup_inventory_item_id ?? undefined,
+      extraCupInventoryItemIds: Array.isArray(row.extra_cup_inventory_item_ids)
+        ? row.extra_cup_inventory_item_ids.filter((id: unknown) => typeof id === "string" && id.trim())
+        : [],
+      cupRecipes: row.cup_recipes && typeof row.cup_recipes === "object" && !Array.isArray(row.cup_recipes)
+        ? row.cup_recipes
+        : {},
+    }));
+    addDeleted("recipeCostings", deletedEventIds(events, "recipe_costings", new Set(parents.map((row) => row.id))));
+  }
+
+  if (changedTables.has("void_requests")) {
+    const rows = await selectSyncRows(
+      "void_requests",
+      "id,requested_at,requested_by_id,requested_by_name,reason,status,order_id,items,subtotal,discount,promo_label,total,payment_method,approved_at,approved_by_name,processed_order_id",
+      ownerId,
+      eventIds(events, "void_requests", "upsert"),
+    );
+    delta.voidRequests = rows.map((row) => ({
+      id: row.id,
+      requestedAt: row.requested_at,
+      requestedById: row.requested_by_id ?? row.id,
+      requestedByName: row.requested_by_name,
+      reason: row.reason,
+      status: row.status,
+      orderId: row.order_id ?? undefined,
+      items: Array.isArray(row.items) ? row.items : [],
+      subtotal: Number(row.subtotal),
+      discount: Number(row.discount),
+      promoLabel: row.promo_label ?? undefined,
+      total: Number(row.total),
+      paymentMethod: parsePayment(row.payment_method),
+      approvedAt: row.approved_at ?? undefined,
+      approvedByName: row.approved_by_name ?? undefined,
+      processedOrderId: row.processed_order_id ?? undefined,
+      isSynced: true,
+    }));
+    addDeleted("voidRequests", deletedEventIds(events, "void_requests", new Set(rows.map((row) => row.id))));
+  }
+
+  if (changedTables.has("login_activity")) {
+    const rows = await selectSyncRows(
+      "login_activity",
+      "id,user_id,username,name,role,type,at,photo_path",
+      ownerId,
+      eventIds(events, "login_activity", "upsert"),
+    );
+    delta.loginActivity = rows.map((row) => ({
+      id: row.id,
+      userId: row.user_id ?? row.id,
+      username: row.username,
+      name: row.name,
+      role: row.role,
+      type: row.type,
+      at: row.at,
+      photoPath: row.photo_path ?? undefined,
+      isSynced: true,
+    }));
+    addDeleted("loginActivity", deletedEventIds(events, "login_activity", new Set(rows.map((row) => row.id))));
+  }
+
+  const userIds = new Set([
+    ...eventIds(events, "staff_users"),
+    ...(changedTables.has("promotions") ? [ownerId] : []),
+  ]);
+  if (userIds.size > 0) {
+    const users = await selectSyncRows(
+      "staff_users",
+      "id,owner_id,username,email,password_changed,name,role,title,permissions,avatar_path",
+      ownerId,
+      [...userIds],
+    );
+    const { data: promoRows, error: promoError } = await supabaseAdmin()
+      .from("promotions")
+      .select("owner_id,code,discount_type,discount_value,expires_at,redeemed_at,redeemed_order_id")
+      .eq("owner_id", ownerId);
+    if (promoError) throw new Error(`Unable to read POS promotions: ${promoError.message}`);
+    delta.users = users.map((user) => {
+      const role = parseRole(String(user.title ?? ""), user.role);
+      const permissions = {
+        ...(user.permissions ?? {}),
+        promoCodes: ((promoRows ?? []) as PosSyncRow[])
+          .filter((promo) => promo.owner_id === user.id)
+          .map((promo) => ({
+            code: promo.code,
+            discountType: promo.discount_type,
+            discountValue: Number(promo.discount_value),
+            expiresAt: promo.expires_at ?? undefined,
+            redeemedAt: promo.redeemed_at ?? undefined,
+            redeemedOrderId: promo.redeemed_order_id ?? undefined,
+          })),
+      };
+      return {
+        id: user.id,
+        username: user.username,
+        email: user.email ?? "",
+        name: user.name,
+        passwordChanged: Boolean(user.password_changed),
+        avatarPath: user.avatar_path ?? undefined,
+        permissions,
+        role,
+        title: user.title || (role === "admin" || role === "cashier" ? "Owner" : "Barista"),
+      };
+    });
+    addDeleted("users", deletedEventIds(events, "staff_users", new Set(users.map((row) => row.id))));
+  }
+
+  return delta;
 }
 
 export async function OPTIONS() {
@@ -92,6 +595,44 @@ export async function GET(request: NextRequest) {
 
   try {
     const posOwnerId = claims.role === "cashier" ? claims.userId : await legacyOwnerId();
+    if (!posOwnerId) {
+      throw new Error("Unable to resolve the POS store owner for incremental sync.");
+    }
+    const syncOwnerId = posOwnerId;
+    const requestedCursor = request.nextUrl.searchParams.get("cursor");
+    if (requestedCursor !== null && !/^\d+$/.test(requestedCursor)) {
+      return NextResponse.json(
+        { ok: false, error: "Invalid POS sync cursor." },
+        { status: 400, headers: corsHeaders },
+      );
+    }
+
+    if (requestedCursor !== null) {
+      if (claims.role === "cashier") {
+        const { data: cashier, error: cashierError } = await supabaseAdmin()
+          .from("staff_users")
+          .select("password_changed")
+          .eq("id", claims.userId)
+          .maybeSingle();
+        if (cashierError) throw new Error(`Unable to verify Owner account: ${cashierError.message}`);
+        if (!cashier?.password_changed) {
+          return NextResponse.json(
+            { ok: false, error: "Change your Owner password before using the POS." },
+            { status: 403, headers: corsHeaders },
+          );
+        }
+      }
+      return NextResponse.json(
+        await buildPosSyncDelta(syncOwnerId, requestedCursor),
+        { headers: corsHeaders },
+      );
+    }
+
+    const { data: bootstrapCursor, error: cursorError } = await supabaseAdmin()
+      .rpc("pos_sync_current_cursor", { p_owner_id: syncOwnerId });
+    if (cursorError) {
+      throw new Error(`Unable to establish POS bootstrap cursor: ${cursorError.message}`);
+    }
     const store = await getFreshStore({ ownerId: posOwnerId });
     const ownerAccount = posOwnerId
       ? (await getOwnerAccounts()).find((user) => user.id === posOwnerId)
@@ -108,6 +649,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         ok: true,
+        mode: "bootstrap",
+        cursor: String(bootstrapCursor ?? "0"),
         timestamp: new Date().toISOString(),
         pos: store.pos,
         menu: store.menu.map((item) => ({
@@ -116,6 +659,7 @@ export async function GET(request: NextRequest) {
           addons: normalizeMenuAddons(item),
         })),
         categories: store.categories,
+        categoryTypes: store.categoryTypes,
         inventory: store.inventory,
         orders: store.orders,
         restocks: store.restocks,
@@ -134,6 +678,7 @@ export async function GET(request: NextRequest) {
             username: u.username,
             email: u.email,
             name: u.name,
+            avatarPath: u.avatarPath,
             passwordChanged: Boolean(u.passwordChanged),
             permissions: u.permissions ?? {
               stockInventory: true,
@@ -173,11 +718,11 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     const body = await req.json();
     const action = String(body?.action ?? "").trim();
-    if (["void_checkout", "void_order", "create_void_request", "delete_void_request", "approve_void_request"].includes(action)) {
+    if (["delete_void_request", "approve_void_request"].includes(action)) {
       return NextResponse.json(
         { ok: false, error: "Voiding is disabled." },
         { status: 410, headers: corsHeaders },
@@ -465,6 +1010,101 @@ export async function POST(req: NextRequest) {
     if (!tenantId) {
       return NextResponse.json({ ok: false, error: "This account is not assigned to an Owner store." }, { status: 403, headers: corsHeaders });
     }
+    if (action === "sync_batch") {
+      if (!Array.isArray(body.operations) || body.operations.length > 100) {
+        return NextResponse.json(
+          { ok: false, error: "A sync batch must contain between 1 and 100 operations." },
+          { status: 400, headers: corsHeaders },
+        );
+      }
+
+      const allowedActions = new Set([
+        "create_order",
+        "void_checkout",
+        "void_order",
+        "create_restock",
+        "delete_restock",
+        "upsert_inventory_item",
+        "delete_inventory_item",
+        "login_activity",
+        "create_void_request",
+      ]);
+      const results = [];
+      for (const operation of body.operations) {
+        if (!operation || typeof operation !== "object" || Array.isArray(operation)) {
+          results.push({ ok: false, error: "Invalid batch operation." });
+          continue;
+        }
+        const operationBody = operation as Record<string, unknown>;
+        const operationAction = String(operationBody.action ?? "");
+        if (!allowedActions.has(operationAction)) {
+          results.push({ ok: false, error: `Unsupported batch operation: ${operationAction || "unknown"}.` });
+          continue;
+        }
+        const nestedRequest = new NextRequest(req.url, {
+          method: "POST",
+          headers: {
+            authorization: req.headers.get("authorization") ?? "",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(operationBody),
+        });
+        const nestedResponse: NextResponse = await POST(nestedRequest);
+        const result = await nestedResponse.json() as Record<string, unknown>;
+        results.push({
+          ...result,
+          ok: nestedResponse.ok && result.ok === true,
+          action: operationAction,
+        });
+      }
+      return NextResponse.json({ ok: true, results }, { headers: corsHeaders });
+    }
+    if (action === "get_staff_avatar_url") {
+      if (!["cashier", "admin", "pos_cashier"].includes(claims.role)) {
+        return NextResponse.json(
+          { ok: false, error: "This account cannot view staff photos." },
+          { status: 403, headers: corsHeaders },
+        );
+      }
+      const staffUserId = typeof body.staffUserId === "string"
+        ? body.staffUserId.trim()
+        : "";
+      if (!staffUserId) {
+        return NextResponse.json(
+          { ok: false, error: "Select a valid staff account." },
+          { status: 400, headers: corsHeaders },
+        );
+      }
+      const { data: staff, error: staffError } = await supabaseAdmin()
+        .from("staff_users")
+        .select("id,owner_id,avatar_path")
+        .eq("id", staffUserId)
+        .eq("owner_id", tenantId)
+        .maybeSingle();
+      if (staffError) {
+        throw new Error(`Unable to load staff photo details: ${staffError.message}`);
+      }
+      if (!staff) {
+        return NextResponse.json(
+          { ok: false, error: "Staff account not found in your workspace." },
+          { status: 404, headers: corsHeaders },
+        );
+      }
+      if (!staff.avatar_path) {
+        return NextResponse.json({ ok: true, signedUrl: null }, { headers: corsHeaders });
+      }
+      const { data, error } = await supabaseAdmin()
+        .storage
+        .from("staff-avatars")
+        .createSignedUrl(staff.avatar_path, 15 * 60);
+      if (error || !data?.signedUrl) {
+        throw new Error(`Unable to open staff photo: ${error?.message ?? "No secure link was returned."}`);
+      }
+      return NextResponse.json(
+        { ok: true, signedUrl: data.signedUrl },
+        { headers: corsHeaders },
+      );
+    }
     return await withStoreTenant(tenantId, async () => {
     if ((claims.role === "barista" || claims.role === "pos_cashier") && action !== "barista_shift_activity") {
       return NextResponse.json(
@@ -575,6 +1215,8 @@ export async function POST(req: NextRequest) {
         (item): OrderItem => ({
           ...item,
           category: item.category ?? store.menu.find((menuItem) => menuItem.id === item.productId)?.category,
+          categoryType: item.categoryType ??
+            store.menu.find((menuItem) => menuItem.id === item.productId)?.categoryType,
           serviceMode,
         }),
       );

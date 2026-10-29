@@ -12,6 +12,9 @@ class OfflineImageCache {
 
   static final Map<String, Future<File?>> _pending = {};
 
+  static String staffAvatarCacheKey(String storagePath) =>
+      'staff-avatar:$storagePath';
+
   static Future<Directory> _directory() async {
     final support = await getApplicationSupportDirectory();
     final directory = Directory(
@@ -59,24 +62,47 @@ class OfflineImageCache {
     return sha256.convert(stableUri.toString().codeUnits).toString();
   }
 
-  static Future<File?> cachedFileFor(String url) async {
+  static String _keyForCacheKey(String cacheKey) =>
+      sha256.convert(cacheKey.codeUnits).toString();
+
+  static Future<File?> cachedFileFor(
+    String url, {
+    String? cacheKey,
+  }) async {
     final uri = _uriFor(url);
     if (uri == null) return null;
     try {
-      final file = File(
-        '${(await _directory()).path}${Platform.pathSeparator}${_keyFor(uri)}',
-      );
-      return await file.exists() && await file.length() > 0 ? file : null;
+      final key = cacheKey == null ? _keyFor(uri) : _keyForCacheKey(cacheKey);
+      return await _existingFile(key);
     } catch (error) {
       debugPrint('Could not read cached POS image: $error');
       return null;
     }
   }
 
-  static Future<File?> cacheImage(String url) async {
+  static Future<File?> cachedFileForCacheKey(String cacheKey) async {
+    try {
+      return await _existingFile(_keyForCacheKey(cacheKey));
+    } catch (error) {
+      debugPrint('Could not read cached POS image: $error');
+      return null;
+    }
+  }
+
+  static Future<File?> _existingFile(String key) async {
+    final file = File(
+      '${(await _directory()).path}${Platform.pathSeparator}$key',
+    );
+    return await file.exists() && await file.length() > 0 ? file : null;
+  }
+
+  static Future<File?> cacheImage(
+    String url, {
+    String? cacheKey,
+  }) async {
     final uri = _uriFor(url);
     if (uri == null) return null;
-    final key = _keyFor(uri);
+    final key = cacheKey == null ? _keyFor(uri) : _keyForCacheKey(cacheKey);
     final running = _pending[key];
     if (running != null) return running;
     final future = _download(uri, key);
@@ -114,10 +140,8 @@ class OfflineImageCache {
   }
 
   static Future<void> cacheUrls(Iterable<String> urls) async {
-    final unique = urls
-        .map((url) => url.trim())
-        .where((url) => url.isNotEmpty)
-        .toSet();
+    final unique =
+        urls.map((url) => url.trim()).where((url) => url.isNotEmpty).toSet();
     await Future.wait(unique.map(cacheImage));
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   createAdminLedgerEntry,
   deleteAdminLedgerEntry,
@@ -23,6 +23,8 @@ import type {
   AdminLedgerEntry,
   AdminLedgerKind,
   LedgerPaymentSource,
+  LoginActivity,
+  Order,
   PayrollRecord,
   StoreData,
   WorkShift,
@@ -50,6 +52,30 @@ function Card({ label, value, hint }: { label: string; value: number; hint?: str
 function inPeriod(date: string, start: number, end: number) {
   const time = phTimestamp(date);
   return time >= start && time <= end;
+}
+
+async function loadAdminHistoryPages<T>(
+  urlForPage: (page: number) => string,
+  key: "orders" | "activity",
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let page = 1; page <= 2000; page += 1) {
+    const response = await fetch(urlForPage(page), { cache: "no-store" });
+    const result = await response.json() as {
+      orders?: T[];
+      activity?: T[];
+      hasMore?: boolean;
+      error?: string;
+    };
+    if (!response.ok) throw new Error(result.error || "Unable to load Finance history.");
+    const pageRows = key === "orders" ? result.orders : result.activity;
+    if (!Array.isArray(pageRows) || typeof result.hasMore !== "boolean") {
+      throw new Error("Finance history response was incomplete.");
+    }
+    rows.push(...pageRows);
+    if (!result.hasMore) return rows;
+  }
+  throw new Error("Finance history exceeds the supported page limit.");
 }
 
 function LedgerCard({
@@ -186,6 +212,7 @@ export function FinanceDashboard({
   initialLedgerError,
   payrollRecords,
   payrollError,
+  remoteHistory = false,
 }: {
   store: StoreData;
   initialExpenses: AdminLedgerEntry[];
@@ -193,6 +220,7 @@ export function FinanceDashboard({
   initialLedgerError: string | null;
   payrollRecords: PayrollRecord[];
   payrollError: string | null;
+  remoteHistory?: boolean;
 }) {
   const today = phDateString();
   const [rangeType, setRangeType] = useState<"today" | "week" | "month" | "custom">("today");
@@ -210,8 +238,14 @@ export function FinanceDashboard({
     at: string;
   } | null>(null);
   const [openingFloat, setOpeningFloat] = useState(String(store.pos.cashDrawerOpeningFloat ?? 0));
-  const sessions = useMemo(() => pairLoginSessions(store.loginActivity ?? []), [store.loginActivity]);
-  const attendancePhotos = (store.loginActivity ?? [])
+  const [remoteOrders, setRemoteOrders] = useState<Order[]>(store.orders);
+  const [remoteLoginActivity, setRemoteLoginActivity] = useState<LoginActivity[]>(store.loginActivity ?? []);
+  const [historyLoading, setHistoryLoading] = useState(remoteHistory);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const activity = remoteHistory ? remoteLoginActivity : store.loginActivity ?? [];
+  const financeOrders = remoteHistory ? remoteOrders : store.orders;
+  const sessions = useMemo(() => pairLoginSessions(activity), [activity]);
+  const attendancePhotos = activity
     .filter((entry) => Boolean(entry.photoPath))
     .sort((left, right) => phTimestamp(right.at) - phTimestamp(left.at));
   const attendancePhotoPageCount = Math.max(1, Math.ceil(attendancePhotos.length / 20));
@@ -222,7 +256,7 @@ export function FinanceDashboard({
     : phPeriodBounds(rangeType as PeriodRange);
   const start = phTimestamp(`${period.from}T00:00:00+08:00`);
   const end = phTimestamp(`${period.to}T23:59:59.999+08:00`);
-  const allLiveOrders = liveOrders(store.orders);
+  const allLiveOrders = liveOrders(financeOrders);
   const periodOrders = allLiveOrders.filter((order) => inPeriod(order.createdAt, start, end));
   const expenses = initialExpenses.filter((entry) => inPeriod(entry.date, start, end));
   const credits = initialCredits.filter((entry) => inPeriod(entry.date, start, end));
@@ -241,6 +275,44 @@ export function FinanceDashboard({
   const cashExpenses = expenses.filter((entry) => entry.kind === "expense" && entry.paymentSource === "cash")
     .reduce((sum, entry) => sum + entry.amount, 0);
   const drawerBalance = Number(openingFloat) + cashSales - cashExpenses;
+
+  useEffect(() => {
+    if (!remoteHistory || period.from > period.to) return;
+    let active = true;
+    const query = new URLSearchParams({ from: period.from, to: period.to });
+    const load = async () => {
+      try {
+        const [orders, activity] = await Promise.all([
+          loadAdminHistoryPages<Order>(
+            (page) => `/api/admin/history?${new URLSearchParams({ ...Object.fromEntries(query), kind: "transactions", page: String(page), includeActivity: "false" })}`,
+            "orders",
+          ),
+          loadAdminHistoryPages<LoginActivity>(
+            (page) => `/api/admin/login-activity?${new URLSearchParams({ ...Object.fromEntries(query), page: String(page) })}`,
+            "activity",
+          ),
+        ]);
+        if (!active) return;
+        setRemoteOrders(orders);
+        setRemoteLoginActivity(activity);
+      } catch (error) {
+        if (active) setHistoryError(error instanceof Error ? error.message : "Unable to load Finance history.");
+      } finally {
+        if (active) setHistoryLoading(false);
+      }
+    };
+    void load();
+    return () => { active = false; };
+  }, [period.from, period.to, remoteHistory]);
+
+  function prepareHistoryReload() {
+    if (!remoteHistory) return;
+    setHistoryLoading(true);
+    setHistoryError(null);
+    setRemoteOrders([]);
+    setRemoteLoginActivity([]);
+    setAttendancePhotoPage(0);
+  }
 
   const paymentBreakdown = (() => {
     const totals = new Map<string, number>([["Cash", 0], ["GCash / E-Wallets", 0], ["Card", 0]]);
@@ -489,6 +561,8 @@ export function FinanceDashboard({
 
   return (
     <main className="mx-auto min-w-0 max-w-[1760px] space-y-6 px-3 py-5 sm:px-6 sm:py-7 xl:px-8 2xl:px-10">
+      {remoteHistory && historyLoading ? <p role="status" className="text-sm text-neutral-500">Loading Finance history for {period.from}–{period.to}…</p> : null}
+      {remoteHistory && historyError ? <p role="alert" className="text-sm text-red-600">{historyError}</p> : null}
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-xs tracking-[0.3em] text-neutral-500 uppercase">Finance</p>
@@ -497,7 +571,7 @@ export function FinanceDashboard({
         <div className="flex flex-wrap items-center gap-2">
           <label className="flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-xs">
             <span className="text-neutral-500">Range</span>
-            <select value={rangeType} onChange={(event) => setRangeType(event.target.value as typeof rangeType)} className="bg-transparent text-sm">
+            <select value={rangeType} onChange={(event) => { prepareHistoryReload(); setRangeType(event.target.value as typeof rangeType); }} className="bg-transparent text-sm">
               <option value="today">Today</option>
               <option value="week">This Week</option>
               <option value="month">This Month</option>
@@ -506,8 +580,26 @@ export function FinanceDashboard({
           </label>
           {rangeType === "custom" ? (
             <>
-              <label className="text-xs text-neutral-600">From <input type="date" value={customStart} onChange={(event) => setCustomStart(event.target.value)} className="rounded border border-neutral-300 bg-white p-2" /></label>
-              <label className="text-xs text-neutral-600">To <input type="date" value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} className="rounded border border-neutral-300 bg-white p-2" /></label>
+              <label className="text-xs text-neutral-600">From <input type="date" value={customStart} onChange={(event) => {
+                const next = event.target.value;
+                setCustomStart(next);
+                if (remoteHistory && next > customEnd) {
+                  setRemoteOrders([]);
+                  setRemoteLoginActivity([]);
+                  setHistoryLoading(false);
+                  setHistoryError("The start date must be on or before the end date.");
+                } else prepareHistoryReload();
+              }} className="rounded border border-neutral-300 bg-white p-2" /></label>
+              <label className="text-xs text-neutral-600">To <input type="date" value={customEnd} onChange={(event) => {
+                const next = event.target.value;
+                setCustomEnd(next);
+                if (remoteHistory && customStart > next) {
+                  setRemoteOrders([]);
+                  setRemoteLoginActivity([]);
+                  setHistoryLoading(false);
+                  setHistoryError("The end date must be on or after the start date.");
+                } else prepareHistoryReload();
+              }} className="rounded border border-neutral-300 bg-white p-2" /></label>
             </>
           ) : null}
         </div>
