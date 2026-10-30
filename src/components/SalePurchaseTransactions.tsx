@@ -1262,8 +1262,8 @@ export function SalePurchaseTransactions({
   useEffect(() => {
     if (!remoteHistory) return;
     const kind = activeTab === "restock" ? "restocks"
-      : activeTab === "used" ? "usage"
-        : activeTab === "transactions" || activeTab === "waste" ? "transactions"
+      : activeTab === "used" || activeTab === "waste" ? "usage"
+        : activeTab === "transactions" ? "transactions"
           : null;
     if (!kind) return;
 
@@ -1320,6 +1320,7 @@ export function SalePurchaseTransactions({
     const day = phDateString(value);
     return day >= rangeStart && day <= rangeEnd;
   }, [rangeEnd, rangeStart]);
+  const usageRows = remoteHistory ? persistedUsages : usages;
 
   const transactionsInRange = transactions.filter((transaction) => inDateRange(transaction.date));
   const wasteInRange = wasteTransactions.filter((transaction) => inDateRange(transaction.date));
@@ -1354,7 +1355,7 @@ export function SalePurchaseTransactions({
     return orders
       .filter((order) => !order.voided && inDateRange(order.createdAt))
       .map((order) => {
-        const items = aggregateUsageRows(usages.filter((usage) => usage.orderId === order.id));
+        const items = aggregateUsageRows(usageRows.filter((usage) => usage.orderId === order.id));
         const soldAsLines = orderSoldAsParts(order.items);
         const soldAs = orderSoldAsLines(order.items).join(", ");
         const isWaste = isWasteOrder(order);
@@ -1379,7 +1380,7 @@ export function SalePurchaseTransactions({
         );
       })
       .sort((a, b) => b.date.localeCompare(a.date) || b.orderId.localeCompare(a.orderId));
-  }, [filterKeyword, inDateRange, orders, usages]);
+  }, [filterKeyword, inDateRange, orders, usageRows]);
 
   const dateRangeFilter = (
     <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
@@ -2014,7 +2015,7 @@ export function SalePurchaseTransactions({
                 {filteredWasteTransactions.length === 0 ? (
                   <tr><td colSpan={8} className="p-4 text-center text-xs text-neutral-500">No waste records found for this date range.</td></tr>
                 ) : filteredWasteTransactions.map((transaction) => {
-                  const deductions = aggregateUsageRows(usages.filter((u) => u.orderId === transaction.id));
+                  const deductions = aggregateUsageRows(usageRows.filter((u) => u.orderId === transaction.id));
                   const baristaNames = transaction.baristas.length > 0 ? transaction.baristas.join(", ") : "—";
                   return (
                     <tr key={transaction.id} className="border-b border-neutral-100 text-xs last:border-0 hover:bg-amber-50/30">

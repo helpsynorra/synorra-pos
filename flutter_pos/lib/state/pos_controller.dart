@@ -894,7 +894,8 @@ class PosController extends ChangeNotifier {
   }
 
   Future<Map<String, dynamic>> recordWasteOrder(
-      {required String reason}) async {
+      {required String reason,
+      Set<String> excludedInventoryItemIds = const {}}) async {
     if (!syncService.hasPermission('wasteManagement')) {
       return {
         'ok': false,
@@ -947,6 +948,8 @@ class PosController extends ChangeNotifier {
         change: 0,
         voided: false,
         wasteReason: trimmedReason,
+        excludedWasteInventoryItemIds: excludedInventoryItemIds.toList()
+          ..sort(),
         isSynced: false,
       );
       final deductions = syncService.buildDeductionsForOrder(order);

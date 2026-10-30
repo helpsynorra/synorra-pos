@@ -1371,10 +1371,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }
       }
       const deductions = [...deductionsByInventoryItem.values()];
+      const excludedWasteInventoryItemIds = new Set(
+        isWasteOrder && Array.isArray(rawOrder.excludedWasteInventoryItemIds)
+          ? rawOrder.excludedWasteInventoryItemIds
+              .filter((id: unknown): id is string => typeof id === "string")
+              .map((id: string) => id.trim())
+              .filter(Boolean)
+          : [],
+      );
+      const selectedDeductions = deductions.filter(
+        (deduction) => !excludedWasteInventoryItemIds.has(deduction.inventoryItemId),
+      );
 
       const result = await createOrderAtomic({
         order,
-        deductions,
+        deductions: selectedDeductions,
       });
 
       if (!result.ok) {

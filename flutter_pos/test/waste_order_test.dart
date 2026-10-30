@@ -1,8 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:synorra_pos/models/menu_item.dart';
+import 'package:synorra_pos/models/inventory_item.dart';
 import 'package:synorra_pos/models/login_activity.dart';
 import 'package:synorra_pos/models/order.dart';
+import 'package:synorra_pos/models/order_item.dart';
 import 'package:synorra_pos/models/staff_user.dart';
 import 'package:synorra_pos/services/local_storage_service.dart';
 import 'package:synorra_pos/services/supabase_service.dart';
@@ -51,6 +53,7 @@ void main() {
         ticketNo: '',
         paid: 0,
         wasteReason: 'Wrong Preparation',
+        excludedWasteInventoryItemIds: const ['milk-id'],
       );
 
       expect(order.isWaste, isTrue);
@@ -60,10 +63,84 @@ void main() {
       final json = order.toJson();
       expect(json['wasteReason'], 'Wrong Preparation');
       expect(json['paymentMethod'], 'waste');
+      expect(json['excludedWasteInventoryItemIds'], ['milk-id']);
 
       final reconstructed = Order.fromJson(json);
       expect(reconstructed.isWaste, isTrue);
       expect(reconstructed.wasteReason, 'Wrong Preparation');
+      expect(reconstructed.excludedWasteInventoryItemIds, ['milk-id']);
+    });
+
+    test(
+        'waste deductions omit excluded inventory items but keep included ones',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final storage = LocalStorageService();
+      await storage.init();
+      await storage.saveInventory([
+        InventoryItem(id: 'milk-id', name: 'Milk', unit: 'ml', stock: 1000),
+        InventoryItem(
+            id: 'beans-id', name: 'Coffee Beans', unit: 'g', stock: 1000),
+      ]);
+      await storage.saveMenu([
+        const MenuItem(
+          id: 'drink-1',
+          name: 'Americano',
+          price: 100,
+          category: 'Drinks',
+          image: '',
+          available: true,
+          inventoryMode: 'stock_and_recipe',
+        ),
+      ]);
+      await storage.saveRecipesData({
+        'recipeCostings': [
+          {
+            'menuItems': ['Americano'],
+            'ingredients': [
+              {
+                'inventoryItemId': 'milk-id',
+                'name': 'Milk',
+                'amount': 100,
+                'unit': 'ml',
+              },
+              {
+                'inventoryItemId': 'beans-id',
+                'name': 'Coffee Beans',
+                'amount': 18,
+                'unit': 'g',
+              },
+            ],
+          },
+        ],
+      });
+
+      final sync = SyncService(
+          supabaseService: _MockSupabaseService(), localStorage: storage);
+      final wasteOrder = Order(
+        id: 'waste-exclusion-test',
+        createdAt: DateTime.now().toIso8601String(),
+        baristaName: 'Cashier',
+        items: [
+          OrderItem(
+            productId: 'drink-1',
+            name: 'Americano',
+            price: 100,
+          ),
+        ],
+        subtotal: 0,
+        total: 0,
+        paymentMethod: 'waste',
+        paid: 0,
+        wasteReason: 'Spilled',
+        excludedWasteInventoryItemIds: const ['milk-id'],
+      );
+
+      final deductions = sync.buildDeductionsForOrder(wasteOrder);
+
+      expect(deductions, hasLength(1));
+      expect(deductions.single['inventoryItemId'], 'beans-id');
+      expect(deductions.single['amount'], 18);
     });
 
     test('recordWasteOrder requires non-empty reason and sets empty ticketNo',

@@ -344,6 +344,31 @@ class _PosScreenState extends State<PosScreen> {
 
     final totalWasteItems =
         controller.cart.fold<int>(0, (total, item) => total + item.qty);
+    final deductionsByStockItem = <String, Map<String, dynamic>>{};
+    for (final deduction
+        in controller.syncService.buildDeductionsForItems(controller.cart)) {
+      final itemId = deduction['inventoryItemId']?.toString() ?? '';
+      final itemName = (deduction['itemName'] ?? deduction['name'] ?? itemId)
+          .toString()
+          .trim();
+      final unit = deduction['unit']?.toString().trim() ?? 'pcs';
+      final amount = (deduction['amount'] as num?)?.toDouble() ?? 0;
+      if (amount <= 0 || itemName.isEmpty) continue;
+
+      final key = itemId.isNotEmpty ? itemId : itemName.toLowerCase();
+      final entry = deductionsByStockItem.putIfAbsent(
+        key,
+        () => {
+          'inventoryItemId': itemId,
+          'itemName': itemName,
+          'unit': unit,
+          'amount': 0.0,
+        },
+      );
+      entry['amount'] = (entry['amount'] as double) + amount;
+    }
+    final wasteDeductions = deductionsByStockItem.values.toList();
+    final excludedWasteInventoryItemIds = <String>{};
     final presets = ['Spilled', 'Expired', 'Wrong Preparation', 'Damaged'];
 
     final selectedReason = await showDialog<String>(
@@ -390,6 +415,83 @@ class _PosScreenState extends State<PosScreen> {
                       'Records $totalWasteItems item(s) as waste and deducts stock from inventory with no sale or payment.',
                       style: const TextStyle(
                           fontSize: 13, color: Color(0xFF64748B)),
+                    ),
+                    const SizedBox(height: 14),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Inventory to be deducted',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF334155),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          if (wasteDeductions.isEmpty)
+                            const Text(
+                              'No recipe ingredients or stock items are linked to these products.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF64748B),
+                              ),
+                            )
+                          else
+                            ...wasteDeductions.map((deduction) {
+                              final itemId =
+                                  deduction['inventoryItemId'] as String;
+                              final amount =
+                                  (deduction['amount'] as num).toDouble();
+                              final formattedAmount =
+                                  NumberFormat('0.##').format(amount);
+                              return CheckboxListTile(
+                                contentPadding: EdgeInsets.zero,
+                                dense: true,
+                                visualDensity: VisualDensity.compact,
+                                controlAffinity:
+                                    ListTileControlAffinity.leading,
+                                value: !excludedWasteInventoryItemIds
+                                    .contains(itemId),
+                                onChanged: (include) {
+                                  setDialogState(() {
+                                    if (include == true) {
+                                      excludedWasteInventoryItemIds
+                                          .remove(itemId);
+                                    } else {
+                                      excludedWasteInventoryItemIds.add(itemId);
+                                    }
+                                  });
+                                },
+                                title: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        deduction['itemName'] as String,
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
+                                    ),
+                                    Text(
+                                      '$formattedAmount ${deduction['unit']}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 16),
                     const Text(
@@ -497,8 +599,10 @@ class _PosScreenState extends State<PosScreen> {
       return;
     }
 
-    final stockShortfalls =
-        controller.syncService.findStockShortfalls(controller.cart);
+    final stockShortfalls = controller.syncService.findStockShortfalls(
+      controller.cart,
+      excludedInventoryItemIds: excludedWasteInventoryItemIds,
+    );
     if (stockShortfalls.isNotEmpty) {
       final number = NumberFormat('0.##');
       await showDialog<void>(
@@ -520,8 +624,10 @@ class _PosScreenState extends State<PosScreen> {
       return;
     }
 
-    final result =
-        await controller.recordWasteOrder(reason: selectedReason.trim());
+    final result = await controller.recordWasteOrder(
+      reason: selectedReason.trim(),
+      excludedInventoryItemIds: excludedWasteInventoryItemIds,
+    );
     if (!mounted) return;
     if (result['ok'] == true) {
       closeMobileCheckout?.call();

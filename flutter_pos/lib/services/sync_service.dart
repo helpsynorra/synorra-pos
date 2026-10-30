@@ -979,13 +979,27 @@ class SyncService extends ChangeNotifier {
 
   /// Dynamically calculates ingredient deductions based strictly on Admin recipes, recipeCostings, costings, and addons
   List<Map<String, dynamic>> buildDeductionsForOrder(Order order) {
-    return buildDeductionsForItems(order.items);
+    final deductions = buildDeductionsForItems(order.items);
+    if (!order.isWaste || order.excludedWasteInventoryItemIds.isEmpty) {
+      return deductions;
+    }
+    final excludedIds = order.excludedWasteInventoryItemIds.toSet();
+    return deductions
+        .where((deduction) =>
+            !excludedIds.contains(deduction['inventoryItemId']?.toString()))
+        .toList();
   }
 
-  List<Map<String, dynamic>> findStockShortfalls(List<OrderItem> items) {
+  List<Map<String, dynamic>> findStockShortfalls(
+    List<OrderItem> items, {
+    Set<String> excludedInventoryItemIds = const {},
+  }) {
     final requiredByInventoryId = <String, double>{};
     final itemDetails = <String, Map<String, String>>{};
-    for (final deduction in buildDeductionsForItems(items)) {
+    for (final deduction in buildDeductionsForItems(items).where(
+      (deduction) => !excludedInventoryItemIds
+          .contains(deduction['inventoryItemId']?.toString()),
+    )) {
       final id = deduction['inventoryItemId']?.toString() ?? '';
       if (id.isEmpty) continue;
       requiredByInventoryId.update(
