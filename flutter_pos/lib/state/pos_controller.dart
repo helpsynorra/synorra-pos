@@ -65,6 +65,8 @@ class PosController extends ChangeNotifier {
   String currentBaristaName = 'Barista';
   String? currentBaristaUserId;
   List<StaffUser> onShiftBaristas = [];
+  Set<String> onBreakStaffIds = {};
+  Map<String, String> onShiftSince = {};
   bool isPosOpen = false;
   bool _staffLogoutInProgress = false;
   String? _staffLogoutRecordedFor;
@@ -155,6 +157,14 @@ class PosController extends ChangeNotifier {
             staffUsers.where((staff) => staff.id == event.userId).firstOrNull)
         .whereType<StaffUser>()
         .toList();
+    final states = LoginActivity.openShiftStates(shiftLogs);
+    onShiftSince = {
+      for (final entry in states.entries) entry.key: entry.value.startedAt,
+    };
+    onBreakStaffIds = {
+      for (final entry in states.entries)
+        if (entry.value.onBreak) entry.key,
+    };
     final onShift =
         active.where((event) => event.role == 'barista').firstOrNull;
     currentBaristaName = onShift?.name ?? 'Barista';
@@ -1311,18 +1321,24 @@ class PosController extends ChangeNotifier {
     return RestockDeleteResult.queued;
   }
 
-  // --- Shift Clock In / Out ---
+  // --- Shift Clock In / Out / Break ---
   Future<void> punchShift(
     StaffUser staff,
     String type,
   ) async {
-    if (!staff.canClockShift || (type != 'login' && type != 'logout')) {
+    if (!staff.canClockShift || !LoginActivity.isAttendanceType(type)) {
       return;
     }
-    final alreadyOnShift =
-        onShiftBaristas.any((barista) => barista.id == staff.id);
-    if ((type == 'login' && alreadyOnShift) ||
-        (type == 'logout' && !alreadyOnShift)) {
+    final onShift = onShiftBaristas.any((barista) => barista.id == staff.id);
+    final onBreak = onBreakStaffIds.contains(staff.id);
+    final allowed = switch (type) {
+      LoginActivity.loginType => !onShift,
+      LoginActivity.logoutType => onShift,
+      LoginActivity.breakStartType => onShift && !onBreak,
+      LoginActivity.breakEndType => onShift && onBreak,
+      _ => false,
+    };
+    if (!allowed) {
       return;
     }
 
@@ -1331,6 +1347,8 @@ class PosController extends ChangeNotifier {
       type,
       idPrefix: 'shift',
     );
+    _restoreOnShiftBarista();
+    notifyListeners();
   }
 
   Future<void> _recordLoginActivity(

@@ -165,8 +165,8 @@ export function productStats(
       const current = map.get(line.productId) ?? {
         id: line.productId,
         name: line.name,
-        category: matchingMenuItem?.category ?? "Other",
-        categoryType: matchingMenuItem?.categoryType,
+        category: line.category ?? matchingMenuItem?.category ?? "Other",
+        categoryType: line.categoryType ?? matchingMenuItem?.categoryType,
         qty: 0,
         sales: 0,
       };
@@ -185,7 +185,7 @@ export function productStats(
 export function drinkProductStats(stats: ProductStat[]): ProductStat[] {
   return stats.filter((item) => {
     const type = menuCategoryTypeForName(item.category, item.categoryType).trim().toLowerCase();
-    return type === "drink" || type === "drinks";
+    return type.includes("drink");
   });
 }
 

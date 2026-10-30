@@ -61,6 +61,9 @@ class SynorraPosApp extends StatelessWidget {
           if (snapshot.hasData) {
             return _ReadyApp(controller: snapshot.data!);
           }
+          if (snapshot.hasError) {
+            return _StartupErrorScreen(error: snapshot.error);
+          }
           return Scaffold(
             backgroundColor: Colors.white,
             body: Center(
@@ -73,6 +76,46 @@ class SynorraPosApp extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _StartupErrorScreen extends StatelessWidget {
+  final Object? error;
+
+  const _StartupErrorScreen({this.error});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.asset(
+                'lib/src/images/sn-logo-transparent.png',
+                width: 200,
+                height: 90,
+                fit: BoxFit.contain,
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'Synorra could not start',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              SelectableText(
+                '$error',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 13, color: Colors.black54),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

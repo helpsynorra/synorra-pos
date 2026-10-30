@@ -547,7 +547,10 @@ function normalizeStore(store: StoreData): StoreData {
         typeof entry.id === "string" &&
         typeof entry.userId === "string" &&
         typeof entry.at === "string" &&
-        (entry.type === "login" || entry.type === "logout"),
+        (entry.type === "login" ||
+          entry.type === "logout" ||
+          entry.type === "break_start" ||
+          entry.type === "break_end"),
     );
   }
   if (!Array.isArray(store.offRequests)) {

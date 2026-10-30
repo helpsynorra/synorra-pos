@@ -229,6 +229,8 @@ class _PosScreenState extends State<PosScreen> {
       context: context,
       builder: (_) => BaristaShiftDialog(
         onShiftBaristas: widget.controller.onShiftBaristas,
+        onBreakStaffIds: widget.controller.onBreakStaffIds,
+        onShiftSince: widget.controller.onShiftSince,
         staffUsers: widget.controller.staffUsers,
         authMode: widget.controller.syncService.attendanceAuthMode,
         resolveStaffAvatarUrl:
@@ -247,12 +249,15 @@ class _PosScreenState extends State<PosScreen> {
             type,
           );
           if (!mounted) return;
+          final message = switch (type) {
+            'login' => '${staff.name} clocked in',
+            'logout' => '${staff.name} clocked out',
+            'break_start' => '${staff.name} is on break',
+            'break_end' => '${staff.name} resumed their shift',
+            _ => '${staff.name} attendance updated',
+          };
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '${staff.name} clocked ${type == "login" ? "in" : "out"}',
-              ),
-            ),
+            SnackBar(content: Text(message)),
           );
         },
       ),

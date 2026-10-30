@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/supabase_config.dart';
@@ -108,8 +109,12 @@ class LocalStorageService {
   Future<void>? _legacyCredentialMigration;
 
   Future<void> init() async {
+    // `Platform.environment` throws `UnsupportedError` on Flutter Web, so the
+    // dart:io probe must never run there.
+    final isTest =
+        !kIsWeb && Platform.environment.containsKey('FLUTTER_TEST');
     if (!_hiveInitialized) {
-      if (Platform.environment.containsKey('FLUTTER_TEST')) {
+      if (isTest) {
         final testDirectory =
             await Directory.systemTemp.createTemp('synorra_pos_test_');
         Hive.init(testDirectory.path);
@@ -118,7 +123,6 @@ class LocalStorageService {
       }
       _hiveInitialized = true;
     }
-    final isTest = Platform.environment.containsKey('FLUTTER_TEST');
     final boxName = isTest
         ? 'synorra_pos_local_test_${_testBoxCounter++}'
         : 'synorra_pos_local_v1';

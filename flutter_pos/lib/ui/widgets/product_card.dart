@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+
 import '../../models/menu_item.dart';
-import 'offline_cached_image.dart';
+import 'menu_item_image.dart';
 
 class ProductCard extends StatelessWidget {
   final MenuItem item;
@@ -68,14 +69,10 @@ class ProductCard extends StatelessWidget {
                             Icons.local_cafe_outlined,
                             color: Color(0xFF9CA3AF),
                           )
-                        : OfflineCachedImage(
-                            url: item.image,
+                        : MenuItemImage(
+                            image: item.image,
                             fit: BoxFit.contain,
                             placeholder: const Icon(
-                              Icons.local_cafe_outlined,
-                              color: Color(0xFF9CA3AF),
-                            ),
-                            errorWidget: const Icon(
                               Icons.local_cafe_outlined,
                               color: Color(0xFF9CA3AF),
                             ),

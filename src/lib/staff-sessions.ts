@@ -10,10 +10,16 @@ export type StaffSession = {
   logoutId: string | null;
   loginAt: string | null;
   logoutAt: string | null;
+  /** Set while the staff member is on an open break inside this session. */
+  breakStartedAt: string | null;
 };
 
 export function isAttendanceStaffRole(role: Role): role is "barista" | "pos_cashier" {
   return role === "barista" || role === "pos_cashier";
+}
+
+export function isBreakActivity(type: LoginActivity["type"]) {
+  return type === "break_start" || type === "break_end";
 }
 
 export function pairLoginSessions(records: LoginActivity[]): StaffSession[] {
@@ -23,7 +29,10 @@ export function pairLoginSessions(records: LoginActivity[]): StaffSession[] {
         entry &&
         typeof entry.userId === "string" &&
         typeof entry.at === "string" &&
-        (entry.type === "login" || entry.type === "logout"),
+        (entry.type === "login" ||
+          entry.type === "logout" ||
+          entry.type === "break_start" ||
+          entry.type === "break_end"),
     )
     .sort((a, b) => a.at.localeCompare(b.at) || String(a.id ?? "").localeCompare(String(b.id ?? "")));
   const openByUser = new Map<string, StaffSession[]>();
@@ -42,15 +51,23 @@ export function pairLoginSessions(records: LoginActivity[]): StaffSession[] {
         logoutId: null,
         loginAt: record.at,
         logoutAt: null,
+        breakStartedAt: null,
       };
       sessions.push(session);
       open.push(session);
       openByUser.set(record.userId, open);
+    } else if (record.type === "break_start") {
+      const session = open[open.length - 1];
+      if (session && !session.breakStartedAt) session.breakStartedAt = record.at;
+    } else if (record.type === "break_end") {
+      const session = open[open.length - 1];
+      if (session) session.breakStartedAt = null;
     } else {
       const unpaired = open.pop();
       if (unpaired) {
         unpaired.logoutId = record.id;
         unpaired.logoutAt = record.at;
+        unpaired.breakStartedAt = null;
       }
     }
   }

@@ -27,6 +27,19 @@ import type {
   WorkShift,
 } from "@/lib/types";
 
+function attendanceEventLabel(type: LoginActivity["type"]) {
+  switch (type) {
+    case "break_start":
+      return "Break start";
+    case "break_end":
+      return "Break end";
+    case "logout":
+      return "Clock-out";
+    default:
+      return "Clock-in";
+  }
+}
+
 const expenseCategories: { id: AdminLedgerCategory; label: string }[] = [
   { id: "supplies", label: "Supplies" },
   { id: "utilities", label: "Utilities" },
@@ -252,7 +265,7 @@ export function FinanceDashboard({
   const [viewingAttendancePhoto, setViewingAttendancePhoto] = useState<{
     url: string;
     name: string;
-    type: "login" | "logout";
+    type: LoginActivity["type"];
     at: string;
   } | null>(null);
   const [remoteOrders, setRemoteOrders] = useState<Order[]>(store.orders);
@@ -747,7 +760,7 @@ export function FinanceDashboard({
                   <div key={entry.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-slate-800">{entry.name}</p>
-                      <p className="text-xs text-slate-500">{entry.type === "login" ? "Clock-in" : "Clock-out"} · {phDateTimeLabel(entry.at)}</p>
+                      <p className="text-xs text-slate-500">{attendanceEventLabel(entry.type)} · {phDateTimeLabel(entry.at)}</p>
                     </div>
                     <button
                       type="button"
@@ -795,13 +808,13 @@ export function FinanceDashboard({
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4"
           role="dialog"
           aria-modal="true"
-          aria-label={`${viewingAttendancePhoto.type === "login" ? "Clock-in" : "Clock-out"} photo for ${viewingAttendancePhoto.name}`}
+          aria-label={`${attendanceEventLabel(viewingAttendancePhoto.type)} photo for ${viewingAttendancePhoto.name}`}
           onClick={() => setViewingAttendancePhoto(null)}
         >
           <div className="w-full max-w-xl rounded-2xl bg-white p-4 shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="mb-3 flex items-start justify-between gap-3">
               <div>
-                <p className="font-semibold text-slate-900">{viewingAttendancePhoto.name} · {viewingAttendancePhoto.type === "login" ? "Clock-in" : "Clock-out"}</p>
+                <p className="font-semibold text-slate-900">{viewingAttendancePhoto.name} · {attendanceEventLabel(viewingAttendancePhoto.type)}</p>
                 <p className="text-xs text-slate-500">{phDateTimeLabel(viewingAttendancePhoto.at)}</p>
               </div>
               <button type="button" onClick={() => setViewingAttendancePhoto(null)} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm">Close</button>

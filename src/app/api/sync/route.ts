@@ -17,6 +17,7 @@ import {
 import { parsePayment } from "@/lib/payments";
 import { createPosApiToken, readPosApiToken } from "@/lib/pos-api-auth";
 import { pairLoginSessions } from "@/lib/staff-sessions";
+import type { LoginActivity } from "@/lib/types";
 import {
   createOrderAtomic,
   createRestockAtomic,
@@ -1709,14 +1710,35 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           return NextResponse.json({ ok: false, error: "Attendance photo must be smaller than 2 MB." }, { status: 413, headers: corsHeaders });
         }
 
-        const isClockingIn = raw.type !== "logout";
-        const alreadyOnShift = pairLoginSessions(store.loginActivity).some(
+        const punchType: LoginActivity["type"] =
+          raw.type === "logout"
+            ? "logout"
+            : raw.type === "break_start"
+              ? "break_start"
+              : raw.type === "break_end"
+                ? "break_end"
+                : "login";
+        const openSession = pairLoginSessions(store.loginActivity).find(
           (session) => session.userId === staff!.id && !session.logoutAt,
         );
-        if (isClockingIn === alreadyOnShift) {
+        const alreadyOnShift = Boolean(openSession);
+        const onBreak = Boolean(openSession?.breakStartedAt);
+        const transitionError =
+          punchType === "login"
+            ? alreadyOnShift
+              ? "This staff member is already clocked in."
+              : null
+            : !alreadyOnShift
+              ? "This staff member is not clocked in."
+              : punchType === "break_start" && onBreak
+                ? "This staff member is already on break."
+                : punchType === "break_end" && !onBreak
+                  ? "This staff member is not on break."
+                  : null;
+        if (transitionError) {
           return NextResponse.json({
             ok: false,
-            error: alreadyOnShift ? "This staff member is already clocked in." : "This staff member is not clocked in.",
+            error: transitionError,
           }, { status: 409, headers: corsHeaders });
         }
 
@@ -1754,7 +1776,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           username: staff.username,
           name: staff.name,
           role: staff.role,
-          type: (raw.type === "logout" ? "logout" : "login") as "login" | "logout",
+          type: punchType,
           at: phIsoTimestamp(String(raw.at ?? "")) || new Date().toISOString(),
           photoPath,
         };
@@ -1774,6 +1796,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }
         return NextResponse.json({ ok: true, photoPath }, { headers: corsHeaders });
       }
+      const queuedType: LoginActivity["type"] =
+        raw.type === "logout"
+          ? "logout"
+          : raw.type === "break_start"
+            ? "break_start"
+            : raw.type === "break_end"
+              ? "break_end"
+              : "login";
       const entry = {
         id: String(raw.id || `log-${Date.now()}`),
         userId: staff?.id ?? requestedUserId,
@@ -1782,11 +1812,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         role: staff
           ? parseRole(String(staff.title ?? ""), staff.role)
           : claims.role,
-        type: (raw.type === "logout" ? "logout" : "login") as "login" | "logout",
+        type: queuedType,
         at: phIsoTimestamp(String(raw.at ?? "")) || new Date().toISOString(),
       };
       await insertLoginActivityRecord(entry);
-      if (!isStaffShift && entry.type === "login") {
+      if (!isStaffShift && queuedType === "login") {
         await updateStore((store) => {
           store.pos.isOpen = true;
           store.pos.openedBy = entry.name;

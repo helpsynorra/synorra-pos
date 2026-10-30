@@ -1,21 +1,46 @@
+class StaffShiftState {
+  final String userId;
+  final String startedAt;
+  String? breakStartedAt;
+
+  StaffShiftState({
+    required this.userId,
+    required this.startedAt,
+    this.breakStartedAt,
+  });
+
+  bool get onBreak => breakStartedAt != null;
+}
+
 class LoginActivity {
+  static const String loginType = 'login';
+  static const String logoutType = 'logout';
+  static const String breakStartType = 'break_start';
+  static const String breakEndType = 'break_end';
+
   final String id;
   final String userId;
   final String username;
   final String name;
   final String role;
-  final String type; // 'login' or 'logout'
+  final String type; // 'login' | 'logout' | 'break_start' | 'break_end'
   final String at;
   String? photoPath;
   bool isSynced;
 
-  static List<LoginActivity> openBaristaShifts(
-      Iterable<LoginActivity> records) {
-    final events = records
+  static bool isBreakType(String type) =>
+      type == breakStartType || type == breakEndType;
+
+  static bool isAttendanceType(String type) =>
+      type == loginType || type == logoutType || isBreakType(type);
+
+  static List<LoginActivity> _chronological(Iterable<LoginActivity> records) {
+    return records
         .where((entry) =>
-            entry.role.trim().toLowerCase() == 'barista' &&
+            const {'barista', 'pos_cashier'}
+                .contains(entry.role.trim().toLowerCase()) &&
             entry.userId.isNotEmpty &&
-            (entry.type == 'login' || entry.type == 'logout'))
+            isAttendanceType(entry.type))
         .toList()
       ..sort((a, b) {
         final first = DateTime.tryParse(a.at);
@@ -24,12 +49,19 @@ class LoginActivity {
             ? first.compareTo(second)
             : a.at.compareTo(b.at);
       });
+  }
+
+  static List<LoginActivity> openBaristaShifts(
+      Iterable<LoginActivity> records) {
+    final events = _chronological(records)
+        .where((entry) => entry.role.trim().toLowerCase() == 'barista')
+        .toList();
 
     final openByUser = <String, LoginActivity>{};
     for (final event in events) {
-      if (event.type == 'login') {
+      if (event.type == loginType) {
         openByUser[event.userId] = event;
-      } else {
+      } else if (event.type == logoutType) {
         openByUser.remove(event.userId);
       }
     }
@@ -38,30 +70,48 @@ class LoginActivity {
   }
 
   static List<LoginActivity> openStaffShifts(Iterable<LoginActivity> records) {
-    final events = records
-        .where((entry) =>
-            const {'barista', 'pos_cashier'}
-                .contains(entry.role.trim().toLowerCase()) &&
-            entry.userId.isNotEmpty &&
-            (entry.type == 'login' || entry.type == 'logout'))
-        .toList()
-      ..sort((a, b) {
-        final first = DateTime.tryParse(a.at);
-        final second = DateTime.tryParse(b.at);
-        return first != null && second != null
-            ? first.compareTo(second)
-            : a.at.compareTo(b.at);
-      });
-
+    final events = _chronological(records);
     final openByUser = <String, LoginActivity>{};
     for (final event in events) {
-      if (event.type == 'login') {
+      if (event.type == loginType) {
         openByUser[event.userId] = event;
-      } else {
+      } else if (event.type == logoutType) {
         openByUser.remove(event.userId);
       }
     }
     return openByUser.values.toList()..sort((a, b) => b.at.compareTo(a.at));
+  }
+
+  /// Replays attendance events to expose who is clocked in, when their shift
+  /// started, and who is currently on break. Break events sit inside an open
+  /// shift, so they never remove the shift itself.
+  static Map<String, StaffShiftState> openShiftStates(
+      Iterable<LoginActivity> records) {
+    final events = _chronological(records);
+    final openByUser = <String, StaffShiftState>{};
+    for (final event in events) {
+      switch (event.type) {
+        case loginType:
+          openByUser[event.userId] = StaffShiftState(
+            userId: event.userId,
+            startedAt: event.at,
+          );
+          break;
+        case logoutType:
+          openByUser.remove(event.userId);
+          break;
+        case breakStartType:
+          final state = openByUser[event.userId];
+          if (state != null && !state.onBreak) {
+            state.breakStartedAt = event.at;
+          }
+          break;
+        case breakEndType:
+          openByUser[event.userId]?.breakStartedAt = null;
+          break;
+      }
+    }
+    return openByUser;
   }
 
   LoginActivity({

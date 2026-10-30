@@ -326,7 +326,7 @@ export type LoginActivity = {
   username: string;
   name: string;
   role: Role;
-  type: "login" | "logout";
+  type: "login" | "logout" | "break_start" | "break_end";
   at: string;
   photoPath?: string;
 };

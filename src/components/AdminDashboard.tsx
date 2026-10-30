@@ -497,15 +497,22 @@ export function AdminDashboard({
       normalizeMenuCategoryType(type),
     ]),
   );
-  const productStatsList = summary.products.map((product) => ({
-    ...product,
-    categoryType: menuCategoryTypeForName(
-      product.category,
-      categoryTypeByName.get(product.category.trim().toLowerCase()) ??
-        product.categoryType ??
-        inferMenuCategoryType(product.category),
-    ),
-  }));
+  const productStatsList = summary.products.map((product) => {
+    // Order lines carry the category type chosen on the POS at sale time. Prefer
+    // that snapshot so custom types still group correctly in Sold Products even
+    // when the admin menu has a different (or no) type for the category.
+    const snapshotType = product.categoryType?.trim();
+    return {
+      ...product,
+      categoryType: snapshotType
+        ? normalizeMenuCategoryType(snapshotType)
+        : menuCategoryTypeForName(
+            product.category,
+            categoryTypeByName.get(product.category.trim().toLowerCase()) ??
+              inferMenuCategoryType(product.category),
+          ),
+    };
+  });
   const productDetailsById = new Map(summary.products.map((product) => [product.id, product]));
   const best = bestSellers(productStatsList, 5);
   const low = lowSellers(productStatsList, 5);
@@ -565,9 +572,16 @@ export function AdminDashboard({
       getCategoryType(item.category),
     ]),
   );
-  const getProductCategoryType = (product: (typeof productStatsList)[number]) =>
-    menuCategoryTypeByProductId.get(product.id) ??
-    getCategoryType(product.category);
+  const getProductCategoryType = (product: (typeof productStatsList)[number]) => {
+    // Order lines written by the POS carry the category type chosen on the
+    // device, which may be a custom type that the admin menu has never seen.
+    const configuredType = product.categoryType?.trim();
+    if (configuredType) return normalizeMenuCategoryType(configuredType);
+    return (
+      menuCategoryTypeByProductId.get(product.id) ??
+      getCategoryType(product.category)
+    );
+  };
   const soldProductGroups = new Map<
     string,
     { type: string; quantity: number; sales: number }
@@ -591,7 +605,15 @@ export function AdminDashboard({
     group.sales += product.sales;
     soldProductGroups.set(key, group);
   }
-  const soldProductSummary = [...soldProductGroups.values()].sort((a, b) =>
+  const pendingSoldGroups = [...soldProductGroups.values()];
+  const soldGroups = pendingSoldGroups.some(
+    (group) => group.quantity > 0 || group.sales > 0,
+  )
+    ? pendingSoldGroups.filter(
+        (group) => group.quantity > 0 || group.sales > 0,
+      )
+    : pendingSoldGroups;
+  const soldProductSummary = soldGroups.sort((a, b) =>
     a.type.localeCompare(b.type),
   );
   const totalSoldQty = soldProductSummary.reduce((sum, group) => sum + group.quantity, 0);
