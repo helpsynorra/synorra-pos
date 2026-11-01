@@ -472,10 +472,6 @@ class _PosScreenState extends State<PosScreen> {
                             ...wasteDeductions.map((deduction) {
                               final itemId =
                                   deduction['inventoryItemId'] as String;
-                              final amount =
-                                  (deduction['amount'] as num).toDouble();
-                              final formattedAmount =
-                                  NumberFormat('0.##').format(amount);
                               return CheckboxListTile(
                                 contentPadding: EdgeInsets.zero,
                                 dense: true,
@@ -494,22 +490,9 @@ class _PosScreenState extends State<PosScreen> {
                                     }
                                   });
                                 },
-                                title: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        deduction['itemName'] as String,
-                                        style: const TextStyle(fontSize: 12),
-                                      ),
-                                    ),
-                                    Text(
-                                      '$formattedAmount ${deduction['unit']}',
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
+                                title: Text(
+                                  deduction['itemName'] as String,
+                                  style: const TextStyle(fontSize: 12),
                                 ),
                               );
                             }),

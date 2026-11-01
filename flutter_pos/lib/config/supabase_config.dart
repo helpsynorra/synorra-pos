@@ -1,18 +1,18 @@
 class SupabaseConfig {
   static const String projectUrl = String.fromEnvironment(
     'SUPABASE_URL',
-    defaultValue: 'https://zdkemoxxguiowbmznxtj.supabase.co',
+    defaultValue: 'https://gklrfrhywrmyyynxdfzo.supabase.co',
   );
   static String get restBaseUrl => '$projectUrl/rest/v1';
 
   static const String publishableKey = String.fromEnvironment(
     'SUPABASE_PUBLISHABLE_KEY',
-    defaultValue: 'sb_publishable_9trZUPUbKwKoAvif5vW59A_nghPPg-E',
+    defaultValue: 'sb_publishable__j_U4-eAKLZqDOnmyiIDZA_KXeEvfUH',
   );
   static const String anonKey = String.fromEnvironment(
     'SUPABASE_ANON_KEY',
     defaultValue:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpka2Vtb3h4Z3Vpb3dibXpueHRqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIzMDQ3OTYsImV4cCI6MjEwNzg4MDc5Nn0.bKjLfOwbxKUfUOcxevJQrQVpfMJLbWbmFDxfnGIIl7U',
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrbHJmcmh5d3JteXl5bnhkZnpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM1MDc1OTgsImV4cCI6MjEwOTA4MzU5OH0.gMj9hFEqHqmbwD-HYufY06ut_rGGIjYX048l77X9LJ0',
   );
 
   static String get supabaseUrl => projectUrl;
