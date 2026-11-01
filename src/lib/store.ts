@@ -259,7 +259,7 @@ function env(...names: string[]) {
   return undefined;
 }
 
-const DEFAULT_SUPABASE_URL = "https://mzulfloebacecqzponrk.supabase.co";
+const DEFAULT_SUPABASE_URL = "https://gklrfrhywrmyyynxdfzo.supabase.co";
 
 function resolveSupabaseUrl(): string {
   return (
