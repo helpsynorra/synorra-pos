@@ -109,6 +109,24 @@ class SupabaseService {
     }
   }
 
+  Future<Map<String, dynamic>> pushSyncOperation(
+    Map<String, dynamic> operation,
+  ) async {
+    try {
+      return await _postPosApi(operation);
+    } catch (error) {
+      final retryable = error is http.ClientException ||
+          error is TimeoutException ||
+          error is SocketException ||
+          error is HandshakeException;
+      return {
+        'ok': false,
+        'error': error.toString(),
+        'retryable': retryable,
+      };
+    }
+  }
+
   Future<Map<String, dynamic>> _getPosApi({String? cursor}) async {
     final uri = cursor == null
         ? _posApiUri

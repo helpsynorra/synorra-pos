@@ -27,6 +27,7 @@ class StaffUser {
   bool get canLoginToPos => canUsePos;
   bool get canAccessBaristaShift => role == 'barista';
   bool get canClockShift => role == 'barista' || role == 'pos_cashier';
+  bool get requiresAttendanceImage => permissions['required_image'] == true;
   bool get isManager => role == 'admin' || role == 'manager';
 
   static String parseRole(String rawRole, String title, String username) {

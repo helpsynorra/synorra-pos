@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { StaffHeader, type AdminPanel } from "@/components/StaffHeader";
 import { UserManager } from "@/components/UserManager";
@@ -35,8 +35,29 @@ export function AdminShell({ session, users, store, children, financeContent, at
   const [loginActivityHasMore, setLoginActivityHasMore] = useState(false);
   const [loginActivityLoading, setLoginActivityLoading] = useState(false);
   const [loginActivityError, setLoginActivityError] = useState<string | null>(null);
+  const loginActivityRequest = useRef(false);
   const router = useRouter();
   const currentPanel = isMounted ? panel : "sales";
+
+  const refreshLoginActivity = useCallback(async () => {
+    if (loginActivityRequest.current) return;
+    loginActivityRequest.current = true;
+    setLoginActivityLoading(true);
+    setLoginActivityError(null);
+    try {
+      const response = await fetch("/api/admin/login-activity?page=1", { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to load staff activity.");
+      setLoginActivity(result.activity);
+      setLoginActivityPage(result.page);
+      setLoginActivityHasMore(result.hasMore);
+    } catch (error) {
+      setLoginActivityError(error instanceof Error ? error.message : "Unable to load staff activity.");
+    } finally {
+      loginActivityRequest.current = false;
+      setLoginActivityLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (panel !== "transactions" && panel !== "sales" && panel !== "staff" && panel !== "finance") return;
@@ -50,28 +71,23 @@ export function AdminShell({ session, users, store, children, financeContent, at
     setPanel(readSavedPanel());
     setIsMounted(true);
   }, []);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     if (currentPanel !== "staff") return;
-    let active = true;
-    fetch("/api/admin/login-activity?page=1", { cache: "no-store" })
-      .then(async (response) => {
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || "Unable to load staff activity.");
-        if (!active) return;
-        setLoginActivity(result.activity);
-        setLoginActivityPage(result.page);
-        setLoginActivityHasMore(result.hasMore);
-      })
-      .catch((error: unknown) => {
-        if (active) setLoginActivityError(error instanceof Error ? error.message : "Unable to load staff activity.");
-      })
-      .finally(() => {
-        if (active) setLoginActivityLoading(false);
-      });
-    return () => { active = false; };
-  }, [currentPanel]);
+    void refreshLoginActivity();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshLoginActivity();
+    }, 15000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshLoginActivity();
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [currentPanel, refreshLoginActivity]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   function handlePanelChange(next: AdminPanel) {
     setPanel(next);
@@ -101,23 +117,6 @@ export function AdminShell({ session, users, store, children, financeContent, at
     }
   }
 
-  async function refreshLoginActivity() {
-    setLoginActivityLoading(true);
-    setLoginActivityError(null);
-    try {
-      const response = await fetch("/api/admin/login-activity?page=1", { cache: "no-store" });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Unable to load staff activity.");
-      setLoginActivity(result.activity);
-      setLoginActivityPage(result.page);
-      setLoginActivityHasMore(result.hasMore);
-    } catch (error) {
-      setLoginActivityError(error instanceof Error ? error.message : "Unable to load staff activity.");
-    } finally {
-      setLoginActivityLoading(false);
-    }
-  }
-
   const current = currentPanel;
 
   return (
@@ -132,7 +131,9 @@ export function AdminShell({ session, users, store, children, financeContent, at
               users={users.filter((user) => user.role !== "admin")}
               session={session}
               loginActivity={loginActivity}
-              onAttendanceChange={refreshLoginActivity}
+              onRefreshAttendance={() => void refreshLoginActivity()}
+              attendanceLoading={loginActivityLoading}
+              attendanceError={loginActivityError}
               offRequests={store.offRequests ?? []}
               showAdminRole={false}
               showOwnerRole={false}

@@ -370,6 +370,7 @@ class SyncService extends ChangeNotifier {
       final pendingVoids = localStorage.getPendingVoidRequests();
       final operations = <Map<String, dynamic>>[];
       final operationRefs = <({String kind, String id, Object record})>[];
+      final operationErrors = <String>[];
 
       void addOperation(
         String kind,
@@ -456,10 +457,32 @@ class SyncService extends ChangeNotifier {
         });
       }
       for (final punch in pendingPunches) {
-        addOperation('login_activity', punch.id, punch, {
-          'action': 'login_activity',
-          'activity': punch.toJson(),
-        });
+        if (punch.role == 'barista' || punch.role == 'pos_cashier') {
+          final password =
+              await localStorage.getOfflineStaffCredential(punch.userId);
+          if (password == null || password.isEmpty) {
+            operationErrors.add(
+              'Attendance for ${punch.name} was not synced: staff credentials are unavailable on this device. Sign in as that staff member online, then tap Sync Now again.',
+            );
+            debugPrint(
+              'Pending shift sync skipped (${punch.id}): staff credentials are unavailable.',
+            );
+            continue;
+          }
+          addOperation('login_activity', punch.id, punch, {
+            'action': 'barista_shift_activity',
+            'activity': punch.toJson(),
+            'credentials': {
+              'username': punch.username,
+              'password': password,
+            },
+          });
+        } else {
+          addOperation('login_activity', punch.id, punch, {
+            'action': 'login_activity',
+            'activity': punch.toJson(),
+          });
+        }
       }
       for (final request in pendingVoids) {
         addOperation('void_request', request.id, request, {
@@ -474,6 +497,9 @@ class SyncService extends ChangeNotifier {
           operations.sublist(start, end),
         );
         if (batch['ok'] != true || batch['results'] is! List) {
+          operationErrors.add(
+            'POS batch sync failed: ${batch['error'] ?? 'Invalid batch response'}',
+          );
           debugPrint(
             'POS batch sync failed: ${batch['error'] ?? 'Invalid batch response'}',
           );
@@ -481,17 +507,37 @@ class SyncService extends ChangeNotifier {
         }
         final results = batch['results'] as List;
         for (var index = 0; index < end - start; index++) {
-          if (index >= results.length || results[index] is! Map) continue;
-          final result = Map<String, dynamic>.from(results[index] as Map);
-          if (result['ok'] != true) {
-            debugPrint(
-              'Queued ${operationRefs[start + index].kind} sync failed '
-              '(${operationRefs[start + index].id}): '
-              '${result['error'] ?? 'Unknown server error'}',
+          if (index >= results.length || results[index] is! Map) {
+            operationErrors.add(
+              'POS sync returned an incomplete result for ${operationRefs[start + index].kind}.',
             );
             continue;
           }
+          var result = Map<String, dynamic>.from(results[index] as Map);
           final ref = operationRefs[start + index];
+          if (result['ok'] != true &&
+              ref.kind == 'login_activity' &&
+              operations[start + index]['action'] == 'barista_shift_activity' &&
+              result['error']?.toString().contains(
+                      'Unsupported batch operation: barista_shift_activity') ==
+                  true) {
+            result = await supabaseService.pushSyncOperation(
+              Map<String, dynamic>.from(operations[start + index]),
+            );
+          }
+          if (result['ok'] != true) {
+            final errorMessage =
+                result['error']?.toString() ?? 'Unknown server error';
+            operationErrors.add(
+              '${operationRefs[start + index].kind == 'login_activity' ? 'Attendance' : 'POS'} sync failed: $errorMessage',
+            );
+            debugPrint(
+              'Queued ${operationRefs[start + index].kind} sync failed '
+              '(${operationRefs[start + index].id}): '
+              '$errorMessage',
+            );
+            continue;
+          }
           switch (ref.kind) {
             case 'order':
               final order = ref.record as Order;
@@ -514,7 +560,14 @@ class SyncService extends ChangeNotifier {
               await localStorage.removePendingInventoryDelete(ref.id);
             case 'login_activity':
               final punch = ref.record as LoginActivity;
-              punch.isSynced = true;
+              final activities = localStorage.getLoginActivity();
+              for (final activity in activities) {
+                if (activity.id == punch.id) {
+                  activity.isSynced = true;
+                  activity.photoBase64 = null;
+                }
+              }
+              await localStorage.saveLoginActivity(activities);
               await localStorage.removePendingLoginActivity(punch.id);
             case 'void_request':
               final request = ref.record as VoidRequest;
@@ -565,9 +618,12 @@ class SyncService extends ChangeNotifier {
         }
       }
 
-      status = SyncStatus.success;
+      status = operationErrors.isEmpty ? SyncStatus.success : SyncStatus.error;
       isOnline = true;
       lastSyncTime = DateTime.now();
+      if (operationErrors.isNotEmpty) {
+        lastError = operationErrors.join('\n');
+      }
       onSyncCompleted?.call();
     } catch (e) {
       debugPrint('Sync warning: $e');

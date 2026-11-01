@@ -28,7 +28,10 @@ Widget wrap({
         authenticateBarista: (_, __) async => null,
         resolveStaffAvatarUrl: (_) async => null,
         onPunch: (_, __,
-            {required username, required password, photoBytes}) async {},
+            {required username,
+            required password,
+            required authenticatedAt,
+            photoBytes}) async {},
       ),
     ),
   );

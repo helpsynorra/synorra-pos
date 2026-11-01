@@ -24,6 +24,7 @@ class BaristaShiftDialog extends StatefulWidget {
     String type, {
     required String username,
     required String password,
+    required String authenticatedAt,
     Uint8List? photoBytes,
   }) onPunch;
 
@@ -58,7 +59,6 @@ class _BaristaShiftDialogState extends State<BaristaShiftDialog> {
   String? _selectedRole;
   String? _error;
   bool _isLoading = false;
-  bool get _requiresPhoto => widget.authMode != 'username_password';
   bool get _selectByName => widget.authMode == 'photo_full_name_pin';
 
   bool _isOnBreak(StaffUser staff) => widget.onBreakStaffIds.contains(staff.id);
@@ -78,8 +78,8 @@ class _BaristaShiftDialogState extends State<BaristaShiftDialog> {
     return staff?.canClockShift == true ? staff : null;
   }
 
-  Future<bool> _captureAttendancePhoto() async {
-    if (!_requiresPhoto) return true;
+  Future<bool> _captureAttendancePhoto(StaffUser staff) async {
+    if (!staff.requiresAttendanceImage) return true;
     if (_attendancePhoto != null) return true;
     try {
       final photo = await ImagePicker().pickImage(
@@ -156,9 +156,9 @@ class _BaristaShiftDialogState extends State<BaristaShiftDialog> {
     setState(() {
       _isLoading = true;
       _error = null;
+      _attendancePhoto = null;
     });
     try {
-      if (!await _captureAttendancePhoto()) return;
       final staff = await _authenticateBarista();
       if (staff == null) {
         if (mounted) {
@@ -167,6 +167,7 @@ class _BaristaShiftDialogState extends State<BaristaShiftDialog> {
         }
         return;
       }
+      final authenticatedAt = DateTime.now().toUtc().toIso8601String();
       if (action == 'login') {
         if (staff.role != _selectedRole ||
             (_selectByName && staff.id != _selectedStaffId)) {
@@ -183,12 +184,14 @@ class _BaristaShiftDialogState extends State<BaristaShiftDialog> {
         }
         return;
       }
+      if (!await _captureAttendancePhoto(staff)) return;
 
       await widget.onPunch(
         staff,
         action,
         username: staff.username,
         password: _passwordController.text,
+        authenticatedAt: authenticatedAt,
         photoBytes: _attendancePhoto,
       );
       if (mounted) Navigator.pop(context);
@@ -311,9 +314,6 @@ class _BaristaShiftDialogState extends State<BaristaShiftDialog> {
   }
 
   String get _calloutText {
-    if (_requiresPhoto) {
-      return 'The photo is captured only for store timekeeping. Synorra POS does not use facial recognition.';
-    }
     if (_action == 'break_start') {
       return 'Break time keeps the shift open. The staff member stays clocked in and can resume right after.';
     }
@@ -878,10 +878,6 @@ class _BaristaShiftDialogState extends State<BaristaShiftDialog> {
             ),
             onSubmitted: (_) => _handlePunch(),
           ),
-          if (_requiresPhoto) ...[
-            const SizedBox(height: 12),
-            _buildPhotoCapture(),
-          ],
           const SizedBox(height: 14),
           SizedBox(
             width: double.infinity,
@@ -956,103 +952,8 @@ class _BaristaShiftDialogState extends State<BaristaShiftDialog> {
     );
   }
 
-  Widget _buildPhotoCapture() {
-    final tone = _actionTone;
-    final captured = _attendancePhoto != null;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Material(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
-          child: Ink(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [tone.solid, tone.ink],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: InkWell(
-              onTap: _isLoading
-                  ? null
-                  : () async {
-                      setState(() {
-                        _error = null;
-                        _attendancePhoto = null;
-                      });
-                      await _captureAttendancePhoto();
-                    },
-              borderRadius: BorderRadius.circular(14),
-              child: Container(
-                height: 50,
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                child: Row(
-                  children: [
-                    const Icon(Icons.photo_camera_outlined,
-                        size: 18, color: Colors.white),
-                    const SizedBox(width: 9),
-                    Expanded(
-                      child: Text(
-                        captured
-                            ? 'Retake attendance photo'
-                            : 'Capture live attendance photo',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                    Icon(
-                      captured
-                          ? Icons.check_circle
-                          : Icons.arrow_forward_ios_rounded,
-                      size: captured ? 18 : 12,
-                      color: Colors.white,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-        if (captured) ...[
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Image.memory(
-                  _attendancePhoto!,
-                  width: 48,
-                  height: 48,
-                  fit: BoxFit.cover,
-                ),
-              ),
-              const SizedBox(width: 9),
-              const Expanded(
-                child: Text(
-                  'Attendance photo ready',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF334155),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ],
-    );
-  }
-
   Widget _buildCallout() {
-    final tone = _requiresPhoto ? PosStatusColors.info : _actionTone;
+    final tone = _actionTone;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(11),
@@ -1065,7 +966,7 @@ class _BaristaShiftDialogState extends State<BaristaShiftDialog> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
-            _requiresPhoto ? Icons.lock_outline : Icons.info_outline,
+            Icons.info_outline,
             size: 15,
             color: tone.ink,
           ),

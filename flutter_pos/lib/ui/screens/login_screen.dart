@@ -207,6 +207,7 @@ class _LoginScreenState extends State<LoginScreen>
     }
 
     final authenticatedUser = authenticatedStaff;
+    final authenticatedAt = DateTime.now().toUtc().toIso8601String();
     if (!authenticatedUser.canLoginToPos) {
       setState(() {
         _isLoading = false;
@@ -244,7 +245,11 @@ class _LoginScreenState extends State<LoginScreen>
     widget.controller.currentUser = authenticatedUser;
     widget.controller.isPosOpen = true;
     unawaited(widget.controller
-        .recordStaffSessionEvent(authenticatedUser, 'login')
+        .recordStaffSessionEvent(
+          authenticatedUser,
+          'login',
+          authenticatedAt: authenticatedAt,
+        )
         .catchError((_) {}));
 
     await authAnimation;

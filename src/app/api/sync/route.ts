@@ -1028,6 +1028,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         "upsert_inventory_item",
         "delete_inventory_item",
         "login_activity",
+        "barista_shift_activity",
         "create_void_request",
       ]);
       const results = [];
@@ -1699,14 +1700,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           return NextResponse.json({ ok: false, error: "Staff password or PIN is incorrect." }, { status: 401, headers: corsHeaders });
         }
 
-        const authMode = store.pos.attendanceAuthMode;
-        const requiresPhoto = authMode === "photo_username_password" || authMode === "photo_full_name_pin";
+        const requiresPhoto = staff.permissions?.required_image === true;
         const rawPhoto = body.photoBase64 ?? raw.photoBase64;
         const photoBase64 = typeof rawPhoto === "string" ? rawPhoto : "";
         if (requiresPhoto && !photoBase64) {
           return NextResponse.json({ ok: false, error: "Capture a live attendance photo before recording this shift." }, { status: 400, headers: corsHeaders });
         }
-        if (requiresPhoto && photoBase64.length > 2_800_000) {
+        if (photoBase64.length > 2_800_000) {
           return NextResponse.json({ ok: false, error: "Attendance photo must be smaller than 2 MB." }, { status: 413, headers: corsHeaders });
         }
 
@@ -1742,8 +1742,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           }, { status: 409, headers: corsHeaders });
         }
 
+        const attendanceAt = phIsoTimestamp(String(raw.at ?? ""));
+        if (!attendanceAt) {
+          return NextResponse.json({ ok: false, error: "A valid staff authentication timestamp is required." }, { status: 400, headers: corsHeaders });
+        }
+
         let photoPath: string | undefined;
-        if (requiresPhoto) {
+        if (photoBase64) {
           if (!/^[A-Za-z0-9+/]+={0,2}$/.test(photoBase64)) {
             return NextResponse.json({ ok: false, error: "Attendance photo data is invalid." }, { status: 400, headers: corsHeaders });
           }
@@ -1777,7 +1782,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           name: staff.name,
           role: staff.role,
           type: punchType,
-          at: phIsoTimestamp(String(raw.at ?? "")) || new Date().toISOString(),
+          at: attendanceAt,
           photoPath,
         };
         try {

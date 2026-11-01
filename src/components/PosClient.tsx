@@ -86,6 +86,44 @@ type PosClientProps = {
 
 type PosPanel = "pos" | Extract<InventoryTab, "stock" | "restock">;
 
+async function encodeAttendancePhoto(file: File): Promise<string> {
+  if (file.size > 10 * 1024 * 1024) {
+    throw new Error("Choose a photo smaller than 10 MB.");
+  }
+  const image = await createImageBitmap(file);
+  const scale = Math.min(1, 720 / Math.max(image.width, image.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.width * scale));
+  canvas.height = Math.max(1, Math.round(image.height * scale));
+  const context = canvas.getContext("2d");
+  if (!context) {
+    image.close();
+    throw new Error("This browser cannot prepare the attendance photo.");
+  }
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  image.close();
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, "image/jpeg", 0.65),
+  );
+  if (!blob) throw new Error("This browser could not prepare the attendance photo.");
+  if (blob.size > 512 * 1024) {
+    throw new Error("Choose a smaller attendance photo (maximum 512 KB after compression).");
+  }
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read the attendance photo."));
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        reject(new Error("Could not encode the attendance photo."));
+        return;
+      }
+      resolve(reader.result);
+    };
+    reader.readAsDataURL(blob);
+  });
+  return dataUrl.slice(dataUrl.indexOf(",") + 1);
+}
+
 const CASH_PRESETS = [500, 1000, 2000];
 const CHECKOUT_KEY = "synorra_pos_checkout";
 const TEST_PRINTER_ENABLED = process.env.NEXT_PUBLIC_TEST_PRINTER === "true";
@@ -192,6 +230,7 @@ export function PosClient({
   const [baristaModalOpen, setBaristaModalOpen] = useState(false);
   const [baristaUsername, setBaristaUsername] = useState("");
   const [baristaPassword, setBaristaPassword] = useState("");
+  const [baristaPhoto, setBaristaPhoto] = useState<File | null>(null);
   const [baristaAction, setBaristaAction] = useState<"login" | "logout">("login");
   const [baristaTargetId, setBaristaTargetId] = useState<string | null>(null);
   const [baristaNotice, setBaristaNotice] = useState<string | null>(null);
@@ -973,6 +1012,7 @@ export function PosClient({
                     onClick={() => {
                       setBaristaUsername(barista.username);
                       setBaristaPassword("");
+                      setBaristaPhoto(null);
                       setBaristaAction("logout");
                       setBaristaTargetId(barista.id);
                       setBaristaNotice(null);
@@ -991,6 +1031,7 @@ export function PosClient({
                 onClick={() => {
                   setBaristaUsername("");
                   setBaristaPassword("");
+                  setBaristaPhoto(null);
                   setBaristaAction("login");
                   setBaristaTargetId(null);
                   setBaristaNotice(null);
@@ -1309,6 +1350,7 @@ export function PosClient({
                         onClick={() => {
                           setBaristaUsername(barista.username);
                           setBaristaPassword("");
+                          setBaristaPhoto(null);
                           setBaristaAction("logout");
                           setBaristaTargetId(barista.id);
                           setBaristaNotice(null);
@@ -1328,11 +1370,21 @@ export function PosClient({
                 onSubmit={(event) => {
                   event.preventDefault();
                   startTransition(async () => {
+                    let photoBase64: string | undefined;
+                    try {
+                      photoBase64 = baristaPhoto
+                        ? await encodeAttendancePhoto(baristaPhoto)
+                        : undefined;
+                    } catch (error) {
+                      setBaristaNotice(error instanceof Error ? error.message : "Could not prepare the attendance photo.");
+                      return;
+                    }
                     const result = await punchBaristaShift({
                       type: baristaAction,
                       username: baristaUsername,
                       password: baristaPassword,
                       userId: baristaTargetId ?? undefined,
+                      photoBase64,
                     });
                     if (result && "error" in result && result.error) {
                       if (baristaAction === "login" && "id" in result && result.id) {
@@ -1356,6 +1408,7 @@ export function PosClient({
                     }
                     setBaristaUsername("");
                     setBaristaPassword("");
+                    setBaristaPhoto(null);
                     setBaristaAction("login");
                     setBaristaTargetId(null);
                     setBaristaNotice(null);
@@ -1389,6 +1442,22 @@ export function PosClient({
                     required
                   />
                 </label>
+                <label className="mt-3 block text-xs font-medium text-neutral-600">
+                  <span className="mb-1.5 block">Attendance photo (if required)</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    capture="user"
+                    onChange={(event) => {
+                      setBaristaPhoto(event.target.files?.[0] ?? null);
+                      setBaristaNotice(null);
+                    }}
+                    className="w-full text-xs"
+                  />
+                </label>
+                <p className="mt-1 text-[11px] text-neutral-500">
+                  A photo is required only when this staff account has attendance photos enabled.
+                </p>
                 {baristaNotice ? <p className="mt-3 text-sm text-red-600">{baristaNotice}</p> : null}
                 <button
                   type="submit"

@@ -31,14 +31,16 @@ import {
   isRealSupabaseConfigured,
   insertLoginActivityRecord,
   insertOffRequestRecord,
+  supabaseAdmin,
   updateLoginActivityTimeRecord,
   updateOffRequestStatusRecord,
   updateStore,
   upsertStaffUserRecord,
 } from "@/lib/store";
 import { phDateString, phIsoFromDateTimeInput } from "@/lib/datetime";
-import { isAttendanceStaffRole, openBaristaShifts, pairLoginSessions } from "@/lib/staff-sessions";
+import { isAttendanceStaffRole, openBaristaShifts } from "@/lib/staff-sessions";
 import {
+  DEFAULT_STAFF_PERMISSIONS,
   canUsePos,
   parseRole,
   staffUserId,
@@ -106,16 +108,23 @@ function hasBaristaCredentials(user: StaffUser, username: string, password: stri
 // added) - it returns the created entry so the caller can persist it via
 // insertLoginActivityRecord() once this queue turn has finished, rather
 // than nesting a DB call inside updateStore()'s callback.
-function appendPunch(store: StoreData, user: StaffUser, type: "login" | "logout", role = user.role): LoginActivity {
+function appendPunch(
+  store: StoreData,
+  user: StaffUser,
+  type: "login" | "logout",
+  metadata: { id?: string; at?: string; photoPath?: string } = {},
+  role = user.role,
+): LoginActivity {
   if (!Array.isArray(store.loginActivity)) store.loginActivity = [];
   const activity: LoginActivity = {
-    id: `auth-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    id: metadata.id ?? `auth-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
     userId: user.id,
     username: user.username,
     name: user.name,
     role,
     type,
-    at: new Date().toISOString(),
+    at: metadata.at ?? new Date().toISOString(),
+    photoPath: metadata.photoPath,
   };
   store.loginActivity.unshift(activity);
   return activity;
@@ -128,9 +137,9 @@ function parseStaff(input: {
   title: string;
   role: string;
   password: string;
-  hourlyRate: string;
-  dailyRate: string;
-  overtimeRate: string;
+  hourlyRate?: string;
+  dailyRate?: string;
+  overtimeRate?: string;
   requirePassword: boolean;
 }): { error: string } | { name: string; username: string; email: string; title: string; role: Role; password?: string; hourlyRate?: number; dailyRate?: number; overtimeRate: number } {
   const name = input.name.trim();
@@ -145,9 +154,12 @@ function parseStaff(input: {
         : "Admin";
   const password = input.password;
   const email = input.email.trim().toLowerCase();
-  const hourlyRate = input.hourlyRate.trim() ? Number(input.hourlyRate) : undefined;
-  const dailyRate = input.dailyRate.trim() ? Number(input.dailyRate) : undefined;
-  const overtimeRate = input.overtimeRate.trim() ? Number(input.overtimeRate) : 1.5;
+  const hourlyRateValue = input.hourlyRate?.trim() ?? "";
+  const dailyRateValue = input.dailyRate?.trim() ?? "";
+  const hourlyRate = hourlyRateValue ? Number(hourlyRateValue) : undefined;
+  const dailyRate = dailyRateValue ? Number(dailyRateValue) : undefined;
+  const overtimeRateValue = input.overtimeRate?.trim() ?? "";
+  const overtimeRate = overtimeRateValue ? Number(overtimeRateValue) : 1.5;
   const username = (
     input.username.trim() ||
     name.toLowerCase().replace(/[^a-z0-9]+/g, "")
@@ -198,9 +210,10 @@ export async function createStaffUser(input: {
   title: string;
   role: string;
   password: string;
-  hourlyRate: string;
-  dailyRate: string;
-  overtimeRate: string;
+  requiredImage?: boolean;
+  hourlyRate?: string;
+  dailyRate?: string;
+  overtimeRate?: string;
   avatarPath?: string;
 }) {
   const session = await getSession();
@@ -250,6 +263,10 @@ export async function createStaffUser(input: {
       dailyRate: parsed.dailyRate,
       overtimeRate: parsed.overtimeRate,
       avatarPath: uploadedAvatarPath,
+      permissions: {
+        ...DEFAULT_STAFF_PERMISSIONS,
+        required_image: isAttendanceStaffRole(parsed.role) && input.requiredImage === true,
+      },
     });
     if (parsed.role === "cashier") {
       await initializeOwnerStore(id);
@@ -270,9 +287,10 @@ export async function updateStaffUser(input: {
   title: string;
   role: string;
   password: string;
-  hourlyRate: string;
-  dailyRate: string;
-  overtimeRate: string;
+  requiredImage?: boolean;
+  hourlyRate?: string;
+  dailyRate?: string;
+  overtimeRate?: string;
   avatarPath?: string;
 }) {
     const session = await getSession();
@@ -332,12 +350,20 @@ export async function updateStaffUser(input: {
     role: parsed.role,
     password: parsed.password ? parsed.password : user.password,
     passwordChanged: parsed.password ? false : user.passwordChanged,
-    hourlyRate: parsed.hourlyRate,
-    dailyRate: parsed.dailyRate,
-    overtimeRate: parsed.overtimeRate,
+    hourlyRate: input.hourlyRate === undefined ? user.hourlyRate : parsed.hourlyRate,
+    dailyRate: input.dailyRate === undefined ? user.dailyRate : parsed.dailyRate,
+    overtimeRate: input.overtimeRate === undefined ? user.overtimeRate : parsed.overtimeRate,
     avatarPath: input.avatarPath === undefined || input.avatarPath === user.avatarPath
       ? user.avatarPath
       : uploadedAvatarPath,
+    permissions: {
+      ...DEFAULT_STAFF_PERMISSIONS,
+      ...user.permissions,
+      ...(isAttendanceStaffRole(parsed.role) && input.requiredImage !== undefined
+        ? { required_image: input.requiredImage }
+        : {}),
+      ...(isAttendanceStaffRole(parsed.role) ? {} : { required_image: false }),
+    },
   };
 
   try {
@@ -706,53 +732,20 @@ export async function deleteStaffUser(id: string) {
   return { ok: true };
 }
 
-export async function punchStaff(userId: string, type: "login" | "logout") {
-  const session = await getSession();
-  if (!session || (session.role !== "admin" && session.role !== "cashier")) {
-    throw new Error("Only an Owner or admin can record staff attendance.");
-  }
-  let error: string | undefined;
-  let activity: LoginActivity | undefined;
-  await updateStore((store) => {
-    const user = store.users.find((entry) => entry.id === userId);
-    if (!user) {
-      error = "Staff account not found.";
-      return;
-    }
-    if (!isAttendanceStaffRole(user.role)) {
-      error = "Pick a staff member.";
-      return;
-    }
-    const isOnShift = pairLoginSessions(store.loginActivity ?? []).some(
-      (shift) => shift.userId === userId && !shift.logoutAt,
-    );
-    if (type === "login" && isOnShift) {
-      error = `${user.name} is already clocked in.`;
-      return;
-    }
-    if (type === "logout" && !isOnShift) {
-      error = `${user.name} does not have an open shift.`;
-      return;
-    }
-    activity = appendPunch(store, user, type);
-  });
-  if (error) return { error };
-  if (activity) await insertLoginActivityRecord(activity);
-  refresh();
-  return { ok: true, activity };
-}
-
 export async function punchBaristaShift(input: {
   type: "login" | "logout";
   username?: string;
   password?: string;
   userId?: string;
+  photoBase64?: string;
 }) {
-  await requirePosSession();
+  const posSession = await requirePosSession();
 
   let error: string | undefined;
   let punched: { id: string; name: string; username: string } | undefined;
   let activity: LoginActivity | undefined;
+  let photoBytes: Buffer | undefined;
+  const photoBase64 = String(input.photoBase64 ?? "");
   await updateStore((store) => {
     const openShifts = openBaristaShifts(store.loginActivity ?? []);
 
@@ -772,12 +765,27 @@ export async function punchBaristaShift(input: {
         error = "Use a staff account to clock in here.";
         return;
       }
+      const authenticatedAt = new Date().toISOString();
+      const image = validateAttendancePhoto(photoBase64, user.permissions?.required_image === true);
+      if ("error" in image) {
+        error = image.error;
+        return;
+      }
+      photoBytes = image.bytes;
       if (openShifts.some((shift) => shift.userId === user.id)) {
         punched = { id: user.id, name: user.name, username: user.username };
         error = `${user.name} is already clocked in.`;
         return;
       }
-      activity = appendPunch(store, user, "login");
+      const id = `auth-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+      const photoPath = photoBytes
+        ? `${safeAttendancePathSegment(posSession.userId)}/${safeAttendancePathSegment(user.id)}/${id}.jpg`
+        : undefined;
+      activity = appendPunch(store, user, "login", {
+        id,
+        at: authenticatedAt,
+        photoPath,
+      });
       punched = { id: user.id, name: user.name, username: user.username };
       return;
     }
@@ -797,7 +805,22 @@ export async function punchBaristaShift(input: {
       error = "Use the on-shift staff member's own username and password to clock out.";
       return;
     }
-    activity = appendPunch(store, user, "logout");
+    const authenticatedAt = new Date().toISOString();
+    const image = validateAttendancePhoto(photoBase64, user.permissions?.required_image === true);
+    if ("error" in image) {
+      error = image.error;
+      return;
+    }
+    photoBytes = image.bytes;
+    const id = `auth-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    const photoPath = photoBytes
+      ? `${safeAttendancePathSegment(posSession.userId)}/${safeAttendancePathSegment(user.id)}/${id}.jpg`
+      : undefined;
+    activity = appendPunch(store, user, "logout", {
+      id,
+      at: authenticatedAt,
+      photoPath,
+    });
     punched = { id: user.id, name: user.name, username: user.username };
   });
 
@@ -806,9 +829,65 @@ export async function punchBaristaShift(input: {
       ? { error, id: punched.id, name: punched.name, username: punched.username }
       : { error };
   }
-  if (activity) await insertLoginActivityRecord(activity);
+  if (activity) {
+    if (photoBytes && activity.photoPath) {
+      const { error: uploadError } = await supabaseAdmin()
+        .storage
+        .from("attendance-photos")
+        .upload(activity.photoPath, photoBytes, { contentType: "image/jpeg", upsert: false });
+      if (uploadError) {
+        await deleteLoginActivityRecords([activity.id]);
+        return { error: `Unable to save the required attendance photo: ${uploadError.message}` };
+      }
+    }
+    try {
+      await insertLoginActivityRecord(activity);
+    } catch (insertError) {
+      if (activity.photoPath) {
+        const { error: cleanupError } = await supabaseAdmin()
+          .storage
+          .from("attendance-photos")
+          .remove([activity.photoPath]);
+        if (cleanupError) {
+          throw new Error(`Unable to record attendance (${insertError instanceof Error ? insertError.message : "unknown error"}); photo cleanup also failed: ${cleanupError.message}`);
+        }
+      }
+      await deleteLoginActivityRecords([activity.id]);
+      throw insertError;
+    }
+  }
   refresh();
   return { ok: true as const, id: punched?.id ?? "", name: punched?.name ?? "", username: punched?.username ?? "" };
+}
+
+function safeAttendancePathSegment(value: string) {
+  const safe = value.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 100);
+  if (!safe) throw new Error("Attendance photo path is invalid.");
+  return safe;
+}
+
+function validateAttendancePhoto(photoBase64: string, required: boolean):
+  | { bytes: Buffer | undefined }
+  | { error: string } {
+  if (!photoBase64) {
+    return required
+      ? { error: "Capture an attendance photo for this staff account before recording the shift." }
+      : { bytes: undefined };
+  }
+  if (photoBase64.length > 700_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(photoBase64)) {
+    return { error: "Attendance photo must be a valid JPEG smaller than 512 KB." };
+  }
+  const bytes = Buffer.from(photoBase64, "base64");
+  if (
+    bytes.length === 0 ||
+    bytes.length > 512 * 1024 ||
+    bytes[0] !== 0xff ||
+    bytes[1] !== 0xd8 ||
+    bytes[2] !== 0xff
+  ) {
+    return { error: "Capture a valid JPEG attendance photo smaller than 512 KB." };
+  }
+  return { bytes };
 }
 
 export async function updateStaffSessionTimes(input: {

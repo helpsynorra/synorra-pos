@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import '../models/menu_item.dart';
@@ -194,13 +195,21 @@ class PosController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> recordStaffSessionEvent(StaffUser staff, String type) async {
+  Future<void> recordStaffSessionEvent(
+    StaffUser staff,
+    String type, {
+    String? authenticatedAt,
+  }) async {
     if (type != 'login' && type != 'logout') {
       return;
     }
 
     if (staff.canClockShift) {
-      await punchShift(staff, type);
+      await punchShift(
+        staff,
+        type,
+        authenticatedAt ?? ManilaTime.utcNowIso8601(),
+      );
       return;
     }
     if (!staff.canLoginToPos) return;
@@ -211,6 +220,7 @@ class PosController extends ChangeNotifier {
         staff,
         type,
         idPrefix: staff.canUsePos ? 'cashier' : 'staff',
+        at: authenticatedAt,
       );
       return;
     }
@@ -1325,7 +1335,9 @@ class PosController extends ChangeNotifier {
   Future<void> punchShift(
     StaffUser staff,
     String type,
-  ) async {
+    String authenticatedAt, {
+    Uint8List? photoBytes,
+  }) async {
     if (!staff.canClockShift || !LoginActivity.isAttendanceType(type)) {
       return;
     }
@@ -1346,6 +1358,8 @@ class PosController extends ChangeNotifier {
       staff,
       type,
       idPrefix: 'shift',
+      at: authenticatedAt,
+      photoBytes: photoBytes,
     );
     _restoreOnShiftBarista();
     notifyListeners();
@@ -1355,8 +1369,10 @@ class PosController extends ChangeNotifier {
     StaffUser staff,
     String type, {
     required String idPrefix,
+    String? at,
+    Uint8List? photoBytes,
   }) async {
-    final now = ManilaTime.utcNowIso8601();
+    final now = at ?? ManilaTime.utcNowIso8601();
     final log = LoginActivity(
       id: '$idPrefix-${staff.id}-${DateTime.now().microsecondsSinceEpoch}-$type',
       userId: staff.id,
@@ -1365,6 +1381,7 @@ class PosController extends ChangeNotifier {
       role: staff.role,
       type: type,
       at: now,
+      photoBase64: photoBytes == null ? null : base64Encode(photoBytes),
       isSynced: false,
     );
 

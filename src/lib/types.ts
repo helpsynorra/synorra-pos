@@ -22,6 +22,7 @@ export type StaffPermissions = {
   promotionDiscount: boolean;
   promotionsEnabled: boolean;
   wasteManagement: boolean;
+  required_image?: boolean;
   promoCodes?: PromotionCode[];
 };
 

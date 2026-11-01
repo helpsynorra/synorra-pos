@@ -243,12 +243,30 @@ class _PosScreenState extends State<PosScreen> {
           );
         },
         onPunch: (staff, type,
-            {required username, required password, photoBytes}) async {
+            {required username,
+            required password,
+            required authenticatedAt,
+            photoBytes}) async {
           await widget.controller.punchShift(
             staff,
             type,
+            authenticatedAt,
+            photoBytes: photoBytes,
           );
+          await widget.controller.syncService.syncNow();
           if (!mounted) return;
+          final syncError = widget.controller.syncService.lastError;
+          if (syncError != null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Attendance saved on this device, but sync failed: $syncError',
+                ),
+                duration: const Duration(seconds: 8),
+              ),
+            );
+            return;
+          }
           final message = switch (type) {
             'login' => '${staff.name} clocked in',
             'logout' => '${staff.name} clocked out',
@@ -790,9 +808,13 @@ class _PosScreenState extends State<PosScreen> {
     final currency = NumberFormat('#,##0', 'en_PH');
     final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
 
-    final syncStatusLabel = sync.isOnline ? 'Online' : 'Offline';
-    final syncDotColor =
-        sync.isOnline ? const Color(0xFF22C55E) : const Color(0xFF9CA3AF);
+    final syncStatusLabel =
+        sync.lastError ?? (sync.isOnline ? 'Online' : 'Offline');
+    final syncDotColor = sync.lastError != null
+        ? const Color(0xFFEF4444)
+        : sync.isOnline
+            ? const Color(0xFF22C55E)
+            : const Color(0xFF9CA3AF);
 
     return Scaffold(
       backgroundColor: Colors.white,

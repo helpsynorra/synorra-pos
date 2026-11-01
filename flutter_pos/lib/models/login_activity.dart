@@ -26,6 +26,7 @@ class LoginActivity {
   final String type; // 'login' | 'logout' | 'break_start' | 'break_end'
   final String at;
   String? photoPath;
+  String? photoBase64;
   bool isSynced;
 
   static bool isBreakType(String type) =>
@@ -123,6 +124,7 @@ class LoginActivity {
     required this.type,
     required this.at,
     this.photoPath,
+    this.photoBase64,
     this.isSynced = false,
   });
 
@@ -136,6 +138,7 @@ class LoginActivity {
       type: json['type'] as String? ?? 'login',
       at: json['at'] as String? ?? DateTime.now().toIso8601String(),
       photoPath: json['photoPath'] as String? ?? json['photo_path'] as String?,
+      photoBase64: json['photoBase64'] as String?,
       isSynced: json['isSynced'] == true,
     );
   }
@@ -149,6 +152,7 @@ class LoginActivity {
         'type': type,
         'at': at,
         'photoPath': photoPath,
+        if (photoBase64 != null) 'photoBase64': photoBase64,
         'isSynced': isSynced,
       };
 }
