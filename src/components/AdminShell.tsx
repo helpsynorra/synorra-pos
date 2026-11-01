@@ -101,6 +101,23 @@ export function AdminShell({ session, users, store, children, financeContent, at
     }
   }
 
+  async function refreshLoginActivity() {
+    setLoginActivityLoading(true);
+    setLoginActivityError(null);
+    try {
+      const response = await fetch("/api/admin/login-activity?page=1", { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to load staff activity.");
+      setLoginActivity(result.activity);
+      setLoginActivityPage(result.page);
+      setLoginActivityHasMore(result.hasMore);
+    } catch (error) {
+      setLoginActivityError(error instanceof Error ? error.message : "Unable to load staff activity.");
+    } finally {
+      setLoginActivityLoading(false);
+    }
+  }
+
   const current = currentPanel;
 
   return (
@@ -115,6 +132,7 @@ export function AdminShell({ session, users, store, children, financeContent, at
               users={users.filter((user) => user.role !== "admin")}
               session={session}
               loginActivity={loginActivity}
+              onAttendanceChange={refreshLoginActivity}
               offRequests={store.offRequests ?? []}
               showAdminRole={false}
               showOwnerRole={false}

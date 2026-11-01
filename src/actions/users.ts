@@ -707,12 +707,19 @@ export async function deleteStaffUser(id: string) {
 }
 
 export async function punchStaff(userId: string, type: "login" | "logout") {
-  await requireAdmin();
+  const session = await getSession();
+  if (!session || (session.role !== "admin" && session.role !== "cashier")) {
+    throw new Error("Only an Owner or admin can record staff attendance.");
+  }
   let error: string | undefined;
   let activity: LoginActivity | undefined;
   await updateStore((store) => {
     const user = store.users.find((entry) => entry.id === userId);
-    if (!user || !isAttendanceStaffRole(user.role)) {
+    if (!user) {
+      error = "Staff account not found.";
+      return;
+    }
+    if (!isAttendanceStaffRole(user.role)) {
       error = "Pick a staff member.";
       return;
     }
@@ -732,7 +739,7 @@ export async function punchStaff(userId: string, type: "login" | "logout") {
   if (error) return { error };
   if (activity) await insertLoginActivityRecord(activity);
   refresh();
-  return { ok: true };
+  return { ok: true, activity };
 }
 
 export async function punchBaristaShift(input: {

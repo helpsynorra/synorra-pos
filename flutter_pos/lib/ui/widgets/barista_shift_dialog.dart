@@ -320,7 +320,7 @@ class _BaristaShiftDialogState extends State<BaristaShiftDialog> {
     if (_action == 'break_end') {
       return 'Resuming continues the same shift, so break time is not counted as a clock-out.';
     }
-    return 'Attendance is recorded with Manila time so the admin dashboard, payroll, and shift reports stay aligned.';
+    return 'The staff member will be clocked in and the shift will start. Make sure to enter the correct credentials.';
   }
 
   PosStatusTone get _actionTone => PosStatusColors.forAttendanceAction(_action);

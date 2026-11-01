@@ -156,6 +156,7 @@ void main() {
       name: 'Barista',
       role: 'barista',
     );
+    await storage.saveStaff([barista]);
     final api = _StubSupabaseService({'ok': true, 'user': barista});
     final sync = SyncService(localStorage: storage, supabaseService: api);
     final controller = PosController(

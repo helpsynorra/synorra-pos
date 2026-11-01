@@ -177,6 +177,7 @@ type UserManagerProps = {
   users: PublicStaffUser[];
   session: Session;
   loginActivity: LoginActivity[];
+  onAttendanceChange?: () => Promise<void>;
   offRequests: OffRequest[];
   showShiftTabs?: boolean;
   showAdminRole?: boolean;
@@ -252,7 +253,7 @@ const adminPermissionGroups: {
   },
 ];
 
-export function UserManager({ users, session, loginActivity, offRequests, showShiftTabs = true, showAdminRole = true, showOwnerRole = true, showBaristaRole = true, showCashierRole = false, showBaristasOnly = false, showEditStaffButton = true, showDeleteStaffButton = true, baristaOnlyStaffActions = false, showLoginLinksTab = true, showPrintButtonToggle = true, showViewPermissionsButton = true, adminLoginPath, attendanceSettings, showAttendanceSettings = false, workShifts = [], workShiftError, showScheduleTab = false }: UserManagerProps) {
+export function UserManager({ users, session, loginActivity, onAttendanceChange, offRequests, showShiftTabs = true, showAdminRole = true, showOwnerRole = true, showBaristaRole = true, showCashierRole = false, showBaristasOnly = false, showEditStaffButton = true, showDeleteStaffButton = true, baristaOnlyStaffActions = false, showLoginLinksTab = true, showPrintButtonToggle = true, showViewPermissionsButton = true, adminLoginPath, attendanceSettings, showAttendanceSettings = false, workShifts = [], workShiftError, showScheduleTab = false }: UserManagerProps) {
   const defaultStaffRole: StaffRole = showBaristasOnly || (!showOwnerRole && showBaristaRole)
     ? "Barista"
     : !showOwnerRole && showCashierRole
@@ -429,8 +430,8 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
   const sessions = useMemo(() => {
     if (!selectedDate) return allSessions;
     return allSessions.filter((row) => {
-      const loginDateStr = row.loginAt ? new Date(row.loginAt).toISOString().split("T")[0] : "";
-      const logoutDateStr = row.logoutAt ? new Date(row.logoutAt).toISOString().split("T")[0] : "";
+      const loginDateStr = row.loginAt ? phDateString(row.loginAt) : "";
+      const logoutDateStr = row.logoutAt ? phDateString(row.logoutAt) : "";
       return loginDateStr === selectedDate || logoutDateStr === selectedDate;
     });
   }, [allSessions, selectedDate]);
@@ -1299,6 +1300,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                           return;
                         }
                         setNotice(null);
+                        await onAttendanceChange?.();
                       })
                     }
                     className="rounded-full bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
@@ -1316,6 +1318,7 @@ export function UserManager({ users, session, loginActivity, offRequests, showSh
                           return;
                         }
                         setNotice(null);
+                        await onAttendanceChange?.();
                       })
                     }
                     className="rounded-full border border-neutral-300 px-4 py-2 text-sm font-medium hover:border-black disabled:opacity-40"

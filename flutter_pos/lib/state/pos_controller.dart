@@ -1099,7 +1099,7 @@ class PosController extends ChangeNotifier {
       if (!accepts(cachedStaff)) return null;
       final savedPassword =
           await localStorage.getOfflineStaffCredential(cachedStaff.id);
-      return savedPassword == password ? cachedStaff : null;
+      if (savedPassword == password) return cachedStaff;
     }
 
     final auth = await supabaseService.authenticateStaff(
